@@ -10,6 +10,7 @@ import {
 	type JSXForExpression,
 	type JSXIfExpression,
 	type MemberExpression,
+	type TSRXJSXElement,
 } from "yuku-tsrx";
 
 test("collects structured parser diagnostics without weakening strict mode", () => {
@@ -114,6 +115,34 @@ test("parses JSX-child @for index and key overlays", () => {
 	expect(source.slice(directive.statement.key?.start, directive.statement.key?.end)).toBe(
 		"item.id",
 	);
+});
+
+test("parses constructs in the children of a member-expression tag", () => {
+	const source =
+		"const list = <select.content>@for (const item of items; key item) { <li /> }</select.content>;";
+	const errors: Diagnostic[] = [];
+	const program = parseModule(source, "member-tag.tsrx", { collect: true, errors });
+	let directive: JSXForExpression | undefined;
+	let element: TSRXJSXElement | undefined;
+	walk(program, {
+		enter(node) {
+			if (node.type === "JSXForExpression") directive = node as JSXForExpression;
+			if (node.type === "JSXElement" && !element) element = node as TSRXJSXElement;
+		},
+	});
+
+	expect(errors).toEqual([]);
+	expect(directive?.type).toBe("JSXForExpression");
+	expect(element?.openingElement.name).toMatchObject({
+		type: "JSXMemberExpression",
+		object: { type: "JSXIdentifier", name: "select" },
+		property: { type: "JSXIdentifier", name: "content" },
+	});
+	expect(element?.closingElement?.name).toMatchObject({
+		type: "JSXMemberExpression",
+		object: { type: "JSXIdentifier", name: "select" },
+		property: { type: "JSXIdentifier", name: "content" },
+	});
 });
 
 test("parses bare identifier for binding in a JSX child", () => {

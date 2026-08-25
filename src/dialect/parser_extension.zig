@@ -1341,6 +1341,39 @@ fn parseExtendedJsxChildren(
     }
 }
 
+fn ClosingElementName(comptime H: type) type {
+    return struct { node: H.NodeIndex, span: H.Span };
+}
+
+/// Parse a closing tag's name - `a`, or the `a.b.c` member chain an opening tag
+/// accepts - leaving the parser on the token that follows it. The member shape
+/// mirrors the host's own element-name parse so an owned element's closing name
+/// is the node the host would have built.
+fn parseClosingElementName(comptime H: type, parser: anytype) H.ErrorType!?ClosingElementName(H) {
+    if (H.currentToken(parser) != .jsx_identifier) return null;
+    const head_span = H.currentSpan(parser);
+    var node = try H.addNode(parser, H.NodeData{ .jsx_identifier = .{
+        .name = H.sourceSlice(parser, head_span.start, head_span.end),
+    } }, head_span);
+    var span = head_span;
+    if (!try H.advance(parser)) return null;
+    while (H.currentToken(parser) == .dot) {
+        if (!try H.advance(parser)) return null;
+        if (H.currentToken(parser) != .jsx_identifier) return null;
+        const property_span = H.currentSpan(parser);
+        const property = try H.addNode(parser, H.NodeData{ .jsx_identifier = .{
+            .name = H.sourceSlice(parser, property_span.start, property_span.end),
+        } }, property_span);
+        span = .{ .start = head_span.start, .end = property_span.end };
+        node = try H.addNode(parser, H.NodeData{ .jsx_member_expression = .{
+            .object = node,
+            .property = property,
+        } }, span);
+        if (!try H.advance(parser)) return null;
+    }
+    return .{ .node = node, .span = span };
+}
+
 fn parseExtendedJsxElement(comptime H: type, parser: anytype, opening: H.NodeIndex, comptime context: anytype) H.ErrorType!?H.NodeIndex {
     const opening_data = switch (H.data(parser, opening)) {
         .jsx_opening_element => |value| value,
@@ -1377,13 +1410,10 @@ fn parseExtendedJsxElement(comptime H: type, parser: anytype, opening: H.NodeInd
     H.setLexerMode(parser, .jsx_tag);
     if (!try H.advance(parser)) return null;
     if (!try H.expect(parser, .slash, "Expected '/' in JSX closing element")) return null;
-    const closing_name_span = H.currentSpan(parser);
-    if (H.currentToken(parser) != .jsx_identifier) return null;
-    const closing_name = try H.addNode(parser, H.NodeData{ .jsx_identifier = .{
-        .name = H.sourceSlice(parser, closing_name_span.start, closing_name_span.end),
-    } }, closing_name_span);
+    const closing_element_name = try parseClosingElementName(H, parser) orelse return null;
+    const closing_name = closing_element_name.node;
+    const closing_name_span = closing_element_name.span;
     if (!std.mem.eql(u8, std.mem.trim(u8, name, " \t\r\n"), std.mem.trim(u8, H.sourceText(parser, closing_name_span), " \t\r\n"))) return null;
-    if (!try H.advance(parser)) return null;
     const closing_end = H.currentSpan(parser).end;
     if (H.currentToken(parser) != .greater_than) {
         try H.report(parser, H.currentSpan(parser), "Expected '>' to close JSX closing element");

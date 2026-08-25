@@ -314,6 +314,132 @@ test "every control-flow directive family parses as a JSX child" {
     }
 }
 
+test "member-expression tag children accept the constructs identifier tag children do" {
+    // The dialect only owns an element whose closing tag it can also parse, so
+    // a closing name that stopped at the first identifier declined every `a.b`
+    // tag and handed `@` back to the host children loop.
+    const Case = struct { member: []const u8, identifier: []const u8, tag: []const u8 };
+    for ([_]Case{
+        .{
+            .member = "const view = <select.content>@for (const item of items; key item) {<li>{item}</li>}</select.content>;",
+            .identifier = "const view = <content>@for (const item of items; key item) {<li>{item}</li>}</content>;",
+            .tag = "jsx_for_expression",
+        },
+        .{
+            .member = "const view = <select.content>@if (ready) {<p>a</p>} @else {<p>b</p>}</select.content>;",
+            .identifier = "const view = <content>@if (ready) {<p>a</p>} @else {<p>b</p>}</content>;",
+            .tag = "jsx_if_expression",
+        },
+        .{
+            .member = "const view = <a.b.c>@for (const item of items) {<p>{item}</p>}</a.b.c>;",
+            .identifier = "const view = <c>@for (const item of items) {<p>{item}</p>}</c>;",
+            .tag = "jsx_for_expression",
+        },
+        .{
+            .member = "const view = <a.b><li>head</li>@if (ready) {<p>a</p>}tail</a.b>;",
+            .identifier = "const view = <b><li>head</li>@if (ready) {<p>a</p>}tail</b>;",
+            .tag = "jsx_if_expression",
+        },
+        .{
+            .member = "const view = <a.b>@switch (kind) {@case 1: {<p>a</p>} @default: {<p>b</p>}}</a.b>;",
+            .identifier = "const view = <b>@switch (kind) {@case 1: {<p>a</p>} @default: {<p>b</p>}}</b>;",
+            .tag = "jsx_switch_expression",
+        },
+    }) |case| {
+        var member_tree = try parser.parse(std.testing.allocator, case.member, .{ .lang = .tsx });
+        defer member_tree.deinit();
+        // the host cascade - `Expected JSX element name, but found '/'` - only
+        // disappears when the dialect owns the element outright
+        try std.testing.expectEqual(@as(usize, 0), member_tree.diagnostics.items.len);
+        try std.testing.expect(!member_tree.hasErrors());
+
+        var identifier_tree = try parser.parse(std.testing.allocator, case.identifier, .{ .lang = .tsx });
+        defer identifier_tree.deinit();
+        try std.testing.expectEqual(@as(usize, 0), identifier_tree.diagnostics.items.len);
+        try std.testing.expect(!identifier_tree.hasErrors());
+
+        const member_element = declaredJsxElement(&member_tree);
+        const identifier_element = declaredJsxElement(&identifier_tree);
+        const member_data = member_tree.data(member_element).jsx_element;
+        const identifier_data = identifier_tree.data(identifier_element).jsx_element;
+
+        try std.testing.expect(member_data.closing_element != .null);
+        try std.testing.expectEqual(
+            .jsx_member_expression,
+            std.meta.activeTag(member_tree.data(openingName(&member_tree, member_data.opening_element))),
+        );
+        try std.testing.expectEqual(
+            .jsx_member_expression,
+            std.meta.activeTag(member_tree.data(closingName(&member_tree, member_data.closing_element))),
+        );
+
+        const member_children = member_tree.extra(member_data.children);
+        const identifier_children = identifier_tree.extra(identifier_data.children);
+        try std.testing.expectEqual(identifier_children.len, member_children.len);
+        for (member_children, identifier_children) |mine, theirs| {
+            try std.testing.expectEqual(
+                std.meta.activeTag(identifier_tree.data(theirs)),
+                std.meta.activeTag(member_tree.data(mine)),
+            );
+        }
+
+        const member_tags = dialectChildTags(&member_tree, member_element);
+        const identifier_tags = dialectChildTags(&identifier_tree, identifier_element);
+        try std.testing.expectEqual(identifier_tags.len, member_tags.len);
+        try std.testing.expect(member_tags.len >= 1);
+        try std.testing.expectEqualStrings(case.tag, member_tags.tags[0]);
+        for (0..member_tags.len) |index| {
+            try std.testing.expectEqualStrings(identifier_tags.tags[index], member_tags.tags[index]);
+        }
+    }
+}
+
+test "a deep member tag name nests the same way in the opening and closing tag" {
+    const source = "const view = <a.b.c>@for (const item of items) {<p>a</p>}</a.b.c>;";
+    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+    defer tree.deinit();
+    try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+
+    const element = tree.data(declaredJsxElement(&tree)).jsx_element;
+    const opening = openingName(&tree, element.opening_element);
+    const closing = closingName(&tree, element.closing_element);
+    try std.testing.expectEqualStrings("a.b.c", source[tree.span(closing).start..tree.span(closing).end]);
+    try std.testing.expectEqual(
+        tree.span(opening).end - tree.span(opening).start,
+        tree.span(closing).end - tree.span(closing).start,
+    );
+
+    const outer = tree.data(closing).jsx_member_expression;
+    try std.testing.expectEqual(.jsx_identifier, std.meta.activeTag(tree.data(outer.property)));
+    const inner = tree.data(outer.object).jsx_member_expression;
+    try std.testing.expectEqual(.jsx_identifier, std.meta.activeTag(tree.data(inner.object)));
+    try std.testing.expectEqual(.jsx_identifier, std.meta.activeTag(tree.data(inner.property)));
+}
+
+test "member tag children round-trip through codegen" {
+    for ([_][]const u8{
+        "const view = <select.content>@for (const item of items) {<li>{item}</li>}</select.content>;",
+        "const view = <a.b.c>@if (ready) {<p>a</p>} @else {<p>b</p>}</a.b.c>;",
+    }) |source| {
+        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expect(!tree.hasErrors());
+
+        const result = try parser.codegen.generate(std.testing.allocator, &tree, .{});
+        defer result.deinit(std.testing.allocator);
+        try std.testing.expectEqual(@as(usize, 0), result.errors.len);
+
+        var reparsed = try parser.parse(std.testing.allocator, result.code, .{ .lang = .tsx });
+        defer reparsed.deinit();
+        try std.testing.expect(!reparsed.hasErrors());
+
+        const expected = dialectChildTags(&tree, declaredJsxElement(&tree));
+        const actual = dialectChildTags(&reparsed, declaredJsxElement(&reparsed));
+        try std.testing.expectEqual(@as(usize, 1), actual.len);
+        try std.testing.expectEqualStrings(expected.tags[0], actual.tags[0]);
+    }
+}
+
 test "control-flow directives parse in template blocks and at statement position" {
     // The same directive bodies have to terminate cleanly when the directive is
     // not the last thing in its enclosing block.
@@ -523,6 +649,14 @@ fn declaredJsxFragment(tree: *const parser.ParseResult) parser.ast.NodeIndex {
     const fragment = tree.data(declarators[0]).variable_declarator.init;
     std.debug.assert(tree.data(fragment) == .jsx_fragment);
     return fragment;
+}
+
+fn openingName(tree: *const parser.ParseResult, opening: parser.ast.NodeIndex) parser.ast.NodeIndex {
+    return tree.data(opening).jsx_opening_element.name;
+}
+
+fn closingName(tree: *const parser.ParseResult, closing: parser.ast.NodeIndex) parser.ast.NodeIndex {
+    return tree.data(closing).jsx_closing_element.name;
 }
 
 fn declaredJsxElement(tree: *const parser.ParseResult) parser.ast.NodeIndex {
