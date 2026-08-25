@@ -1,6 +1,6 @@
 {
 	"name": "@yuku-tsrx/binding-darwin-arm64",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"description": "darwin-arm64 native addon for yuku-tsrx. Installed automatically as an optional dependency of yuku-tsrx; do not depend on it directly.",
 	"license": "MIT",
 	"repository": {

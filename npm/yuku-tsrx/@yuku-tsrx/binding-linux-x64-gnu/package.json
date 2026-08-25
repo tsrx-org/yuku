@@ -1,6 +1,6 @@
 {
 	"name": "@yuku-tsrx/binding-linux-x64-gnu",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"description": "linux-x64-gnu native addon for yuku-tsrx. Installed automatically as an optional dependency of yuku-tsrx; do not depend on it directly.",
 	"license": "MIT",
 	"repository": {
