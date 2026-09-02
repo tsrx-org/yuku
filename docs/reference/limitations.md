@@ -21,6 +21,6 @@ The browser build generates code without source maps; use the npm package when a
 
 - A call expression cannot be a dynamic tag name; assign its result to a variable first.
 
-All 17 constructs in the [TSRX](https://tsrx.dev) parity table parse.
+Every other [TSRX](https://tsrx.dev) construct parses.
 
 See [Diagnostics and recovery](/guide/diagnostics).
