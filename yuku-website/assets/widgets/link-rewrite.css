@@ -1,12 +1,4 @@
-.widget-link-rewrite .lr-source,
-.widget-link-rewrite .lr-out {
-  min-height: 300px;
-}
-.widget-link-rewrite .lr-source .ex-editor-layer {
-  height: 300px;
-}
 .widget-link-rewrite .lr-output {
-  min-height: 300px;
   white-space: pre;
   overflow: auto;
 }

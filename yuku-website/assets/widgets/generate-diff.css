@@ -2,9 +2,6 @@
   max-height: 420px;
   border-bottom: 1px solid var(--c-divider);
 }
-.widget-generate-diff .gd-seed .ex-editor-layer {
-  height: 300px;
-}
 .widget-generate-diff .gd-toolbar,
 .widget-generate-diff .gd-controls {
   align-items: center;

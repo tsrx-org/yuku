@@ -25,7 +25,10 @@ export function createLayeredEditor({
   textarea.wrap = 'off'
   textarea.setAttribute('aria-label', ariaLabel)
   textarea.value = value
-  if (rows) textarea.rows = rows
+  const fitRows = () => {
+    textarea.rows = Math.min(Math.max(textarea.value.split('\n').length + 1, rows || 3), 30)
+  }
+  fitRows()
 
   const renderMirror = async () => {
     const ticket = ++renderTicket
@@ -97,6 +100,7 @@ export function createLayeredEditor({
     textarea.addEventListener('select', reportFocus)
   }
   textarea.addEventListener('input', () => {
+    fitRows()
     clearTimeout(timer)
     timer = setTimeout(() => {
       value = textarea.value
