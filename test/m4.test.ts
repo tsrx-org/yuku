@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test } from "vitest";
-import { analyze, generate, parse } from "yuku-tsrx";
+import { analyze, generate, parse, parseModule } from "yuku-tsrx";
 
 test("one package analyzes dialect bindings and generates reparsable TSRX", () => {
 	const source = "const outer = 1; const view = @{ const inner = outer; <p>{inner}</p> };";
@@ -25,6 +25,28 @@ test("all invalid fixtures stay diagnostic and cannot be silently projected", ()
 	for (const fixture of fixtures) {
 		const source = readFileSync(resolve(fixtureRoot, fixture), "utf8");
 		expect(analyze(source, { lang: "tsx" }).diagnostics.length, fixture).toBeGreaterThan(0);
+	}
+});
+
+test("a malformed TSRX construct is a module error, never a silently truncated program", () => {
+	// Each of these used to return zero diagnostics and a program cut off at the construct.
+	const sources = [
+		"const z = 1; const v = @for (const i of xs) <b/>; const w = 2;",
+		"const v = @for (const k in obj) { <b/> }; const z = 1;",
+		"const v = @for (const i of xs; index a; index b) { <b/> }; const z = 1;",
+		"const v = @for (const i of xs; key a; index b) { <b/> }; const z = 1;",
+		"const v = @for (const i of xs; foo) { <b/> }; const z = 1;",
+		"const v = @for (const i of xs; 1) { <b/> }; const z = 1;",
+		"const v = @for (const i of xs; index ) { <b/> }; const z = 1;",
+		"const v = @switch (x) { <b/> }; const z = 1;",
+		"const v = <{a />; const z = 1;",
+		"let &x = p; const z = 1;",
+		"const v = @fortune (x) { }; const z = 1;",
+	];
+	for (const source of sources) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics.length, source).toBeGreaterThan(0);
+		expect(() => parseModule(source, "module.tsrx"), source).toThrow(SyntaxError);
 	}
 });
 
