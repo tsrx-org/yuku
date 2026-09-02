@@ -240,7 +240,8 @@ function deadEmptyLoops(root, source) {
   const walk = (value, enclosingTests = [], seen = new Set()) => {
     if (value === null || typeof value !== "object" || seen.has(value)) return;
     seen.add(value);
-    const tests = value.type === "JSXIfExpression" ? [...enclosingTests, value.test] : enclosingTests;
+    const tests =
+      value.type === "JSXIfExpression" ? [...enclosingTests, value.test] : enclosingTests;
     if (value.type === "JSXForExpression" && value.empty && value.statement?.right) {
       const iterable = textOf(value.statement.right);
       const test = enclosingTests.find((candidate) => testTargets(candidate).includes(iterable));

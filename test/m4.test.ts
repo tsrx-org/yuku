@@ -415,7 +415,8 @@ test("lazy covers keep parameter and arrow annotations", () => {
 });
 
 test("line-leading committed JSX forms a statement boundary", () => {
-	const blockSource = "const view = @{\nconst count = get()\n<button>{'Count: ' + count}</button>\n};";
+	const blockSource =
+		"const view = @{\nconst count = get()\n<button>{'Count: ' + count}</button>\n};";
 	const blockResult = parse(blockSource, { lang: "tsx" });
 	expect(blockResult.diagnostics).toEqual([]);
 	const block = blockResult.program.body[0].declarations[0].init;

@@ -13,7 +13,6 @@
     .paths = .{
         "build.zig",
         "build.zig.zon",
-        "profiler",
         "src",
     },
 }

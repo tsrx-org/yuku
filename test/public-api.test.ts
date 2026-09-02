@@ -5,7 +5,7 @@ import type { ExpressionStatement, VariableDeclaration } from "@tsrx/yuku";
 
 const fixture = (name: string): string => readFileSync(`test/parser/misc/tsrx/${name}`, "utf8");
 
-test("parses accepted TSRX through the native ArrayBuffer wire", () => {
+test("parses accepted TSRX through the public native ArrayBuffer wire", () => {
 	const source = fixture("control-flow-if.module.tsrx");
 	const wire = parseWire(new TextEncoder().encode(source), {
 		lang: "tsx",

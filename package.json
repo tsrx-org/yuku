@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"check": "vp check",
-		"check:m3-generated": "node tools/m3-generated.ts --check",
+		"check:generated": "node tools/generated-decoders.ts --check",
 		"docs:assets": "node docs/generate-assets.mjs",
 		"docs:build": "node docs/build.mjs",
 		"docs:readme-hero": "node tools/readme-hero.mjs",
@@ -16,7 +16,7 @@
 		"docs:wasm": "node tools/build-wasm.mjs",
 		"docs:wasm-smoke": "node tools/wasm-smoke.mjs",
 		"fmt": "vp fmt",
-		"gen:npm": "node tools/m3-generated.ts --sync",
+		"gen:npm": "node tools/generated-decoders.ts --sync",
 		"lint": "vp lint",
 		"prepare": "git config core.hooksPath .githooks",
 		"release": "bumpp package.json --no-commit --no-tag --no-push && node scripts/sync-version.ts",

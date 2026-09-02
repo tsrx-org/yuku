@@ -2,17 +2,18 @@ import { createHash } from "node:crypto";
 import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
 const artifacts = ["decode.js", "decode-analyzer.js", "encode.js"] as const;
-const CONTROL_PATH = "npm/yuku-parser/decode.js";
-const CONTROL_REF = "eb2adcb4c17da16e7ade1a0517192d81d469e67f";
-export const CONTROL_SHA256 = "78c9a9624749aa34785f7ff2a9289aa9eb00381b844a5eac1a847cc288213087";
+const UPSTREAM_PATH = "npm/yuku-parser/decode.js";
+const UPSTREAM_REF = "0aac786cdda22d06e8669abe198d6d1d6bd72183";
+export const UPSTREAM_SHA256 = "78c9a9624749aa34785f7ff2a9289aa9eb00381b844a5eac1a847cc288213087";
 export const generationSteps = [
 	"gen-parser-decoder",
 	"gen-analyzer-decoder",
 	"gen-codegen-encoder",
-	"gen-dialect-free-parser-decoder",
+	"gen-upstream-parser-decoder",
 ] as const;
 
 export type GeneratedMode = "sync" | "check";
@@ -21,8 +22,8 @@ export interface ApplyGeneratedOptions {
 	mode: GeneratedMode;
 	generatedDirectory: string;
 	targetDirectory: string;
-	controlBytes: Uint8Array;
-	expectedControlHash?: string;
+	upstreamBytes: Uint8Array;
+	expectedUpstreamHash?: string;
 }
 
 const requiredFile = (path: string, description: string): Buffer => {
@@ -33,24 +34,24 @@ const requiredFile = (path: string, description: string): Buffer => {
 	}
 };
 
-export function validateDialectFree(
+export function validateUpstreamDecoder(
 	generatedBytes: Uint8Array,
-	controlBytes: Uint8Array,
-	expectedHash = CONTROL_SHA256,
+	upstreamBytes: Uint8Array,
+	expectedHash = UPSTREAM_SHA256,
 ): void {
-	if (!Buffer.from(generatedBytes).equals(Buffer.from(controlBytes))) {
-		throw new Error("dialect-free output differs byte-for-byte from the exact control Git object");
+	if (!Buffer.from(generatedBytes).equals(Buffer.from(upstreamBytes))) {
+		throw new Error(
+			"upstream decoder output differs byte-for-byte from the pinned seam Git object",
+		);
 	}
 	const hash = createHash("sha256").update(generatedBytes).digest("hex");
 	if (hash !== expectedHash) {
-		throw new Error(
-			`dialect-free output SHA-256 differs: expected ${expectedHash}, received ${hash}`,
-		);
+		throw new Error(`upstream decoder SHA-256 differs: expected ${expectedHash}, received ${hash}`);
 	}
 }
 
-export function loadControlGitObject(repository: string, reference = CONTROL_REF): Buffer {
-	const result = spawnSync("git", ["-C", repository, "show", `${reference}:${CONTROL_PATH}`], {
+export function loadUpstreamGitObject(repository: string, reference = UPSTREAM_REF): Buffer {
+	const result = spawnSync("git", ["-C", repository, "show", `${reference}:${UPSTREAM_PATH}`], {
 		encoding: null,
 		env: { ...process.env, GIT_NO_LAZY_FETCH: "1" },
 		maxBuffer: 16 * 1024 * 1024,
@@ -58,7 +59,7 @@ export function loadControlGitObject(repository: string, reference = CONTROL_REF
 	if (result.error !== undefined || result.status !== 0 || result.stdout === null) {
 		const detail = result.stderr === null ? "" : Buffer.from(result.stderr).toString("utf8").trim();
 		throw new Error(
-			`control Git object unavailable: ${reference}:${CONTROL_PATH}${detail === "" ? "" : `: ${detail}`}`,
+			`upstream Git object unavailable: ${reference}:${UPSTREAM_PATH}${detail === "" ? "" : `: ${detail}`}`,
 		);
 	}
 	return Buffer.from(result.stdout);
@@ -69,14 +70,14 @@ export function applyGeneratedArtifacts(options: ApplyGeneratedOptions): void {
 		artifact,
 		bytes: requiredFile(join(options.generatedDirectory, artifact), "generated artifact"),
 	}));
-	const dialectFree = requiredFile(
-		join(options.generatedDirectory, "dialect-free-decode.js"),
-		"dialect-free generated artifact",
+	const upstream = requiredFile(
+		join(options.generatedDirectory, "upstream-decode.js"),
+		"upstream generated artifact",
 	);
-	validateDialectFree(
-		dialectFree,
-		options.controlBytes,
-		options.expectedControlHash ?? CONTROL_SHA256,
+	validateUpstreamDecoder(
+		upstream,
+		options.upstreamBytes,
+		options.expectedUpstreamHash ?? UPSTREAM_SHA256,
 	);
 
 	if (options.mode === "check") {
@@ -101,6 +102,10 @@ function runGeneration(root: string): void {
 	const generated = spawnSync("zig", ["build", ...generationSteps], {
 		cwd: root,
 		encoding: "utf8",
+		env: {
+			...process.env,
+			ZIG_GLOBAL_CACHE_DIR: join(tmpdir(), "yuku-tsrx-generated-zig-cache"),
+		},
 	});
 	if (generated.status !== 0) {
 		throw new Error(`generation failed:\n${generated.stdout}${generated.stderr}`);
@@ -134,12 +139,12 @@ function main(): void {
 	const root = process.cwd();
 	const arguments_ = parseArguments(process.argv.slice(2));
 	runGeneration(root);
-	const controlBytes = loadControlGitObject(join(root, "../yuku"));
+	const upstreamBytes = loadUpstreamGitObject(join(root, "../yuku-minimal-seam"));
 	applyGeneratedArtifacts({
 		mode: arguments_.mode,
 		generatedDirectory: join(root, "zig-out"),
 		targetDirectory: resolve(root, arguments_.outputDirectory),
-		controlBytes,
+		upstreamBytes,
 	});
 }
 

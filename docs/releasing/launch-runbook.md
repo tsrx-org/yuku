@@ -29,7 +29,7 @@ does). After the merge, on a clean `main`:
 
 ```sh
 node scripts/sync-version.ts --check
-pnpm run check:m3-generated
+pnpm run check:generated
 pnpm test
 ```
 

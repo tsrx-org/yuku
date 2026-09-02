@@ -4,8 +4,9 @@ set -eu
 # Tracked sources only: bare `.`/no-path runs also walk zig-pkg/ (gitignored
 # package cache) and .worktrees/ (gitignored scratch checkouts) - neither may
 # gate a commit, and vp has crashed walking a foreign checkout's files.
-zig fmt --check build.zig src tools profiler
+zig fmt --check build.zig src tools
 pnpm vp check npm test tools benchmarks scripts vite.config.ts
 pnpm vp lint npm test tools benchmarks scripts vite.config.ts
 pnpm vp fmt --check npm test tools benchmarks scripts vite.config.ts
+pnpm check:generated
 pnpm vp test

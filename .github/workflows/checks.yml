@@ -1,0 +1,94 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  SEAM_REPOSITORY: thejackshelton/yuku
+  SEAM_REF: 0aac786cdda22d06e8669abe198d6d1d6bd72183
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the exact source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          path: yuku
+          persist-credentials: false
+
+      - name: Check out the pinned Yuku seam
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          repository: ${{ env.SEAM_REPOSITORY }}
+          ref: ${{ env.SEAM_REF }}
+          path: yuku-minimal-seam
+          persist-credentials: false
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.16.0
+
+      - name: Set up pnpm 10.33.2
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 10.33.2
+
+      - name: Set up Node 24.15.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+          cache-dependency-path: yuku/pnpm-lock.yaml
+
+      - name: Verify the pinned toolchain and seam
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(zig version)" = 0.16.0
+          test "$(git -C yuku-minimal-seam rev-parse HEAD)" = "$SEAM_REF"
+          test -z "$(git -C yuku-minimal-seam status --porcelain=v1 --untracked-files=all)"
+
+      - name: Install dependencies
+        working-directory: yuku
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Check Zig formatting
+        working-directory: yuku
+        run: zig fmt --check build.zig src tools
+
+      - name: Run Zig tests
+        working-directory: yuku
+        run: zig build test
+
+      - name: Test semantic and codegen surfaces
+        working-directory: yuku
+        run: zig build test-m4-surfaces
+
+      - name: Build the addon
+        working-directory: yuku
+        run: zig build
+
+      - name: Check TypeScript
+        working-directory: yuku
+        run: pnpm vp check
+
+      - name: Lint
+        working-directory: yuku
+        run: pnpm vp lint
+
+      - name: Check formatting
+        working-directory: yuku
+        run: pnpm vp fmt --check
+
+      - name: Run JavaScript tests
+        working-directory: yuku
+        run: pnpm test

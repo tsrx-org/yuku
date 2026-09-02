@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "vitest";
 import {
 	compareOutside,
@@ -7,7 +9,7 @@ import {
 	lazyDestructuringDifference,
 	submoduleImportDifference,
 	type Parsed,
-} from "../tools/m2-fixtures.ts";
+} from "../tools/fixture-oracle.ts";
 
 const expectedDifference = {
 	kind: "intentional-difference",
@@ -73,31 +75,23 @@ const expectedStyleSheetDifference = {
 		"Prior-art Yuku carries no CSS structure scanner, so its StyleSheet nodes hold only the raw stylesheet text.",
 } as const;
 
-test("matches every immutable M2 tree and diagnostic oracle", () => {
-	const build = spawnSync("zig", ["build", "test-m2-fixtures"], { encoding: "utf8" });
+test("matches every immutable tree and diagnostic oracle", () => {
+	const build = spawnSync("zig", ["build", "test-fixtures"], {
+		encoding: "utf8",
+		env: {
+			...process.env,
+			ZIG_GLOBAL_CACHE_DIR: join(tmpdir(), "yuku-tsrx-fixtures-zig-cache"),
+		},
+	});
 	expect(build.status, build.stderr).toBe(0);
-	const result = spawnSync(
-		"node",
-		[
-			"tools/m2-fixtures.ts",
-			"--oracle",
-			"../yuku",
-			"--ref",
-			"bf03e146d97ae2f0c2d4c4ec90456e1e544d2760",
-			"--fixtures",
-			"test/parser/misc",
-		],
-		{ encoding: "utf8" },
-	);
-	expect(result.status, result.stderr).toBe(0);
-	const reports = result.stdout.trim().split("\n");
+	const reports = build.stdout.trim().split("\n");
 	expect(reports).toEqual([
 		JSON.stringify(expectedStyleSheetDifference),
 		JSON.stringify(expectedDifference),
 		JSON.stringify(expectedLazyDifference),
 		JSON.stringify(expectedSubmoduleDifference),
 		JSON.stringify({ kind: "intentional-difference-summary", count: 4 }),
-		"M2 exact fixture oracle passed: 12 valid, 3 invalid, 3 dialect-off",
+		"Exact fixture oracle passed: 12 valid, 3 invalid, 3 dialect-off",
 	]);
 }, 30_000);
 
@@ -140,7 +134,7 @@ test("pins one fail-closed intentional difference and rejects every unlisted fie
 		),
 	).toThrow();
 
-	const source = readFileSync("tools/m2-fixtures.ts", "utf8");
+	const source = readFileSync("tools/fixture-oracle.ts", "utf8");
 	expect(source.match(/fixture: "ts\/dynamic-tag-outside-tsrx\.tsx"/g)).toHaveLength(1);
 	expect(source).not.toMatch(
 		/wildcard|normalize|structuredClone|\.delete\(|JSON\.parse\(JSON\.stringify/,

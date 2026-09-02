@@ -10,15 +10,11 @@ type VitePlusUserConfig = ViteUserConfig & {
 const config = {
 	fmt: {
 		ignorePatterns: [
-			"benchmarks/m5-baseline.json",
 			"benchmarks/m5-corpus.json",
 			"benchmarks/m5-pairs.json",
-			"benchmarks/m6-attribution.json",
 			"benchmarks/m6-baseline.json",
-			"benchmarks/m7-public-attribution.json",
 			"README.md",
 			"docs/**",
-			"goal.md",
 			"test/parser/misc/**",
 			"npm/yuku/decode.js",
 			"npm/yuku/decode-analyzer.js",

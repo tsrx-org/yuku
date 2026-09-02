@@ -33,11 +33,7 @@ async function prepareFirstParse() {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "yuku-first-parse-"));
   const scopeDir = path.join(cwd, "node_modules", "@tsrx");
   await mkdir(scopeDir, { recursive: true });
-  await symlink(
-    path.join(repoRoot, "zig-out", "npm", "yuku"),
-    path.join(scopeDir, "yuku"),
-    "dir",
-  );
+  await symlink(path.join(repoRoot, "zig-out", "npm", "yuku"), path.join(scopeDir, "yuku"), "dir");
   await writeFile(
     path.join(cwd, "list.mjs"),
     `// list.mjs
@@ -212,7 +208,7 @@ for (const demo of DEMOS) {
         generated_by: "tools/capture-transcripts.mjs",
         captured_at: capturedAt,
         platform,
-        caption: '',
+        caption: "",
         dropped,
         transcript,
       },

@@ -5,11 +5,11 @@ import { spawnSync } from "node:child_process";
 import { afterEach, expect, test } from "vitest";
 import {
 	applyGeneratedArtifacts,
-	CONTROL_SHA256,
+	UPSTREAM_SHA256,
 	generationSteps,
-	loadControlGitObject,
-	validateDialectFree,
-} from "../tools/m3-generated.ts";
+	loadUpstreamGitObject,
+	validateUpstreamDecoder,
+} from "../tools/generated-decoders.ts";
 
 const artifacts = ["decode.js", "decode-analyzer.js", "encode.js"] as const;
 const temporaryDirectories: string[] = [];
@@ -45,7 +45,7 @@ const expectCopies = (directory: string, expected: Map<string, Buffer>) => {
 const runCheck = (outputDirectory: string) =>
 	spawnSync(
 		process.execPath,
-		["tools/m3-generated.ts", "--check", "--output-dir", outputDirectory],
+		["tools/generated-decoders.ts", "--check", "--output-dir", outputDirectory],
 		{
 			cwd: process.cwd(),
 			encoding: "utf8",
@@ -57,9 +57,9 @@ test("invokes all four generators and accepts exact clean temporary copies", () 
 		"gen-parser-decoder",
 		"gen-analyzer-decoder",
 		"gen-codegen-encoder",
-		"gen-dialect-free-parser-decoder",
+		"gen-upstream-parser-decoder",
 	]);
-	const directory = temporaryDirectory("m3-generated-clean");
+	const directory = temporaryDirectory("generated-clean");
 	const expected = copyProduction(directory);
 	const result = runCheck(directory);
 	expect(result.status, result.stderr).toBe(0);
@@ -67,9 +67,9 @@ test("invokes all four generators and accepts exact clean temporary copies", () 
 });
 
 test("check rejects missing and one-byte-drifted production artifacts without mutation", () => {
-	const productionBefore = copyProduction(temporaryDirectory("m3-production-snapshot"));
+	const productionBefore = copyProduction(temporaryDirectory("production-snapshot"));
 
-	const missingDirectory = temporaryDirectory("m3-generated-missing");
+	const missingDirectory = temporaryDirectory("generated-missing");
 	const missingExpected = new Map<string, Buffer>();
 	for (const artifact of artifacts.slice(0, -1)) {
 		const bytes = productionBefore.get(artifact)!;
@@ -83,7 +83,7 @@ test("check rejects missing and one-byte-drifted production artifacts without mu
 	}
 	expect(() => readFileSync(join(missingDirectory, "encode.js"))).toThrow();
 
-	const driftDirectory = temporaryDirectory("m3-generated-drift");
+	const driftDirectory = temporaryDirectory("generated-drift");
 	const driftExpected = copyProduction(driftDirectory);
 	const corruptPath = join(driftDirectory, "decode.js");
 	const corrupted = readFileSync(corruptPath);
@@ -98,19 +98,19 @@ test("check rejects missing and one-byte-drifted production artifacts without mu
 	}
 });
 
-test("dialect-free validation rejects byte drift, hash drift, and unavailable Git refs", () => {
-	const control = loadControlGitObject("../yuku");
-	const drifted = Buffer.from(control);
+test("upstream validation rejects byte drift, hash drift, and unavailable Git refs", () => {
+	const upstream = loadUpstreamGitObject("../yuku-minimal-seam");
+	const drifted = Buffer.from(upstream);
 	drifted[0] ^= 1;
-	expect(() => validateDialectFree(drifted, control, CONTROL_SHA256)).toThrow(/byte/);
-	expect(() => validateDialectFree(control, control, "0".repeat(64))).toThrow(/SHA-256/);
-	expect(() => loadControlGitObject("../yuku", "0000000000000000000000000000000000000000")).toThrow(
-		/Git object/,
-	);
+	expect(() => validateUpstreamDecoder(drifted, upstream, UPSTREAM_SHA256)).toThrow(/byte/);
+	expect(() => validateUpstreamDecoder(upstream, upstream, "0".repeat(64))).toThrow(/SHA-256/);
+	expect(() =>
+		loadUpstreamGitObject("../yuku-minimal-seam", "0000000000000000000000000000000000000000"),
+	).toThrow(/Git object/);
 });
 
-test("sync validates every generated input and dialect-free control before copying targets", () => {
-	const root = temporaryDirectory("m3-generated-sync");
+test("sync validates every generated input and upstream decoder before copying targets", () => {
+	const root = temporaryDirectory("generated-sync");
 	const generatedDirectory = join(root, "generated");
 	const targetDirectory = join(root, "target");
 	mkdirSync(generatedDirectory);
@@ -122,20 +122,20 @@ test("sync validates every generated input and dialect-free control before copyi
 		generatedBefore.set(artifact, bytes);
 		writeFileSync(join(generatedDirectory, artifact), bytes);
 	}
-	const control = loadControlGitObject("../yuku");
-	const drifted = Buffer.from(control);
+	const upstream = loadUpstreamGitObject("../yuku-minimal-seam");
+	const drifted = Buffer.from(upstream);
 	drifted[0] ^= 1;
-	writeFileSync(join(generatedDirectory, "dialect-free-decode.js"), drifted);
+	writeFileSync(join(generatedDirectory, "upstream-decode.js"), drifted);
 
 	expect(() =>
 		applyGeneratedArtifacts({
 			mode: "sync",
 			generatedDirectory,
 			targetDirectory,
-			controlBytes: control,
+			upstreamBytes: upstream,
 		}),
 	).toThrow(/byte/);
 	expectCopies(targetDirectory, targetsBefore);
 	expectCopies(generatedDirectory, generatedBefore);
-	expect(readFileSync(join(generatedDirectory, "dialect-free-decode.js"))).toEqual(drifted);
+	expect(readFileSync(join(generatedDirectory, "upstream-decode.js"))).toEqual(drifted);
 });

@@ -172,7 +172,7 @@ const parseOptions: ParseModuleOptions = {
 	comments: [comment],
 };
 
-test("exports structurally useful TSRX consumer types", () => {
+test("exports structurally useful public TSRX consumer types", () => {
 	expectTypeOf(tsrxExpression).toMatchTypeOf<TSRXExpression>();
 	expectTypeOf<TSRXExpression>().not.toEqualTypeOf<JSXCodeBlock>();
 	expectTypeOf(program).toMatchTypeOf<Program>();

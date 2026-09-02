@@ -41,7 +41,7 @@ const artifactKeys = (value: unknown): string[] => {
 const hasMeasurementKeySegment = (key: string): boolean =>
 	key.split(/[_-]+|(?=[A-Z])/).some((segment) => measurementKeySegments.has(segment.toLowerCase()));
 
-test("classification artifacts retain the deterministic no-measurement contract", () => {
+test("benchmark corpus artifacts retain the deterministic no-measurement contract", () => {
 	expect(existsSync("benchmarks/m5-classify.ts"), "missing classifier behavior").toBe(true);
 	expect(existsSync("benchmarks/m5-corpus.json"), "missing classifier output").toBe(true);
 

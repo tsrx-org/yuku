@@ -44,50 +44,8 @@ pub fn build(b: *std.Build) void {
     const fuzz_step = b.step("fuzz", "Run the bounded parser control fuzzer");
     fuzz_step.dependOn(&fuzz_run.step);
 
-    const control_module = b.createModule(.{
-        .root_source_file = b.path("src/control.zig"),
-        .target = target,
-        .optimize = optimize,
-        .strip = true,
-    });
-    control_module.addImport("yuku", yuku.module("parser"));
-    control_module.addAnonymousImport("control_js", .{
-        .root_source_file = b.path("profiler/fixtures/control.js"),
-    });
-    control_module.addAnonymousImport("control_ts", .{
-        .root_source_file = b.path("profiler/fixtures/control.ts"),
-    });
-    control_module.addAnonymousImport("control_tsx", .{
-        .root_source_file = b.path("profiler/fixtures/control.tsx"),
-    });
-    const control_executable = b.addExecutable(.{
-        .name = "yuku-tsrx-control",
-        .root_module = control_module,
-    });
-    const control_install = b.addInstallArtifact(control_executable, .{});
-    const control_run = b.addRunArtifact(control_executable);
-    const control_step = b.step("control", "Build and run the dialect-free control");
-    control_step.dependOn(&control_install.step);
-    control_step.dependOn(&control_run.step);
-
-    const profile_module = b.createModule(.{
-        .root_source_file = b.path("profiler/profile.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    profile_module.addImport("yuku", yuku.module("parser"));
-    const profile_executable = b.addExecutable(.{
-        .name = "yuku-tsrx-profiler",
-        .root_module = profile_module,
-    });
-    const profile_run = b.addRunArtifact(profile_executable);
-    profile_run.has_side_effects = true;
-    const profile_step = b.step("profile", "Measure dialect-free parser controls");
-    profile_step.dependOn(&profile_run.step);
-
     {
         const production = addProductionGraph(b, yuku, target, optimize);
-        const dialect_abi_module = production.dialect_abi;
         const production_dialect_module = production.parser_extension;
         const production_parser_module = production.parser;
         const production_transfer_module = production.transfer;
@@ -148,82 +106,6 @@ pub fn build(b: *std.Build) void {
             .kind = .encoder,
             .output = "encode.js",
         });
-        const sentinel_dialect_module = b.createModule(.{
-            .root_source_file = b.path("src/testing/sentinel_dialect.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
-        sentinel_dialect_module.addImport("dialect_abi", dialect_abi_module);
-        const sentinel_adapter_module = b.createModule(.{
-            .root_source_file = b.path("src/dialect/parser_extension.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
-        sentinel_adapter_module.addImport("dialect_abi", dialect_abi_module);
-        sentinel_adapter_module.addImport("dialect_schema", dialect_abi_module);
-        sentinel_dialect_module.addImport("parser_adapter", sentinel_adapter_module);
-        const sentinel_parser_base = cloneModule(
-            b,
-            yuku.module("parser"),
-            yuku.path("src/parser/root.zig"),
-            target,
-            optimize,
-        );
-        sentinel_parser_base.addImport("parser_extension", sentinel_dialect_module);
-        const sentinel_parser_module = b.createModule(.{
-            .root_source_file = b.path("src/dialect/root.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
-        sentinel_parser_module.addImport("yuku", sentinel_parser_base);
-        sentinel_parser_module.addImport("parser_extension", sentinel_dialect_module);
-        sentinel_parser_module.addImport("dialect_abi", dialect_abi_module);
-        const sentinel_base_transfer_module = b.createModule(.{
-            .root_source_file = yuku.path("src/parser/ffi/transfer/root.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
-        sentinel_base_transfer_module.addImport("parser", sentinel_parser_base);
-        const sentinel_transfer_module = b.createModule(.{
-            .root_source_file = b.path("src/dialect/transfer.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
-        sentinel_transfer_module.addImport("parser", sentinel_parser_module);
-        sentinel_transfer_module.addImport("base_transfer", sentinel_base_transfer_module);
-        const production_contract_source = std.Io.Dir.cwd().readFileAlloc(
-            b.graph.io,
-            "src/dialect/root.zig",
-            b.allocator,
-            .limited(1024 * 1024),
-        ) catch @panic("unable to read production dialect contract");
-        const production_contract = b.addOptions();
-        production_contract.addOption(
-            bool,
-            "forbidden_parser_import",
-            std.mem.indexOf(u8, production_contract_source, "@import(\"parser\")") != null,
-        );
-        production_contract.addOption(
-            bool,
-            "second_parser_declaration",
-            std.mem.indexOf(u8, production_contract_source, "pub fn parse") != null,
-        );
-        const dialect_test_module = b.createModule(.{
-            .root_source_file = b.path("src/testing/dialect.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
-        dialect_test_module.addImport("dialect", sentinel_dialect_module);
-        dialect_test_module.addImport("parser", sentinel_parser_module);
-        dialect_test_module.addImport("transfer", sentinel_transfer_module);
-        dialect_test_module.addImport("production_contract", production_contract.createModule());
-        const dialect_tests = b.addRunArtifact(b.addTest(.{ .root_module = dialect_test_module }));
-        const dialect_cycle_step = b.step(
-            "test-m1-module-cycle",
-            "Compile the dependency-free dialect module graph",
-        );
-        dialect_cycle_step.dependOn(&dialect_tests.step);
-
         const m4_test_module = b.createModule(.{
             .root_source_file = b.path("src/testing/m4.zig"),
             .target = target,
@@ -234,58 +116,6 @@ pub fn build(b: *std.Build) void {
         const m4_step = b.step("test-m4-surfaces", "Test TSRX semantic and codegen surfaces");
         m4_step.dependOn(&m4_tests.step);
 
-        const m1_fixture_module = b.createModule(.{
-            .root_source_file = b.path("src/testing/m1_reflected_transfer_fixture.zig"),
-            .target = b.graph.host,
-            .optimize = optimize,
-        });
-        m1_fixture_module.addImport("dialect", sentinel_dialect_module);
-        m1_fixture_module.addImport("parser", sentinel_parser_module);
-        m1_fixture_module.addImport("transfer", sentinel_transfer_module);
-        const m1_fixture = b.addExecutable(.{
-            .name = "yuku-tsrx-m1-reflected-transfer",
-            .root_module = m1_fixture_module,
-        });
-        const m1_fixture_install = b.addInstallArtifact(m1_fixture, .{});
-        const m1_fixture_step = b.step(
-            "m1-reflected-transfer-fixtures",
-            "Build reflected dialect transfer fixtures",
-        );
-        m1_fixture_step.dependOn(&m1_fixture_install.step);
-
-        inline for ([_]struct {
-            name: []const u8,
-            root: []const u8,
-            output: []const u8,
-        }{
-            .{
-                .name = "gen-m1-dialect-decoder",
-                .root = "tools/gen_parser_decoder.zig",
-                .output = "dialect-decode.js",
-            },
-            .{
-                .name = "gen-m1-dialect-encoder",
-                .root = "tools/gen_codegen_encoder.zig",
-                .output = "dialect-encode.js",
-            },
-        }) |cfg| {
-            const generator_module = b.createModule(.{
-                .root_source_file = b.path(cfg.root),
-                .target = b.graph.host,
-                .optimize = optimize,
-            });
-            generator_module.addImport("parser", sentinel_parser_module);
-            generator_module.addImport("transfer", sentinel_transfer_module);
-            const generator = b.addExecutable(.{
-                .name = cfg.name,
-                .root_module = generator_module,
-            });
-            const output = b.addRunArtifact(generator).captureStdOut(.{});
-            const install = b.addInstallFile(output, cfg.output);
-            const step = b.step(cfg.name, "Generate reflected sentinel dialect metadata");
-            step.dependOn(&install.step);
-        }
-
         const plain_transfer_module = b.createModule(.{
             .root_source_file = yuku.path("src/parser/ffi/transfer/root.zig"),
             .target = b.graph.host,
@@ -293,15 +123,15 @@ pub fn build(b: *std.Build) void {
         });
         plain_transfer_module.addImport("parser", yuku.module("parser"));
         addEstreeGenerator(b, yuku, yuku.module("parser"), plain_transfer_module, .{
-            .step = "gen-dialect-free-parser-decoder",
-            .description = "Generate exact dialect-free parser decoder",
+            .step = "gen-upstream-parser-decoder",
+            .description = "Generate the exact upstream parser decoder",
             .root = "tools/gen_parser_decoder.zig",
             .kind = .decoder,
-            .output = "dialect-free-decode.js",
+            .output = "upstream-decode.js",
         });
 
         const binding_test_module = b.createModule(.{
-            .root_source_file = b.path("src/testing/m2.zig"),
+            .root_source_file = b.path("src/testing/production_binding.zig"),
             .target = target,
             .optimize = optimize,
         });
@@ -309,11 +139,7 @@ pub fn build(b: *std.Build) void {
         binding_test_module.addImport("parser", production_parser_module);
         binding_test_module.addImport("transfer", production_transfer_module);
         const binding_tests = b.addRunArtifact(b.addTest(.{ .root_module = binding_test_module }));
-        const binding_test_step = b.step(
-            "test-m2-binding-seam",
-            "Test the production lazy binding-prefix seam",
-        );
-        binding_test_step.dependOn(&binding_tests.step);
+        test_step.dependOn(&binding_tests.step);
 
         const dialect_fixture_options = b.addOptions();
         dialect_fixture_options.addOption(bool, "dialect_mode", true);
@@ -328,9 +154,9 @@ pub fn build(b: *std.Build) void {
             "fixture_options",
             dialect_fixture_options.createModule(),
         );
-        addM2FixtureImports(b, dialect_fixture_module);
+        addFixtureImports(b, dialect_fixture_module);
         const dialect_fixture_executable = b.addExecutable(.{
-            .name = "yuku-tsrx-m2-fixtures-dialect",
+            .name = "yuku-tsrx-fixtures-dialect",
             .root_module = dialect_fixture_module,
         });
         const dialect_fixture_install = b.addInstallArtifact(
@@ -351,9 +177,9 @@ pub fn build(b: *std.Build) void {
             "fixture_options",
             plain_fixture_options.createModule(),
         );
-        addM2FixtureImports(b, plain_fixture_module);
+        addFixtureImports(b, plain_fixture_module);
         const plain_fixture_executable = b.addExecutable(.{
-            .name = "yuku-tsrx-m2-fixtures-plain",
+            .name = "yuku-tsrx-fixtures-plain",
             .root_module = plain_fixture_module,
         });
         const plain_fixture_install = b.addInstallArtifact(
@@ -369,7 +195,7 @@ pub fn build(b: *std.Build) void {
         fixture_decoder_module.addImport("parser", production_parser_module);
         fixture_decoder_module.addImport("transfer", production_transfer_module);
         const fixture_decoder = b.addExecutable(.{
-            .name = "gen-m2-fixture-decoder",
+            .name = "gen-fixture-decoder",
             .root_module = fixture_decoder_module,
         });
         const fixture_decoder_output = b.addRunArtifact(fixture_decoder).captureStdOut(.{});
@@ -400,7 +226,7 @@ pub fn build(b: *std.Build) void {
         fixture_plain_decoder_module.addImport("transfer", plain_transfer_module);
         fixture_plain_decoder_module.addImport("decoder", fixture_plain_base);
         const fixture_plain_decoder = b.addExecutable(.{
-            .name = "gen-m2-fixture-plain-decoder",
+            .name = "gen-fixture-plain-decoder",
             .root_module = fixture_plain_decoder_module,
         });
         const fixture_plain_decoder_install = b.addInstallFile(
@@ -410,11 +236,7 @@ pub fn build(b: *std.Build) void {
 
         const fixture_oracle = b.addSystemCommand(&.{
             "node",
-            "tools/m2-fixtures.ts",
-            "--oracle",
-            "../yuku",
-            "--ref",
-            "bf03e146d97ae2f0c2d4c4ec90456e1e544d2760",
+            "tools/fixture-oracle.ts",
             "--fixtures",
             "test/parser/misc",
         });
@@ -423,7 +245,7 @@ pub fn build(b: *std.Build) void {
         fixture_oracle.step.dependOn(&fixture_decoder_install.step);
         fixture_oracle.step.dependOn(&fixture_plain_decoder_install.step);
         const fixture_step = b.step(
-            "test-m2-fixtures",
+            "test-fixtures",
             "Compare production TSRX trees and diagnostics with the immutable oracle",
         );
         fixture_step.dependOn(&fixture_oracle.step);
@@ -676,7 +498,7 @@ fn cloneModule(
     return module;
 }
 
-fn addM2FixtureImports(b: *std.Build, module: *std.Build.Module) void {
+fn addFixtureImports(b: *std.Build, module: *std.Build.Module) void {
     inline for ([_]struct { name: []const u8, path: []const u8 }{
         .{ .name = "code_block_expression", .path = "test/parser/misc/tsrx/code-block-expression.module.tsrx" },
         .{ .name = "code_block_function", .path = "test/parser/misc/tsrx/code-block-function.module.tsrx" },
@@ -720,7 +542,7 @@ fn addEstreeGenerator(
     transfer_module: *std.Build.Module,
     config: EstreeGenerator,
 ) void {
-    if (std.mem.eql(u8, config.step, "gen-dialect-free-parser-decoder")) {
+    if (std.mem.eql(u8, config.step, "gen-upstream-parser-decoder")) {
         const control = b.addSystemCommand(&.{
             "git",
             "-C",
