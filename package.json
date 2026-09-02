@@ -45,5 +45,11 @@
 	"engines": {
 		"node": ">=22"
 	},
-	"packageManager": "pnpm@10.33.2"
+	"packageManager": "pnpm@10.33.2",
+	"pnpm": {
+		"overrides": {
+			"@tsrx/yuku-darwin-arm64": "link:./npm/yuku/@tsrx/yuku-darwin-arm64",
+			"@tsrx/yuku-linux-x64-gnu": "link:./npm/yuku/@tsrx/yuku-linux-x64-gnu"
+		}
+	}
 }

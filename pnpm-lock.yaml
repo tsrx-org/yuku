@@ -4,6 +4,10 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@tsrx/yuku-darwin-arm64': link:./npm/yuku/@tsrx/yuku-darwin-arm64
+  '@tsrx/yuku-linux-x64-gnu': link:./npm/yuku/@tsrx/yuku-linux-x64-gnu
+
 importers:
 
   .:
@@ -52,7 +56,14 @@ importers:
         specifier: 4.1.5
         version: 4.1.5(@types/node@24.12.2)(vite@8.0.16(@types/node@24.12.2)(jiti@2.7.0)(yaml@2.9.0))
 
-  npm/yuku: {}
+  npm/yuku:
+    optionalDependencies:
+      '@tsrx/yuku-darwin-arm64':
+        specifier: link:@tsrx/yuku-darwin-arm64
+        version: link:@tsrx/yuku-darwin-arm64
+      '@tsrx/yuku-linux-x64-gnu':
+        specifier: link:@tsrx/yuku-linux-x64-gnu
+        version: link:@tsrx/yuku-linux-x64-gnu
 
 packages:
 
