@@ -253,6 +253,42 @@ test "lazy object assignment prefix disambiguates direct arrow body" {
     try std.testing.expect(record.object_pattern.lazy);
 }
 
+test "lazy patterns recurse through object values and array elements" {
+    const Case = struct {
+        source: []const u8,
+        outer: std.meta.Tag(parser.ast.NodeData),
+        patterns: usize,
+        lazy: usize,
+    };
+    for ([_]Case{
+        .{ .source = "const f = (&{ user: &{ id } }) => id;", .outer = .object_pattern, .patterns = 2, .lazy = 2 },
+        .{ .source = "const &{ user: &{ id } } = props;", .outer = .object_pattern, .patterns = 2, .lazy = 2 },
+        .{ .source = "const &[ &{ id } ] = props;", .outer = .array_pattern, .patterns = 2, .lazy = 2 },
+        .{ .source = "const &{ user: { id }, row: [first] } = props;", .outer = .object_pattern, .patterns = 3, .lazy = 1 },
+    }) |case| {
+        var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+
+        var patterns_seen: usize = 0;
+        var lazy_patterns: usize = 0;
+        for (tree.tree.nodes.items(.data), 0..) |data, index| switch (data) {
+            .object_pattern, .array_pattern => {
+                patterns_seen += 1;
+                const node: parser.ast.NodeIndex = @enumFromInt(index);
+                if (!isLazyPattern(&tree, node)) continue;
+                lazy_patterns += 1;
+                if (tree.span(node).start == std.mem.indexOfScalar(u8, case.source, '&').?) {
+                    try std.testing.expectEqual(case.outer, std.meta.activeTag(data));
+                }
+            },
+            else => {},
+        };
+        try std.testing.expectEqual(case.patterns, patterns_seen);
+        try std.testing.expectEqual(case.lazy, lazy_patterns);
+    }
+}
+
 test "every control-flow directive family parses as a JSX child" {
     // `@for`/`@switch`/`@try` reach the dialect's JSX children loop through the
     // same `jsx_element_after_open` seam as `@if`, and each has to leave the
@@ -534,6 +570,46 @@ test "a JSX child for-of binding resolves inside its body" {
     try std.testing.expect(semantic.references.len >= 2);
 }
 
+test "TSRX for-in uses the for directive surface and tail clauses" {
+    const Case = struct {
+        source: []const u8,
+        statement: std.meta.Tag(parser.ast.NodeData),
+        index: ?[]const u8,
+        key: ?[]const u8,
+    };
+    for ([_]Case{
+        .{ .source = "const v = @for (const k in obj) { <b>{k}</b> };", .statement = .for_in_statement, .index = null, .key = null },
+        .{ .source = "const v = @for (const k in obj; index i) { <b>{k}</b> };", .statement = .for_in_statement, .index = "i", .key = null },
+        .{ .source = "const v = @for (const k in obj; key k) { <b>{k}</b> };", .statement = .for_in_statement, .index = null, .key = "k" },
+        .{ .source = "const v = @for (const k in obj; index i; key k) { <b>{k}</b> };", .statement = .for_in_statement, .index = "i", .key = "k" },
+        .{ .source = "const v = @for (const k of obj; index i; key k) { <b>{k}</b> };", .statement = .for_of_statement, .index = "i", .key = "k" },
+    }) |case| {
+        var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+        const directive = nodeOfKind(&tree, .empty_statement) orelse return error.ForDirectiveMissing;
+        const record_index = tree.dialectRecord(@intFromEnum(directive)) orelse return error.ForDirectiveRecordMissing;
+        const statement: parser.ast.NodeIndex = @enumFromInt(tree.dialect_store.records.items[record_index].jsx_for_expression.statement.raw);
+        try std.testing.expectEqual(case.statement, std.meta.activeTag(tree.data(statement)));
+        const sides = switch (tree.data(statement)) {
+            .for_in_statement => |data| .{ data.left, data.right },
+            .for_of_statement => |data| .{ data.left, data.right },
+            else => unreachable,
+        };
+        try std.testing.expectEqual(.variable_declaration, std.meta.activeTag(tree.data(sides[0])));
+        try std.testing.expectEqualStrings("obj", case.source[tree.span(sides[1]).start..tree.span(sides[1]).end]);
+        const overlay = tree.dialectOverlay(@intFromEnum(statement));
+        if (case.index == null and case.key == null) {
+            if (case.statement == .for_in_statement) try std.testing.expectEqual(@as(?u32, null), overlay);
+            continue;
+        }
+        const tail = tree.dialect_store.records.items[overlay orelse return error.ForTailOverlayMissing].for_of;
+        const none = @intFromEnum(parser.ast.NodeIndex.null);
+        if (case.index) |name| try std.testing.expectEqualStrings(name, case.source[tree.span(@enumFromInt(tail.index.raw)).start..tree.span(@enumFromInt(tail.index.raw)).end]) else try std.testing.expectEqual(none, tail.index.raw);
+        if (case.key) |name| try std.testing.expectEqualStrings(name, case.source[tree.span(@enumFromInt(tail.key.raw)).start..tree.span(@enumFromInt(tail.key.raw)).end]) else try std.testing.expectEqual(none, tail.key.raw);
+    }
+}
+
 test "every control-flow directive family parses at JSX fragment root" {
     // Fragments reach the dialect's children loop through `jsx_fragment_after_open`,
     // the fragment-shaped twin of the seam elements use.
@@ -667,6 +743,41 @@ fn declaredJsxElement(tree: *const parser.ParseResult) parser.ast.NodeIndex {
     const element = tree.data(declarators[0]).variable_declarator.init;
     std.debug.assert(tree.data(element) == .jsx_element);
     return element;
+}
+
+test "dynamic tags preserve conditional and logical expressions" {
+    const Case = struct {
+        source: []const u8,
+        expression: std.meta.Tag(parser.ast.NodeData),
+    };
+    for ([_]Case{
+        .{ .source = "const view = <{cond ? A : B}>x</{cond ? A : B}>;", .expression = .conditional_expression },
+        .{ .source = "const view = <{a || B}>x</{a || B}>;", .expression = .logical_expression },
+    }) |case| {
+        var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+
+        const element = tree.data(declaredJsxElement(&tree)).jsx_element;
+        const open_name = openingName(&tree, element.opening_element);
+        const close_name = closingName(&tree, element.closing_element);
+        const open_expression = tree.data(open_name).jsx_expression_container.expression;
+        const close_expression = tree.data(close_name).jsx_expression_container.expression;
+        try std.testing.expectEqual(case.expression, std.meta.activeTag(tree.data(open_expression)));
+        try std.testing.expectEqual(case.expression, std.meta.activeTag(tree.data(close_expression)));
+        try std.testing.expectEqualStrings(
+            case.source[tree.span(open_expression).start..tree.span(open_expression).end],
+            case.source[tree.span(close_expression).start..tree.span(close_expression).end],
+        );
+    }
+
+    const rejected = "const view = <{pick()} />;";
+    var tree = try parser.parse(std.testing.allocator, rejected, .{ .lang = .tsx });
+    defer tree.deinit();
+    try std.testing.expect(findDiagnostic(
+        tree.diagnostics.items,
+        "TSRX dynamic tag expression must resolve to an element name",
+    ) != null);
 }
 
 const DialectChildTags = struct {
@@ -1196,6 +1307,68 @@ test "a style sibling keeps its exact span and its CSS" {
     try std.testing.expectEqualStrings(" tail", tree.string(tree.data(nodes[3]).jsx_text.value));
 }
 
+test "script and style elements keep their distinct raw children in either order" {
+    const payload = "{\"a\":1}";
+    for ([_][]const u8{
+        "<><script>{\"a\":1}</script><style>.a{color:red}</style></>",
+        "<><style>.a{color:red}</style><script>{\"a\":1}</script></>",
+    }) |source| {
+        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+
+        const body = tree.extra(tree.data(tree.root).program.body);
+        const fragment = tree.data(body[0]).expression_statement.expression;
+        const children = tree.extra(tree.data(fragment).jsx_fragment.children);
+        try std.testing.expectEqual(@as(usize, 2), children.len);
+
+        var saw_script = false;
+        var saw_style = false;
+        for (children) |child| {
+            const record = tree.dialect_store.records.items[tree.dialectRecord(@intFromEnum(child)).?];
+            switch (record) {
+                .jsx_script_element => |script| {
+                    saw_script = true;
+                    try std.testing.expectEqualStrings(
+                        payload,
+                        source[script.raw.start..script.raw.end],
+                    );
+                    const raw_children = tree.extra(.{ .start = script.children.start, .len = script.children.len });
+                    try std.testing.expectEqual(@as(usize, 1), raw_children.len);
+                    try std.testing.expectEqual(.jsx_text, std.meta.activeTag(tree.data(raw_children[0])));
+                    try std.testing.expectEqualStrings(payload, tree.string(tree.data(raw_children[0]).jsx_text.value));
+                },
+                .jsx_style_element => |style_element| {
+                    saw_style = true;
+                    const sheets = tree.extra(.{ .start = style_element.children.start, .len = style_element.children.len });
+                    try std.testing.expectEqual(@as(usize, 1), sheets.len);
+                    const sheet = tree.dialect_store.records.items[tree.dialectRecord(@intFromEnum(sheets[0])).?].style_sheet;
+                    try std.testing.expect(sheet.scanned);
+                    try std.testing.expectEqualStrings(".a{color:red}", source[sheet.source.start..sheet.source.end]);
+                },
+                else => return error.TestUnexpectedResult,
+            }
+        }
+        try std.testing.expect(saw_script and saw_style);
+    }
+}
+
+test "an empty script still owns one empty raw text child" {
+    const source = "<script src=\"x\"></script>";
+    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+    defer tree.deinit();
+    try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+
+    const body = tree.extra(tree.data(tree.root).program.body);
+    const script_node = tree.data(body[0]).expression_statement.expression;
+    const script = tree.dialect_store.records.items[tree.dialectRecord(@intFromEnum(script_node)).?].jsx_script_element;
+    try std.testing.expectEqualStrings("", source[script.raw.start..script.raw.end]);
+    const children = tree.extra(.{ .start = script.children.start, .len = script.children.len });
+    try std.testing.expectEqual(@as(usize, 1), children.len);
+    try std.testing.expectEqual(.jsx_text, std.meta.activeTag(tree.data(children[0])));
+    try std.testing.expectEqualStrings("", tree.string(tree.data(children[0]).jsx_text.value));
+}
+
 test "style siblings round-trip through codegen" {
     for ([_][]const u8{
         "const view = <section>@if (a) {<p>y</p>} <style>.a{color:red}</style></section>;",
@@ -1243,6 +1416,37 @@ test "a less-than that cannot open a tag is one literal text child" {
             tree.string(tree.data(nodes[0]).jsx_text.value),
         );
     }
+}
+
+test "an at sign only starts a complete JSX child directive keyword" {
+    const TextCase = struct { source: []const u8, value: []const u8 };
+    for ([_]TextCase{
+        .{ .source = "const view = <p>mail @ home</p>;", .value = "mail @ home" },
+        .{ .source = "const view = <main>@ifπ is text</main>;", .value = "@ifπ is text" },
+        .{ .source = "const view = <p>email@</p>;", .value = "email@" },
+        .{ .source = "const view = <p>@iffy</p>;", .value = "@iffy" },
+        .{ .source = "const view = <p>@else is text</p>;", .value = "@else is text" },
+    }) |case| {
+        var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+
+        const element = declaredJsxElement(&tree);
+        const nodes = tree.extra(tree.data(element).jsx_element.children);
+        try std.testing.expectEqual(@as(usize, 1), nodes.len);
+        try std.testing.expectEqual(.jsx_text, std.meta.activeTag(tree.data(nodes[0])));
+        try std.testing.expectEqualStrings(case.value, tree.string(tree.data(nodes[0]).jsx_text.value));
+    }
+
+    const mixed = "const view = <p>@if (x) { <b/> } and @ sign</p>;";
+    var tree = try parser.parse(std.testing.allocator, mixed, .{ .lang = .tsx });
+    defer tree.deinit();
+    try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+    const nodes = tree.extra(tree.data(declaredJsxElement(&tree)).jsx_element.children);
+    try std.testing.expectEqual(@as(usize, 2), nodes.len);
+    try std.testing.expect(tree.dialectRecord(@intFromEnum(nodes[0])) != null);
+    try std.testing.expectEqual(.jsx_text, std.meta.activeTag(tree.data(nodes[1])));
+    try std.testing.expectEqualStrings(" and @ sign", tree.string(tree.data(nodes[1]).jsx_text.value));
 }
 
 test "a literal less-than survives inside an expression container" {
@@ -1306,12 +1510,6 @@ test "a malformed TSRX construct reports where it breaks instead of truncating t
             .needle = "<b/>",
             .len = 4,
             .message = "Expected '{' after TSRX control-flow directive",
-        },
-        .{
-            .source = "const v = @for (const k in obj) { <b/> }; const z = 1;",
-            .needle = "const k in obj",
-            .len = 14,
-            .message = "for...in",
         },
         .{
             .source = "const v = @for (const i of xs; index a; index b) { <b/> }; const z = 1;",

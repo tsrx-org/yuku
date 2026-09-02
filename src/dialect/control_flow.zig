@@ -2,29 +2,39 @@ const std = @import("std");
 const abi = @import("dialect_abi");
 const schema = @import("dialect_schema");
 const patterns = @import("patterns.zig");
+const jsx_text = @import("text.zig");
 
 pub fn statement(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
-    return dispatch(Host, parser);
+    return dispatch(Host, parser, false);
 }
 
 pub fn expression(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
-    return dispatch(Host, parser);
+    return dispatch(Host, parser, false);
 }
 
 pub fn jsxChild(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
-    return dispatch(Host, parser);
+    return dispatch(Host, parser, true);
 }
 
-fn dispatch(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
+fn dispatch(comptime Host: type, parser: anytype, comptime jsx_keyword_boundary: bool) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
     if (Host.currentToken(parser) != .at) return .unhandled;
-    if (directive(Host, parser, "if")) return .{ .handled = try parseIf(Host, parser) };
-    if (directive(Host, parser, "for")) return .{ .handled = try parseFor(Host, parser) };
-    if (directive(Host, parser, "switch")) return .{ .handled = try parseSwitch(Host, parser) };
-    if (directive(Host, parser, "try")) return .{ .handled = try parseTry(Host, parser) };
+    if (matchesDirective(Host, parser, "if", jsx_keyword_boundary)) return .{ .handled = try parseIf(Host, parser) };
+    if (matchesDirective(Host, parser, "for", jsx_keyword_boundary)) return .{ .handled = try parseFor(Host, parser) };
+    if (matchesDirective(Host, parser, "switch", jsx_keyword_boundary)) return .{ .handled = try parseSwitch(Host, parser) };
+    if (matchesDirective(Host, parser, "try", jsx_keyword_boundary)) return .{ .handled = try parseTry(Host, parser) };
     return .unhandled;
 }
 
+fn matchesDirective(comptime Host: type, parser: anytype, expected: []const u8, comptime keyword_boundary: bool) bool {
+    return if (keyword_boundary) directive(Host, parser, expected) else directivePrefix(Host, parser, expected);
+}
+
 fn directive(comptime Host: type, parser: anytype, expected: []const u8) bool {
+    const span = Host.currentSpan(parser);
+    return jsx_text.keywordAfterAt(Host.source(parser), span.start, expected);
+}
+
+fn directivePrefix(comptime Host: type, parser: anytype, expected: []const u8) bool {
     const span = Host.currentSpan(parser);
     const source = Host.source(parser);
     if (span.end + expected.len > source.len) return false;
@@ -78,24 +88,110 @@ fn parseIfFromCurrent(comptime Host: type, parser: anytype, start: u32) Host.Err
 fn parseFor(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeIndex {
     const start = Host.currentSpan(parser).start;
     if (comptime @hasDecl(Host, "parseStatement") or @hasDecl(Host, "parseStatementNode")) {
-        if (!try Host.advance(parser)) return null;
-        if (Host.currentToken(parser) != .@"for") {
-            try Host.report(parser, Host.currentSpan(parser), "Expected 'for' after '@'");
-            return null;
+        if (forInTailOperator(Host.source(parser), start)) |operator| {
+            var source = try Host.allocator(parser).dupe(u8, Host.source(parser));
+            defer Host.allocator(parser).free(source);
+            source[operator] = 'o';
+            source[operator + 1] = 'f';
+            const original_source = parser.source;
+            const original_lexer_source = parser.lexer.source;
+            parser.source = source;
+            parser.lexer.source = source;
+            defer {
+                parser.source = original_source;
+                parser.lexer.source = original_lexer_source;
+            }
+            return parseHostFor(Host, parser, start, true);
         }
-        const parsed = if (comptime @hasDecl(Host, "parseStatement"))
-            try Host.parseStatement(parser) orelse return null
-        else
-            try Host.parseStatementNode(parser) orelse return null;
-        const statement_node = try transformForBody(Host, parser, parsed) orelse return null;
-        return wrapFor(Host, parser, start, statement_node);
+        return parseHostFor(Host, parser, start, false);
     }
     return parseSimpleJsxFor(Host, parser, start);
 }
 
+fn parseHostFor(comptime Host: type, parser: anytype, start: u32, rewritten_for_in: bool) Host.ErrorType!?Host.NodeIndex {
+    if (!try Host.advance(parser)) return null;
+    if (Host.currentToken(parser) != .@"for") {
+        try Host.report(parser, Host.currentSpan(parser), "Expected 'for' after '@'");
+        return null;
+    }
+    const parsed = if (comptime @hasDecl(Host, "parseStatement"))
+        try Host.parseStatement(parser) orelse return null
+    else
+        try Host.parseStatementNode(parser) orelse return null;
+    const statement_node = try transformForBody(Host, parser, parsed, rewritten_for_in) orelse return null;
+    return wrapFor(Host, parser, start, statement_node);
+}
+
+fn forInTailOperator(source: []const u8, start: u32) ?usize {
+    var cursor: usize = start;
+    var depth: u32 = 0;
+    var operator: ?usize = null;
+    var quote: u8 = 0;
+    var escaped = false;
+    while (cursor < source.len) : (cursor += 1) {
+        const byte = source[cursor];
+        if (quote != 0) {
+            if (escaped) escaped = false else if (byte == '\\') escaped = true else if (byte == quote) quote = 0;
+            continue;
+        }
+        if (byte == '\'' or byte == '"' or byte == '`') {
+            quote = byte;
+            continue;
+        }
+        if (byte == '/' and cursor + 1 < source.len and source[cursor + 1] == '/') {
+            cursor += 2;
+            while (cursor < source.len and source[cursor] != '\n') cursor += 1;
+            continue;
+        }
+        if (byte == '/' and cursor + 1 < source.len and source[cursor + 1] == '*') {
+            cursor += 2;
+            while (cursor + 1 < source.len and !(source[cursor] == '*' and source[cursor + 1] == '/')) cursor += 1;
+            cursor += 1;
+            continue;
+        }
+        switch (byte) {
+            '(' => depth += 1,
+            ')' => {
+                if (depth == 1) return null;
+                depth -= 1;
+            },
+            ';' => if (depth == 1 and operator != null and tailClauseAfter(source, cursor + 1)) return operator,
+            'i' => if (depth == 1 and operator == null and cursor + 1 < source.len and source[cursor + 1] == 'n' and
+                (cursor == 0 or !std.ascii.isAlphanumeric(source[cursor - 1]) and source[cursor - 1] != '_') and
+                (cursor + 2 == source.len or !std.ascii.isAlphanumeric(source[cursor + 2]) and source[cursor + 2] != '_'))
+            {
+                operator = cursor;
+                cursor += 1;
+            },
+            else => {},
+        }
+    }
+    return null;
+}
+
+fn tailClauseAfter(source: []const u8, from: usize) bool {
+    var cursor = from;
+    while (cursor < source.len) {
+        while (cursor < source.len and std.ascii.isWhitespace(source[cursor])) cursor += 1;
+        if (cursor + 1 < source.len and source[cursor] == '/' and source[cursor + 1] == '/') {
+            cursor += 2;
+            while (cursor < source.len and source[cursor] != '\n') cursor += 1;
+            continue;
+        }
+        if (cursor + 1 < source.len and source[cursor] == '/' and source[cursor + 1] == '*') {
+            cursor += 2;
+            while (cursor + 1 < source.len and !(source[cursor] == '*' and source[cursor + 1] == '/')) cursor += 1;
+            cursor += 2;
+            continue;
+        }
+        return std.mem.startsWith(u8, source[cursor..], "index") or std.mem.startsWith(u8, source[cursor..], "key");
+    }
+    return false;
+}
+
 fn wrapFor(comptime Host: type, parser: anytype, start: u32, statement_node: Host.NodeIndex) Host.ErrorType!?Host.NodeIndex {
     var empty = Host.NodeIndex.null;
-    if (directive(Host, parser, "empty")) {
+    if (directivePrefix(Host, parser, "empty")) {
         if (!try Host.advance(parser)) return null;
         if (!contextual(Host, parser, "empty")) {
             try Host.reportWithHelp(parser, Host.currentSpan(parser), "Expected 'empty' after '@'", "TSRX empty clauses are written '@empty { ... }'.");
@@ -216,17 +312,12 @@ pub fn forOfTail(comptime Host: type, parser: anytype, context: Host.Context) Ho
     return .{ .handled = node };
 }
 
-fn transformForBody(comptime Host: type, parser: anytype, node: Host.NodeIndex) Host.ErrorType!?Host.NodeIndex {
+fn transformForBody(comptime Host: type, parser: anytype, node: Host.NodeIndex, rewritten_for_in: bool) Host.ErrorType!?Host.NodeIndex {
     const span = Host.nodeSpan(parser, node);
     return switch (Host.data(parser, node)) {
         .for_of_statement => |data| blk: {
             const body = try transformParsedBlock(Host, parser, data.body) orelse return null;
-            // The source overlay only exists when the header carried an
-            // `; index`/`; key` tail, which is the sole trigger for the
-            // `for_of_tail` hook.  A plain `@for (const x of xs)` header has
-            // none to carry forward, and that is not a parse failure, but the
-            // replacement is a TSRX for-of either way and always gets an
-            // overlay so `index`/`key` decode as `null` rather than vanishing.
+            // Plain for-of loops still need null index/key fields on their replacement overlay.
             const none = abi.OptionalNodeRef.init(@intFromEnum(Host.NodeIndex.null));
             var carried_index = none;
             var carried_key = none;
@@ -237,12 +328,19 @@ fn transformForBody(comptime Host: type, parser: anytype, node: Host.NodeIndex) 
                 },
                 else => return null,
             };
-            const replacement = try Host.addNode(parser, Host.NodeData{ .for_of_statement = .{
-                .left = data.left,
-                .right = data.right,
-                .body = body,
-                .await = data.await,
-            } }, span);
+            const replacement = if (rewritten_for_in)
+                try Host.addNode(parser, Host.NodeData{ .for_in_statement = .{
+                    .left = data.left,
+                    .right = data.right,
+                    .body = body,
+                } }, span)
+            else
+                try Host.addNode(parser, Host.NodeData{ .for_of_statement = .{
+                    .left = data.left,
+                    .right = data.right,
+                    .body = body,
+                    .await = data.await,
+                } }, span);
             if (comptime @hasDecl(Host, "addRecord")) {
                 const record = try Host.addRecord(parser, schema.Record{ .for_of = .{
                     .host_node = abi.OverlayHost.init(@intFromEnum(replacement)),
@@ -262,12 +360,13 @@ fn transformForBody(comptime Host: type, parser: anytype, node: Host.NodeIndex) 
                 .body = body,
             } }, span);
         },
-        .for_in_statement => |data| {
-            try Host.reportWithHelp(parser, .{
-                .start = Host.nodeSpan(parser, data.left).start,
-                .end = Host.nodeSpan(parser, data.right).end,
-            }, "TSRX for directives do not support 'for...in'", "Iterate the keys with '@for (const key of Object.keys(value)) { ... }' instead.");
-            return null;
+        .for_in_statement => |data| blk: {
+            const body = try transformParsedBlock(Host, parser, data.body) orelse return null;
+            break :blk try Host.addNode(parser, Host.NodeData{ .for_in_statement = .{
+                .left = data.left,
+                .right = data.right,
+                .body = body,
+            } }, span);
         },
         else => {
             try Host.report(parser, span, "Expected 'for (...) { ... }' after '@'");
@@ -332,7 +431,7 @@ fn parseTry(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeIndex
     if (!try consume(Host, parser, .@"try", "Expected 'try' after '@'", "TSRX try directives are written '@try { ... }'.")) return null;
     const block = try templateBlock(Host, parser, false) orelse return null;
     var pending = Host.NodeIndex.null;
-    if (directive(Host, parser, "pending")) {
+    if (directivePrefix(Host, parser, "pending")) {
         if (!try Host.advance(parser)) return null;
         if (!contextual(Host, parser, "pending")) {
             try Host.reportWithHelp(parser, Host.currentSpan(parser), "Expected 'pending' after '@'", "TSRX pending clauses are written '@pending { ... }'.");
@@ -571,6 +670,7 @@ fn validateSwitch(comptime Host: type, parser: anytype, range: Host.IndexRange, 
             if (data.alternate != .null) try validateSwitchNode(Host, parser, data.alternate, inside_loop, depth + 1);
         },
         .for_statement => |data| try validateSwitchNode(Host, parser, data.body, true, depth + 1),
+        .for_in_statement => |data| try validateSwitchNode(Host, parser, data.body, true, depth + 1),
         .for_of_statement => |data| try validateSwitchNode(Host, parser, data.body, true, depth + 1),
         else => {},
     };

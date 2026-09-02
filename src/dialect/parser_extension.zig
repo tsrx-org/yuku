@@ -12,6 +12,7 @@ const control_flow = @import("control_flow.zig");
 const jsx = @import("jsx.zig");
 const modules = @import("modules.zig");
 const patterns = @import("patterns.zig");
+const script = @import("script.zig");
 const style = @import("style.zig");
 const text = @import("text.zig");
 
@@ -264,12 +265,13 @@ pub fn Host(comptime Parser: type) type {
             const start = p.current_token.span.start;
             p.setLexerMode(.normal);
             if (!try p.expect(.left_brace, "Expected '{'", null)) return null;
-            var expression = try parseSimpleExpression(p);
+            const close = matchingBrace(p.source, start) orelse {
+                _ = try parseSimpleExpression(p);
+                try p.reportExpected(p.current_token.span, "Expected '}' to close TSRX dynamic tag expression", .{});
+                return null;
+            };
+            var expression = try parseDelegatedExpression(p, close);
             if (expression == null or p.current_token.tag != .right_brace) {
-                const close = matchingBrace(p.source, start) orelse {
-                    try p.reportExpected(p.current_token.span, "Expected '}' to close TSRX dynamic tag expression", .{});
-                    return null;
-                };
                 const inner: Span = .{ .start = start + 1, .end = close };
                 expression = try p.tree.addNode(.{ .numeric_literal = .{
                     .kind = .decimal,
@@ -521,12 +523,12 @@ pub fn Host(comptime Parser: type) type {
             if (nodes.len == 1) switch (p.tree.data(nodes[0])) {
                 .expression_statement => |value| switch (p.tree.data(value.expression)) {
                     .jsx_element, .jsx_fragment => child = value.expression,
-                    // A raw-text element the dialect owns - `<style>` - comes
+                    // A raw-text element the dialect owns comes
                     // back from the after-open hook as a dialect record hung on
                     // an anchor statement rather than a host jsx node, and is
                     // still exactly one child element.
                     else => if (record(p, value.expression)) |value_record| switch (value_record) {
-                        .jsx_style_element => child = value.expression,
+                        .jsx_style_element, .jsx_script_element => child = value.expression,
                         else => {},
                     },
                 },
@@ -817,6 +819,14 @@ pub fn Host(comptime Parser: type) type {
             };
         }
 
+        fn parseNestedPattern(p: *P) ErrorType!?NodeIndex {
+            return switch (p.current_token.tag) {
+                .bitwise_and => patterns.nested(Self, p),
+                .left_brace, .left_bracket => parsePattern(p),
+                else => parseBindingIdentifier(p),
+            };
+        }
+
         fn parseBindingIdentifier(p: *P) ErrorType!?NodeIndex {
             if (!p.current_token.tag.isIdentifierLike()) return null;
             const token = p.current_token;
@@ -844,7 +854,7 @@ pub fn Host(comptime Parser: type) type {
                 if (p.current_token.tag == .colon) {
                     shorthand = false;
                     try p.advance() orelse return null;
-                    value = try parseBindingIdentifier(p) orelse {
+                    value = try parseNestedPattern(p) orelse {
                         try p.reportExpected(p.current_token.span, "Expected an identifier after ':' in TSRX lazy object pattern", .{});
                         return null;
                     };
@@ -906,7 +916,7 @@ pub fn Host(comptime Parser: type) type {
                     });
                     break;
                 }
-                try elements.append(p.allocator(), try parseBindingIdentifier(p) orelse {
+                try elements.append(p.allocator(), try parseNestedPattern(p) orelse {
                     try p.reportExpected(p.current_token.span, "Expected an identifier in TSRX lazy array pattern", .{});
                     return null;
                 });
@@ -1019,6 +1029,11 @@ pub fn can_start_binding(tag: anytype) ?bool {
 }
 pub fn jsx_element_after_open(comptime Result: type, parser: anytype, opening: anytype, comptime context: anytype) Result {
     const H = Host(@TypeOf(parser.*));
+    const scripted = try script.afterOpen(H, parser, opening, context);
+    switch (scripted) {
+        .handled => return decisionNode(Result, scripted),
+        .unhandled => {},
+    }
     const styled = try style.afterOpen(H, parser, opening, context);
     switch (styled) {
         .handled => return decisionNode(Result, styled),
@@ -1124,24 +1139,22 @@ fn skipDelimited(source: []const u8, start: u32, comptime open: u8, comptime clo
     return null;
 }
 
-/// Closing tag of the one raw-text element the dialect owns. `style.afterOpen`
-/// finds the body's end with this exact byte sequence, so the raw scanners must
-/// use it too: a scan that ended anywhere else would disagree with the node the
-/// host hook builds, and the exact-span check would decline the whole element.
-const raw_text_close = "</style>";
+const RawTextTag = enum { none, style, script };
 
 const TagScan = struct {
     end: u32,
     closing: bool,
     self_closing: bool,
-    /// this opening tag's children are raw text - CSS - rather than JSX, so
+    /// this opening tag's children are raw text rather than JSX, so
     /// `{`, `<` and `@` inside them are not the syntax the scanners model
-    raw_text: bool,
+    raw_text: RawTextTag,
 };
 
 /// True for a tag name whose element body is raw text rather than JSX children.
-fn isRawTextTagName(name: []const u8) bool {
-    return std.mem.eql(u8, name, "style");
+fn rawTextTagName(name: []const u8) RawTextTag {
+    if (std.mem.eql(u8, name, "style")) return .style;
+    if (std.mem.eql(u8, name, "script")) return .script;
+    return .none;
 }
 
 fn isJsxTagNameByte(byte: u8) bool {
@@ -1166,11 +1179,16 @@ fn literalLessThan(source: []const u8, at: u32) bool {
     return !canOpenJsxTag(next);
 }
 
-/// Offset just past the `</style>` that closes a raw-text element whose opening
+/// Offset just past the closing tag of a raw-text element whose opening
 /// tag ended at `from`.
-fn rawTextElementEnd(source: []const u8, from: u32) ?u32 {
-    const index = std.mem.indexOfPos(u8, source, from, raw_text_close) orelse return null;
-    return @intCast(index + raw_text_close.len);
+fn rawTextElementEnd(source: []const u8, from: u32, tag: RawTextTag) ?u32 {
+    const close = switch (tag) {
+        .style => "</style>",
+        .script => "</script>",
+        .none => return null,
+    };
+    const index = std.mem.indexOfPos(u8, source, from, close) orelse return null;
+    return @intCast(index + close.len);
 }
 
 /// Scan the single JSX tag - opening, closing, self-closing or fragment - that
@@ -1187,7 +1205,7 @@ fn scanJsxTag(source: []const u8, start: u32) ?TagScan {
     const name_start = cursor;
     var name_end = cursor;
     while (name_end < source.len and isJsxTagNameByte(source[name_end])) name_end += 1;
-    const raw_text = !closing and isRawTextTagName(source[name_start..name_end]);
+    const raw_text = if (closing) RawTextTag.none else rawTextTagName(source[name_start..name_end]);
     var quote: u8 = 0;
     var escaped = false;
     while (cursor < source.len) : (cursor += 1) {
@@ -1217,7 +1235,7 @@ fn scanJsxTag(source: []const u8, start: u32) ?TagScan {
                     .end = @intCast(cursor + 1),
                     .closing = closing,
                     .self_closing = self_closing,
-                    .raw_text = raw_text and !self_closing,
+                    .raw_text = if (self_closing) .none else raw_text,
                 };
             },
             else => {},
@@ -1264,8 +1282,8 @@ fn scanJsxChildren(source: []const u8, from: u32, depth: u32) ?ChildrenScan {
                     cursor = tag.end;
                     continue;
                 }
-                if (tag.raw_text) {
-                    cursor = rawTextElementEnd(source, tag.end) orelse return null;
+                if (tag.raw_text != .none) {
+                    cursor = rawTextElementEnd(source, tag.end, tag.raw_text) orelse return null;
                     continue;
                 }
                 const inner = scanJsxChildren(source, tag.end, depth + 1) orelse return null;
@@ -1274,8 +1292,12 @@ fn scanJsxChildren(source: []const u8, from: u32, depth: u32) ?ChildrenScan {
             },
             '{' => cursor = @as(usize, skipBracedRegion(source, @intCast(cursor)) orelse return null) + 1,
             '@' => {
-                directive = true;
-                cursor = skipDirectiveHeader(source, @intCast(cursor));
+                if (text.startsDirective(source, @intCast(cursor))) {
+                    directive = true;
+                    cursor = skipDirectiveHeader(source, @intCast(cursor));
+                } else {
+                    cursor += 1;
+                }
             },
             else => cursor += 1,
         }
@@ -1303,7 +1325,7 @@ fn jsxElementEnd(source: []const u8, start: u32, depth: u32) ?u32 {
     const tag = scanJsxTag(source, start) orelse return null;
     if (tag.closing) return null;
     if (tag.self_closing) return tag.end;
-    if (tag.raw_text) return rawTextElementEnd(source, tag.end);
+    if (tag.raw_text != .none) return rawTextElementEnd(source, tag.end, tag.raw_text);
     const children = scanJsxChildren(source, tag.end, depth + 1) orelse return null;
     const closing = scanJsxTag(source, children.close) orelse return null;
     if (!closing.closing) return null;
@@ -1329,10 +1351,11 @@ fn parseExtendedJsxChildren(
     from: u32,
 ) H.ErrorType!bool {
     var scan_from = from;
+    var rescan_from = from;
     while (true) {
         H.setLexerMode(parser, .normal);
         const text_start = scan_from;
-        var text_token = H.reScanJsxText(parser, scan_from);
+        var text_token = H.reScanJsxText(parser, rescan_from);
         // The host lexer ends a text run at every `<`. TSRX only ends it at a
         // `<` that can open a tag, so one that cannot - `<3`, `<= arrow` - is
         // stepped over and the surrounding run stays a single text child.
@@ -1361,7 +1384,15 @@ fn parseExtendedJsxChildren(
                 .handled => |node| node orelse return false,
                 .unhandled => switch (try control_flow.jsxChild(H, parser)) {
                     .handled => |node| node orelse return false,
-                    .unhandled => return false,
+                    // Clause words only become constructs while their parent
+                    // directive is consuming them. At ordinary child position
+                    // the boundary hook may still stop on one, so resume the
+                    // text scan just after `@` while retaining it in the span.
+                    .unhandled => {
+                        scan_from = H.currentSpan(parser).start;
+                        rescan_from = H.currentSpan(parser).end;
+                        continue;
+                    },
                 },
             },
             else => return false,
@@ -1370,6 +1401,7 @@ fn parseExtendedJsxChildren(
         // every child's span end is the next text scan's cursor, so a child
         // that misreports it truncates each sibling that follows
         scan_from = H.nodeSpan(parser, child).end;
+        rescan_from = scan_from;
     }
 }
 
