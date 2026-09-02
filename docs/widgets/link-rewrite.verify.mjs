@@ -8,49 +8,51 @@ export default async function verify({ routes, open, check, notes }) {
 
     const status = await page.textContent(`${widget} [data-widget-status]`)
     const landing = await page.textContent(`${widget} [data-lr-generated]`)
-    check(/2 links rewritten/.test(status), `${label}: landing status is not two rewrites: ${status}`)
-    check((landing.match(/url\(/g) ?? []).length === 2, `${label}: landing output does not contain two url() calls`)
-    check(landing.includes('href="/pricing"'), `${label}: the static Link path did not stay a string`)
-    check(landing.includes('<a href="/about">'), `${label}: the plain anchor changed`)
+    const readout = await page.textContent(`${widget} [data-lr-readout]`)
+    check(/1 link rewritten, 1 left for the runtime/.test(status), `${label}: unexpected landing status: ${status}`)
+    check(landing.includes('<Link href="/users/42">Profile</Link>'), `${label}: literal id was not substituted: ${landing}`)
+    check(!landing.includes('href="/users/42" params='), `${label}: rewritten tag kept its params attribute`)
+    check(landing.includes('<Link href="/posts/:slug" params={{ slug: post.slug }}>'), `${label}: variable link changed`)
+    check(readout.includes('left for the runtime: /posts/:slug needs post.slug'), `${label}: runtime link is missing from the readout: ${readout}`)
+    check(landing.includes('<Link href="/pricing">'), `${label}: static Link changed`)
+    check(landing.includes('<a href="/about">'), `${label}: plain anchor changed`)
+    check((await page.locator(`${widget} .lr-change`).count()) === 2, `${label}: substituted href and removed params are not both marked`)
 
     const editor = page.locator(`${widget} textarea[aria-label="Editable TSRX link source"]`)
-    const edited = (await editor.inputValue()).replace('/users/:id', '/members/:id')
-    await editor.fill(edited)
+    await editor.fill((await editor.inputValue()).replace('"42"', '"7"'))
     await page.waitForFunction(
-      (selector) => document.querySelector(`${selector} [data-lr-generated]`)?.textContent.includes('/members/:id'),
+      (selector) => document.querySelector(`${selector} [data-lr-generated]`)?.textContent.includes('href="/users/7"'),
       widget,
       { timeout: 15_000 },
     )
-    const afterEdit = await page.textContent(`${widget} [data-lr-generated]`)
-    check(afterEdit.includes('url("/members/:id"'), `${label}: editing href did not change the rewritten call`)
-    const changed = await page.$$eval(`${widget} .lr-change`, (nodes) => ({
-      ranges: new Set(nodes.flatMap((node) => node.dataset.range.split(' '))).size,
-      text: nodes.map((node) => node.textContent).join(''),
-    }))
-    check(changed.ranges === 2 && changed.text.includes('/members/:id'), `${label}: changed spans are not highlighted`)
-    await page.locator(`${widget} .lr-change[data-readout]`).first().focus()
-    const readout = await page.textContent(`${widget} [data-lr-readout]`)
-    check(readout.includes('href became'), `${label}: focusing a rewrite did not explain it: ${readout}`)
-    const highlightedLayer = page.locator(`${widget} .ex-editor-layer .ex-source[aria-hidden="true"]`)
-    check((await highlightedLayer.count()) === 1, `${label}: editable source has no highlighted layer`)
-    check(
-      (await highlightedLayer.locator('[style*="--shiki-light"]').count()) > 0,
-      `${label}: highlighted layer has no token spans after editing`,
-    )
-    check(
-      (await highlightedLayer.textContent()).includes('/members/:id'),
-      `${label}: highlighted layer did not follow the edit`,
-    )
+    const afterLiteralEdit = await page.textContent(`${widget} [data-lr-generated]`)
+    check(afterLiteralEdit.includes('<Link href="/users/7">Profile</Link>'), `${label}: editing the literal did not produce /users/7`)
 
-    check(await page.locator(`${widget} [data-lr-reset]`).isVisible(), `${label}: Reset did not appear after editing`)
     await page.click(`${widget} [data-lr-reset]`)
-    check((await editor.inputValue()).includes('/users/:id'), `${label}: Reset did not restore the source`)
+    await page.waitForFunction(
+      (selector) => document.querySelector(selector)?.value.includes('"42"'),
+      `${widget} textarea[aria-label="Editable TSRX link source"]`,
+      { timeout: 15_000 },
+    )
+    await editor.fill((await editor.inputValue()).replace('"42"', 'user.id'))
+    await page.waitForFunction(
+      (selector) => document.querySelector(selector)?.dataset.runtime === '2',
+      widget,
+      { timeout: 15_000 },
+    )
+    const variableStatus = await page.textContent(`${widget} [data-widget-status]`)
+    const variableOutput = await page.textContent(`${widget} [data-lr-generated]`)
+    const variableReadout = await page.textContent(`${widget} [data-lr-readout]`)
+    check(/0 links rewritten, 2 left for the runtime/.test(variableStatus), `${label}: variable edit did not update status: ${variableStatus}`)
+    check(variableOutput.includes('href="/users/:id" params={{ id: user.id }}'), `${label}: variable edit changed the user tag`)
+    check(variableReadout.includes('left for the runtime: /users/:id needs user.id'), `${label}: variable edit is missing from the readout: ${variableReadout}`)
+
     await editor.fill('const nav = <nav>')
     await page.waitForSelector(`${widget}[data-widget-state="error"] [data-lr-diagnostics]`, { timeout: 15_000 })
     const diagnostic = await page.textContent(`${widget} [data-lr-diagnostics]`)
     check(diagnostic.trim().length > 0, `${label}: broken source showed no diagnostic`)
     check((await page.$$(`${widget} [data-lr-generated]`)).length === 0, `${label}: broken source left output visible`)
     notes.push(`link-rewrite landing: ${status.trim()}`)
-    notes.push(`link-rewrite edit: /users/:id → /members/:id; broken input: ${diagnostic.replace(/\s+/g, ' ').trim()}`)
+    notes.push(`link-rewrite edits: /users/42 → /users/7 → runtime; broken input: ${diagnostic.replace(/\s+/g, ' ').trim()}`)
   }
 }

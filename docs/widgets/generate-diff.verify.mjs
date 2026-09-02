@@ -1,6 +1,7 @@
-// Proves the generate-diff widget in a real browser: the landing diff shows
-// what strip removes, one chip on B changes only B and the diff follows, and
-// shortest is refused rather than faked.
+// Proves the generate-diff widget in a real browser: A stays fixed at the
+// defaults, the landing diff and readout explain what B changed, the four-item
+// quick toolbar drives B only, and the generate guide alone carries the full
+// controls (including the honestly unavailable shortest-quotes choice).
 export default async function verify({ routes, open, check, notes }) {
   const widget = '[data-widget="generate-diff"]'
   for (const route of routes) {
@@ -25,10 +26,27 @@ export default async function verify({ routes, open, check, notes }) {
 
     const callA = await callOf('a')
     const callB = await callOf('b')
+    const headingA = await page.textContent(`${widget} [data-gd-side="a"] h3`)
+    const aControls = await page.locator(`${widget} [data-gd-controls="a"]`).count()
+    const quickItems = await page.$$eval(`${widget} [data-gd-controls="b"] > *`, (nodes) =>
+      nodes.map((node) => node.textContent.trim()),
+    )
+    check(headingA === 'As written', `${label}: A is not labelled As written: ${headingA}`)
+    check(aControls === 0, `${label}: A still has an options toolbar`)
+    check(
+      JSON.stringify(quickItems) === JSON.stringify(['Strip types', 'Minify', 'CommentsKeepDrop', 'QuotesAs writtenDoubleSingle']),
+      `${label}: B does not have exactly the four quick controls: ${JSON.stringify(quickItems)}`,
+    )
     check(/generate\(program, \{\}\)/.test(callA), `${label}: A does not land on the default call: ${callA}`)
     check(/strip: true/.test(callB), `${label}: B does not land on strip: true: ${callB}`)
     const removed = await diffLines('del')
     const added = await diffLines('add')
+    const expectsFull = route.includes('/guide/generate')
+    const expectedDiff = expectsFull ? { removed: 4, added: 1 } : { removed: 2, added: 2 }
+    check(
+      removed.length === expectedDiff.removed && added.length === expectedDiff.added,
+      `${label}: landing diff is ${removed.length} removed/${added.length} added, expected ${expectedDiff.removed}/${expectedDiff.added}`,
+    )
     check(
       removed.some((line) => line.includes('import type')),
       `${label}: the landing diff does not show strip removing the type import: ${JSON.stringify(removed)}`,
@@ -37,6 +55,23 @@ export default async function verify({ routes, open, check, notes }) {
       !(await outputOf('b')).includes('import type') && (await outputOf('a')).includes('import type'),
       `${label}: strip did not remove the type-only import from B`,
     )
+    const source = await page.inputValue(`${widget} .ex-editor`)
+    check(
+      source.includes('/* The cart list, one row per item. */') || source.includes('// Keep this comment in the shipped module.'),
+      `${label}: the source seed lost its comment`,
+    )
+    if (expectsFull) {
+      check(
+        source.includes('export function Cart({ items }: { items: Item[] }) @{') && !source.includes('return ('),
+        `${label}: the full seed is not a typed TSRX component body`,
+      )
+      check(
+        (await outputOf('a')).includes('}) @{') && (await outputOf('b')).includes('export function Cart({ items }) @{'),
+        `${label}: generated outputs do not preserve the component body while strip removes its signature type`,
+      )
+    } else {
+      check((await outputOf('b')).includes('// Keep this comment in the shipped module.'), `${label}: comments=all did not keep the source comment`)
+    }
     notes.push(`generate-diff landing: ${removed.length} removed, ${added.length} added`)
 
     await page.locator(`${widget} [data-gd-line="del"]`).first().focus()
@@ -47,30 +82,57 @@ export default async function verify({ routes, open, check, notes }) {
     check(status.includes('runs in your browser'), `${label}: status does not say where it ran: ${status}`)
 
     const aBefore = await outputOf('a')
-    await page.click(`${widget} [data-gd-controls="b"] [data-gd-option="format"][data-gd-value="compact"]`)
-    await waitForCallChange('b', callB)
-    status = await page.textContent(`${widget} [data-widget-status]`)
-    const bCompact = await outputOf('b')
-    check(bCompact.length < aBefore.length && !bCompact.includes(' = '), `${label}: compact on B did not shorten B`)
-    check((await outputOf('a')) === aBefore, `${label}: a chip on B changed A`)
-    check(/format: "compact"/.test(await callOf('b')), `${label}: the B call does not name compact`)
-    const indentDisabled = await page.getAttribute(`${widget} [data-gd-controls="b"] [data-gd-indent]`, 'disabled')
-    check(indentDisabled !== null, `${label}: compact left the indent input enabled on B`)
+    // Strip removes the type-only import, the only string in the seed; turn it off so a quote choice has something to requote.
+    if ((await page.getAttribute(`${widget} [data-gd-controls="b"] [data-gd-flag="strip"]`, 'aria-checked')) === 'true') {
+      const callBeforeStrip = await callOf('b')
+      await page.click(`${widget} [data-gd-controls="b"] [data-gd-flag="strip"]`)
+      await waitForCallChange('b', callBeforeStrip)
+    }
+    const callBeforeQuotes = await callOf('b')
+    await page.click(`${widget} [data-gd-controls="b"] [data-gd-quick="quotes"][data-gd-value="single"]`)
+    await waitForCallChange('b', callBeforeQuotes)
+    check((await outputOf('b')).includes("'./item'"), `${label}: single quotes on B did not requote ./item`)
+    check((await outputOf('a')) === aBefore, `${label}: a quote choice on B changed A`)
+    check(/quotes: "single"/.test(await callOf('b')), `${label}: the B call does not name single quotes`)
 
-    await page.click(`${widget} [data-gd-controls="a"] [data-gd-option="quotes"][data-gd-value="single"]`)
-    await waitForCallChange('a', callA)
+    const beforeMinify = await callOf('b')
+    const bBeforeMinify = await outputOf('b')
+    await page.click(`${widget} [data-gd-controls="b"] [data-gd-flag="minify"]`)
+    await waitForCallChange('b', beforeMinify)
     status = await page.textContent(`${widget} [data-widget-status]`)
-    check((await outputOf('a')).includes("'./item'"), `${label}: single quotes on A did not requote ./item`)
-    check(/quotes: "single"/.test(await callOf('a')), `${label}: the A call does not name single quotes`)
-
-    const shortest = await page.getAttribute(
-      `${widget} [data-gd-controls="a"] [data-gd-option="quotes"][data-gd-value="shortest"]`,
-      'disabled',
+    const bMinified = await outputOf('b')
+    const minifyCall = await callOf('b')
+    check(bMinified.length < bBeforeMinify.length && !bMinified.includes(' = '), `${label}: Minify did not shorten B`)
+    check((await outputOf('a')) === aBefore, `${label}: Minify on B changed A`)
+    check(
+      /format: "compact"/.test(minifyCall) && /minify: \{ syntax: true \}/.test(minifyCall),
+      `${label}: Minify did not set compact format and syntax minification together: ${minifyCall}`,
     )
-    check(shortest !== null, `${label}: the shortest chip is not disabled`)
+
+    const more = page.locator(`${widget} .gd-more`)
+    check((await more.count()) === (expectsFull ? 1 : 0), `${label}: More options presence does not match the marker`)
+    if (expectsFull) {
+      await more.locator('summary').click()
+      const commentModes = await page.$$eval(`${widget} [data-gd-advanced] [data-gd-option="comments"]`, (nodes) =>
+        nodes.map((node) => node.dataset.gdValue),
+      )
+      check(
+        JSON.stringify(commentModes) === JSON.stringify(['none', 'all', 'some', 'line', 'block']),
+        `${label}: More options does not carry every comments mode: ${JSON.stringify(commentModes)}`,
+      )
+      const indentDisabled = await page.getAttribute(`${widget} [data-gd-advanced] [data-gd-indent]`, 'disabled')
+      check(indentDisabled !== null, `${label}: compact format left the advanced indent input enabled`)
+      const shortest = await page.getAttribute(
+        `${widget} [data-gd-advanced] [data-gd-option="quotes"][data-gd-value="shortest"]`,
+        'disabled',
+      )
+      check(shortest !== null, `${label}: the advanced shortest-quotes choice is not disabled`)
+    }
+
+    const stripBefore = await page.getAttribute(`${widget} [data-gd-controls="b"] [data-gd-flag="strip"]`, 'aria-checked')
     await page.locator(`${widget} [data-gd-controls="b"] [data-gd-flag="strip"]`).focus()
     await page.locator(`${widget} [data-gd-controls="b"] [data-gd-flag="strip"]`).press('Enter')
-    check((await page.getAttribute(`${widget} [data-gd-controls="b"] [data-gd-flag="strip"]`, 'aria-checked')) === 'false', `${label}: Strip types switch did not toggle`)
+    check((await page.getAttribute(`${widget} [data-gd-controls="b"] [data-gd-flag="strip"]`, 'aria-checked')) !== stripBefore, `${label}: Strip types switch did not toggle`)
     notes.push(`generate-diff status: ${status.trim()}`)
   }
 }

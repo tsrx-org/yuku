@@ -7,12 +7,22 @@ export default async function verify({ routes, open, check, notes, waitForParse,
     const widget = '[data-widget="api-from-dts"]'
     await page.locator(widget).first().scrollIntoViewIfNeeded()
     await page.waitForSelector(`${widget}[data-widget-state="ready"]`, { timeout: 30_000 })
-    const toolbarFollowsOutput = await page.$eval(widget, (root) => {
+    const filterPlacement = await page.$eval(widget, (root) => {
       const groups = root.querySelector('[data-api-groups]')
       const toolbar = root.querySelector('.api-toolbar')
-      return Boolean(groups && toolbar && (groups.compareDocumentPosition(toolbar) & Node.DOCUMENT_POSITION_FOLLOWING))
+      const input = toolbar?.querySelector('[data-api-filter]')
+      const count = toolbar?.querySelector('[data-api-count]')
+      return {
+        toolbarImmediatelyPrecedesGroups: Boolean(toolbar && groups && toolbar.nextElementSibling === groups),
+        filterImmediatelyPrecedesCount: Boolean(input && count && input.closest('label')?.nextElementSibling === count),
+        placeholder: input?.getAttribute('placeholder') ?? '',
+        position: toolbar ? getComputedStyle(toolbar).position : '',
+      }
     })
-    check(toolbarFollowsOutput, `${route}: the filter toolbar is not below the API listing`)
+    check(filterPlacement.toolbarImmediatelyPrecedesGroups, `${route}: the filter toolbar is not directly above the API listing`)
+    check(filterPlacement.filterImmediatelyPrecedesCount, `${route}: the match count is not beside the filter input`)
+    check(filterPlacement.placeholder === 'Filter exports', `${route}: the filter placeholder reads "${filterPlacement.placeholder}"`)
+    check(filterPlacement.position === 'sticky', `${route}: the filter toolbar position is ${filterPlacement.position || 'unset'}, not sticky`)
     const expectedFunctions = Number(await page.getAttribute(`${widget} [data-api-groups]`, 'data-api-functions'))
     const names = await page.$$eval(`${widget} [data-api-entry][data-api-kind="function"]`, (nodes) =>
       nodes.map((node) => node.dataset.apiName),

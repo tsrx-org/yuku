@@ -755,22 +755,51 @@ function codeBlockEnd(html, start) {
   return -1
 }
 
+function takeTryButton(html) {
+  const match =
+    /<button type="button" class="try-button" data-code="[^"]*">Try in playground<\/button>/.exec(
+      html,
+    )
+  return {
+    html: match ? html.slice(0, match.index) + html.slice(match.index + match[0].length) : html,
+    button: match?.[0] ?? '',
+  }
+}
+
+function appendToToolbar(html, button) {
+  if (!button) return html
+  const toolbar = /<div\b[^>]*class="[^"]*\bex-toolbar\b[^"]*"[^>]*>/.exec(html)
+  const end = toolbar ? codeBlockEnd(html, toolbar.index) : -1
+  if (end === -1) throw new Error('a figure carrying a try button has no toolbar')
+  const close = end - '</div>'.length
+  return html.slice(0, close) + button + html.slice(close)
+}
+
 function guideFigureHtml(kind, source, blockHtml) {
   const spec = GUIDE_FIGURES[kind]
+  const fence = takeTryButton(blockHtml)
+  const scopePane =
+    kind === 'symbol-explorer'
+      ? `<section class="ex-scope-pane" data-ex-scope-pane aria-label="Scope tree">
+        <h4>Scope tree</h4>
+        <ul class="ex-tree ex-scope-tree" data-ex-scope-tree><li class="ex-note">The analyzer builds this tree in your browser.</li></ul>
+      </section>`
+      : ''
   return `<figure class="explorer ex-figure ${spec.className}" ${spec.attribute} data-source="${escapeHtml(source)}">
   <div class="projection-map-panes">
     <div class="projection-map-pane">
       <h3>${spec.panes[0]}</h3>
-      <div class="ex-source-host" data-ex-source>${blockHtml}</div>
+      <div class="ex-source-host" data-ex-source>${fence.html}</div>
       <div class="explorer-diagnostics" data-ex-diagnostics></div>
     </div>
     <div class="projection-map-pane">
       <h3>${spec.panes[1]}</h3>
       <div class="ex-out" data-ex-out><p class="ex-note">${spec.idleNote}</p></div>
+      ${scopePane}
       <p class="ex-readout" data-ex-readout aria-live="polite">${spec.readout}</p>
     </div>
   </div>
-  <div class="ex-controls ex-toolbar" data-ex-controls></div>
+  <div class="ex-controls ex-toolbar" data-ex-controls>${fence.button}</div>
   <figcaption class="ex-status" data-ex-status aria-live="polite">${spec.idleStatus}</figcaption>
 </figure>
 `
@@ -1506,60 +1535,6 @@ ${body.join('\n')}
 const hookMatrixTwin =
   'On the site this table is filterable by area, and the build adds a column naming the file in `src/dialect/` each hook hands the work to, read out of `src/dialect/parser_extension.zig`.'
 
-// ---------- measure in this tab (reference/benchmarks) ----------
-const BENCH_ITERATIONS = [100, 500, 2000]
-const BENCH_DEFAULT_ITERATIONS = 500
-const BENCH_CAVEAT =
-  'This times <code>parse()</code> on one small sample in this tab, in batches because a browser clock is too coarse for one parse. It is not the native-addon report above.'
-
-function benchLiveHtml(fixtures) {
-  const samples = { hero: { label: 'Hero snippet', source: heroCode } }
-  for (const fixture of FIXTURES) {
-    // The invalid fixture is on the page to show diagnostics, and timing a
-    // rejected parse would measure the error path rather than the parser.
-    if (fixture.id === 'control-flow-switch-invalid') continue
-    samples[fixture.id] = { label: fixture.label, source: fixtures[fixture.id].source }
-  }
-  const sampleChips = Object.entries(samples)
-    .map(
-      ([id, sample], index) =>
-        `<button type="button" data-bench-sample="${id}" aria-pressed="${index === 0}">${escapeHtml(
-          sample.label,
-        )} <span class="matrix-count">${buildEncoder.encode(sample.source).length} B</span></button>`,
-    )
-    .join('\n      ')
-  const iterationChips = BENCH_ITERATIONS.map(
-    (count) =>
-      `<button type="button" data-bench-iterations="${count}" aria-pressed="${
-        count === BENCH_DEFAULT_ITERATIONS
-      }">${count}</button>`,
-  ).join('\n      ')
-  const json = JSON.stringify(samples).replaceAll('<', '\\u003c')
-  return `<figure class="explorer ex-figure bench-live" data-bench-live>
-  <p class="bench-live-caveat">${BENCH_CAVEAT}</p>
-  <div class="ex-out" data-ex-out><p class="ex-note">The parser runs when this figure scrolls into view.</p></div>
-  <div class="ex-controls ex-toolbar">
-    <div class="ex-chip-group" role="group" aria-label="Sample to parse">
-      <span class="ex-chip-label">Sample</span>
-      ${sampleChips}
-    </div>
-    <div class="ex-chip-group" role="group" aria-label="Parses per run">
-      <span class="ex-chip-label">Parses per run</span>
-      ${iterationChips}
-    </div>
-    <div class="ex-chip-group">
-      <button type="button" class="bench-run" data-bench-run disabled>Run benchmark</button>
-    </div>
-  </div>
-  <figcaption class="ex-status" data-ex-status aria-live="polite">the parser runs in your browser; with JavaScript off this figure measures nothing and says so</figcaption>
-  <script type="application/json" data-bench-samples>${json}</script>
-</figure>
-`
-}
-
-const benchLiveTwin =
-  'On the site this interactive figure times `parse()` on one small sample in your tab, in batches because a browser clock is too coarse for one parse. It is not the native-addon report above.'
-
 // ---------- widget registry ----------
 // `<!-- widget:NAME key=value flag -->`, optionally followed by a fence that
 // becomes the widget's seed, is rendered by docs/widgets/NAME.mjs at build time
@@ -1678,10 +1653,17 @@ async function renderWidgets(article, widgets, page) {
       end = blockEnd
     }
     const module = await loadWidgetModule(widget.name, widget.sourcePath)
-    const html = await module.default({ attrs: widget.attrs, fence, page, ctx: widgetContext })
+    let tryButton = ''
+    if (fence) {
+      const extracted = takeTryButton(fence.html)
+      fence = { ...fence, html: extracted.html }
+      tryButton = extracted.button
+    }
+    let html = await module.default({ attrs: widget.attrs, fence, page, ctx: widgetContext })
     if (typeof html !== 'string' || html.trim() === '') {
       throw new Error(`${widget.sourcePath}: widget ${widget.name} rendered nothing`)
     }
+    html = appendToToolbar(html, tryButton)
     const className = typeof module.className === 'string' ? ` ${module.className}` : ''
     out += article.slice(cursor, at)
     out += `<figure class="widget widget-${widget.name}${className}" data-widget="${widget.name}">\n${html}\n</figure>\n`
@@ -2385,10 +2367,6 @@ async function build() {
     if (article.includes('<!-- hook-matrix -->')) {
       article = hookMatrixHtml(article, (await readHooks()).hooks, sourcePath)
       exportedBody = exportedBody.replace('<!-- hook-matrix -->', hookMatrixTwin)
-    }
-    if (article.includes('<!-- bench-live -->')) {
-      article = article.replace('<!-- bench-live -->', benchLiveHtml(await readFixtures()))
-      exportedBody = exportedBody.replace('<!-- bench-live -->', benchLiveTwin)
     }
     const widgets = collectWidgets(body, sourcePath)
     if (widgets.length > 0) {

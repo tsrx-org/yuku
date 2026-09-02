@@ -5,6 +5,11 @@ export default async function verify({ routes, open, check, notes }) {
   const widget = '[data-widget="symbol-table"]'
   for (const route of routes) {
     const label = `symbol-table:${route}`
+    const quickStart = route.includes('/guide/quick-start')
+    const expectedCounts = quickStart
+      ? { reference: 6, symbol: 6, scope: 5, import: 1, export: 1 }
+      : { reference: 7, symbol: 7, scope: 10, import: 1, export: 1 }
+    const expectedTotalScope = quickStart ? 4 : 3
     const page = await open(route, label)
     await page.locator(widget).first().scrollIntoViewIfNeeded()
     await page.waitForSelector(`${widget}[data-widget-state="ready"]`, { timeout: 30_000 })
@@ -14,6 +19,15 @@ export default async function verify({ routes, open, check, notes }) {
       /1 name resolves to nothing: reset/.test(status) && status.includes('runs in your browser'),
       `${label}: status does not name the one unresolved reference: ${status}`,
     )
+    const source = await page.inputValue(`${widget} .ex-editor`)
+    check(
+      source.includes('export function Cart({ items }) @{') && !source.includes('return ('),
+      `${label}: the seed is not a TSRX component body`,
+    )
+    for (const [table, expected] of Object.entries(expectedCounts)) {
+      const actual = await page.textContent(`${widget} [data-st-count="${table}"]`)
+      check(actual === String(expected), `${label}: ${table} count is ${actual}, expected ${expected}`)
+    }
 
     const dotted = await page.$$eval(`${widget} .ex-seg.ex-unresolved`, (nodes) =>
       nodes.map((node) => node.textContent),
@@ -33,7 +47,7 @@ export default async function verify({ routes, open, check, notes }) {
       `${label}: the reference table does not flag reset -> null: ${JSON.stringify(flagged)}`,
     )
 
-    // Hover `total` in the code block: it is declared inside the @{ } block.
+    // Hover `total` in the component block.
     const totalSegment = page.locator(`${widget} .ex-seg`, { hasText: /^total$/ }).first()
     const totalBox = await totalSegment.boundingBox()
     check(Boolean(totalBox), `${label}: total has no hoverable source box`)
@@ -44,7 +58,10 @@ export default async function verify({ routes, open, check, notes }) {
       { timeout: 10_000 },
     )
     const readout = await page.textContent(`${widget} [data-st-readout]`)
-    check(/block/.test(readout), `${label}: hovering total did not read a block scope: ${readout}`)
+    check(
+      new RegExp(`scope ${expectedTotalScope}\\s+block`).test(readout),
+      `${label}: hovering total did not read component block scope ${expectedTotalScope}: ${readout}`,
+    )
     const outlined = await page.$$eval(`${widget} .ex-seg.ex-scope`, (nodes) => nodes.length)
     check(outlined > 0, `${label}: hovering a token did not outline its scope in the source`)
     notes.push(`symbol-table hover: ${readout.trim()}`)
@@ -65,7 +82,7 @@ export default async function verify({ routes, open, check, notes }) {
     await itemsRow.click()
     const decls = await page.$$eval(`${widget} .ex-seg.ex-decl`, (nodes) => nodes.length)
     const refs = await page.$$eval(`${widget} .ex-seg.ex-ref`, (nodes) => nodes.length)
-    check(decls >= 1 && refs >= 2, `${label}: the items row lit ${decls} declaration(s) and ${refs} reference(s)`)
+    check(decls === 1 && refs === 2, `${label}: the items row lit ${decls} declaration(s) and ${refs} reference(s)`)
 
     await page.click(`${widget} [data-st-tab="import"]`)
     const importText = await page.textContent(`${widget} [data-st-out]`)

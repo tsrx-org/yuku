@@ -1146,6 +1146,7 @@ html.dark .copy-button.copied {
 .try-button:hover {
   border-color: var(--c-brand);
 }
+.ex-toolbar > .try-button { position: static; margin-left: auto; opacity: 1; }
 
 /* ---------- benchmark charts (ECharts SVG rendered at build time) ---------- */
 /* Each release-gate family publishes every one of its gates, which is a lot of
@@ -1804,15 +1805,60 @@ html.dark .ex-source span[style] {
   padding: 2px 10px 2px calc(12px + var(--ex-depth, 0) * 11px);
   color: var(--c-text-3);
 }
-.ex-scopes {
+.ex-scope-pane {
   border-top: 1px solid var(--c-divider);
-  padding: 8px 12px 4px;
+  background: var(--c-code-bg);
 }
-.ex-scopes > summary {
+.ex-scope-pane > h4 {
+  margin: 0;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--c-divider);
   color: var(--c-text-2);
   font-size: 12.5px;
   font-weight: 600;
+}
+.ex-scope-tree {
+  padding: 8px 10px 10px;
+}
+.ex-scope-children {
+  list-style: none;
+  margin: 0 0 0 9px;
+  padding: 0 0 0 10px;
+  border-left: 1px solid var(--c-divider);
+}
+.ex-scope-node > button {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--c-text-2);
+  background: none;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
+}
+.ex-scope-node > button:hover,
+.ex-scope-node > button:focus-visible,
+.ex-scope-node > button[aria-pressed="true"] {
+  color: var(--c-text-1);
+  background: var(--c-brand-soft);
+}
+.ex-scope-node > button:focus-visible {
+  outline: 2px solid var(--c-brand);
+  outline-offset: 1px;
+}
+.ex-scope-kind {
+  min-width: 5.5em;
+}
+.ex-scope-declarations {
+  color: var(--c-text-3);
+}
+.ex-scope-empty {
+  font-style: italic;
 }
 .ex-out tr.ex-row-active > td {
   background: var(--c-brand-soft);
@@ -2020,42 +2066,6 @@ html.dark .ex-source span[style] {
   border-color: var(--c-divider);
   background: var(--c-bg-alt);
   color: var(--c-text-2);
-}
-
-/* ---------- measure in this tab (reference/benchmarks) ---------- */
-.bench-live .ex-controls {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-}
-.doc .bench-live-caveat {
-  margin: 0;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--c-divider);
-  color: var(--c-text-2);
-  font-size: 13px;
-  line-height: 1.6;
-}
-.bench-live .ex-out {
-  border-top: 1px solid var(--c-divider);
-}
-.bench-live .ex-out th[scope="row"] {
-  font-weight: 600;
-  white-space: nowrap;
-}
-.bench-live .ex-out td {
-  font-variant-numeric: tabular-nums;
-}
-.ex-controls button.bench-run {
-  border-color: var(--c-brand);
-  background: var(--c-brand-soft);
-  color: var(--c-brand);
-  font-weight: 600;
-}
-.ex-controls button.bench-run[disabled] {
-  border-color: var(--c-divider);
-  background: none;
-  color: var(--c-text-3);
 }
 
 /* #css-pages-end */

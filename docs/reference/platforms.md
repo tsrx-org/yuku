@@ -1,37 +1,24 @@
 ---
 title: Platforms and versions
-description: Check whether your machine gets a prebuilt addon.
+description: See why there are two prebuilt packages and how to add another platform.
 ---
 
 # Platforms and versions
 
-Check whether npm has a native addon for your machine.
+## Why are there only two platforms?
 
-<!-- pm-install -->
-```sh
-npm install @tsrx/yuku
-```
+The package you install is native code. It must be compiled separately for every operating system and CPU, and each one must be built on a matching machine in CI. CI uses macOS on Apple Silicon and Linux on x64. That produces the two packages below. On any other platform, the import throws an error instead of silently running something slower.
 
-Focus a row to see whether its addon matches your machine.
+## How can I get another platform?
+
+You can [build from source anywhere Zig runs](/guide/build-from-source), or [open an issue](https://github.com/tsrx-org/yuku/issues). Adding a prebuilt platform means adding one more CI machine and choosing a CPU floor.
+
+## Packages and CPU floors
 
 <!-- widget:platforms-table -->
 
-## Why there are two bindings
-
-The parser is native code, so each operating-system and CPU pair needs its own compiled file. The package ships addons for macOS arm64 and glibc Linux x64.
-
-The JavaScript package has no platform restriction. On Linux musl, Windows, macOS x64, and Linux arm64, [build from source](/guide/build-from-source) before importing it.
-
-## What the CPU floor means
-
-The Linux addon targets `x86_64_v2`: it requires SSE4.2 but not AVX. The macOS addon targets `apple_m1`. A machine must meet its addon's CPU floor.
-
-## Node
-
-Use Node 22 or newer. The JavaScript package and both addons declare the same minimum.
+A CPU floor makes sure the addon runs on the oldest CPU of that family that we support, not only on the CI machine that built it.
 
 ## Versions
 
-The JavaScript package pins both optional addons to its exact version. Installing `@tsrx/yuku` keeps the loader and native code together.
-
-Before you depend on the addon in a build, read its [current limitations](/reference/limitations).
+The two binding packages are pinned to the exact version of `@tsrx/yuku` you install, so they never drift. Use Node 22 or newer.

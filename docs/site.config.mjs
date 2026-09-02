@@ -122,7 +122,7 @@ export default {
     },
     {
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2Z"/></svg>',
-      title: 'Your @if is still an @if',
+      title: 'Your @if stays an @if',
       details:
         'The tree names TSRX constructs by what you wrote, not by a plain-TSX translation, so your tooling can look for them directly.',
     },

@@ -803,7 +803,7 @@ function initPage() {
   // boot, because the module is over a megabyte.
   if (
     document.querySelector(
-      '[data-ast-explorer], [data-symbol-explorer], [data-codegen-walkthrough], [data-bench-live]',
+      '[data-ast-explorer], [data-symbol-explorer], [data-codegen-walkthrough]',
     )
   ) {
     import(new URL('./yuku-explorers.js', import.meta.url))

@@ -30,15 +30,13 @@ console.log(list.children.map((child) => child.type));
 
 ### Parsing: rewrite links at build time
 
-Edit the `href` and watch the rewritten output change.
+A router can resolve a link's path at build time when its parameters are literal. Change the id below, or make a parameter a variable, and watch.
 
-<!-- widget:link-rewrite rewritten=2 -->
+<!-- widget:link-rewrite rewritten=1 runtime=1 -->
 ```tsrx
-const user = { id: "42" };
-const post = { slug: "hello" };
 const nav = (
   <nav>
-    <Link href="/users/:id" params={{ id: user.id }}>Profile</Link>
+    <Link href="/users/:id" params={{ id: "42" }}>Profile</Link>
     <Link href="/posts/:slug" params={{ slug: post.slug }}>Post</Link>
     <Link href="/pricing">Pricing</Link>
     <a href="/about">About</a>
@@ -57,17 +55,14 @@ Focus the underlined `reset` name and read why it resolves to nothing.
 import { format } from "./format";
 type Label = string;
 
-export function Cart({ items }) {
-  return (
-    <section>
-      @{
-        const total = items.length;
-        const label = (total === 1 ? "item" : "items") as Label;
-        <p>{label}</p>
-      }
-      <p>{items.map(format)} {reset}</p>
-    </section>
-  );
+export function Cart({ items }) @{
+  const total = items.length;
+  const label = (total === 1 ? "item" : "items") as Label;
+
+  <section>
+    <p>{label}</p>
+    <p>{items.map(format)} {reset}</p>
+  </section>
 }
 ```
 
@@ -77,7 +72,7 @@ The [Analyze guide](/guide/analyze) shows what every semantic table answers.
 
 Compare output A with Strip types on output B, then toggle either side.
 
-<!-- widget:generate-diff a-strip=false b-strip=true b-comments=all -->
+<!-- widget:generate-diff b-strip=true b-comments=all -->
 ```tsrx
 import type { Item } from "./item";
 

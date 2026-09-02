@@ -6,6 +6,21 @@ import { escapeHtml, formatMs, plural } from '../yuku-shared.js'
 const MAX_TREE_DEPTH = 12
 let highlighterPromise = null
 
+document.addEventListener('input', (event) => {
+  const editor = event.target.closest?.('.widget .ex-editor')
+  const button = editor?.closest('.widget')?.querySelector('.try-button')
+  if (button) button.dataset.code = editor.value
+})
+document.addEventListener('click', (event) => {
+  const widget = event.target.closest?.('.widget')
+  if (!widget?.querySelector('.try-button')) return
+  queueMicrotask(() => {
+    const editor = widget.querySelector('.ex-editor')
+    const button = widget.querySelector('.try-button')
+    if (editor && button) button.dataset.code = editor.value
+  })
+})
+
 const firstLoad = () =>
   document.documentElement.dataset.afterFirstLoad === 'true'
     ? Promise.resolve()

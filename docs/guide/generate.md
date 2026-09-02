@@ -25,7 +25,7 @@ const { code, map } = generate(program, {
 map.version; // 3
 ```
 
-`code` is now `export const answer = 42;`. The npm package returns a Source Map V3 object in `map`, ready to write beside the generated file.
+`code` is `export const answer = 42;`. The npm package returns a Source Map V3 object in `map`, ready to write beside the generated file.
 
 Toggle Strip types and watch the generated module change.
 
@@ -35,16 +35,15 @@ import type { Item } from "./item";
 import { format } from './format';
 
 /* The cart list, one row per item. */
-export function Cart({ items }: { items: Item[] }) {
+export function Cart({ items }: { items: Item[] }) @{
   // total is read by the attribute below
-  @{ const total = items.length; }
-  return (
-    <ul class="cart" data-empty={total === 0}>
-      @for (const item of items; key item.id) {
-        <li>{format(item.label)}</li>
-      }
-    </ul>
-  );
+  const total = items.length;
+
+  <ul class="cart" data-empty={total === 0}>
+    @for (const item of items; key item.id) {
+      <li>{format(item.label)}</li>
+    }
+  </ul>
 }
 ```
 
@@ -72,22 +71,21 @@ interface GenerateOptions {
 
 Compare the landing diff, then change one option on output B.
 
-<!-- widget:generate-diff -->
+<!-- widget:generate-diff full -->
 ```tsrx
 import type { Item } from "./item";
 import { format } from './format';
 
 /* The cart list, one row per item. */
-export function Cart({ items }: { items: Item[] }) {
+export function Cart({ items }: { items: Item[] }) @{
   // total is read by the attribute below
-  @{ const total = items.length; }
-  return (
-    <ul class="cart" data-empty={total === 0}>
-      @for (const item of items; key item.id) {
-        <li>{format(item.label)}</li>
-      }
-    </ul>
-  );
+  const total = items.length;
+
+  <ul class="cart" data-empty={total === 0}>
+    @for (const item of items; key item.id) {
+      <li>{format(item.label)}</li>
+    }
+  </ul>
 }
 ```
 
@@ -103,7 +101,7 @@ generate(program, { minify: { syntax: true } });
 
 `minify: true` enables whitespace, syntax, and quote shortening. The object form lets you choose; syntax minification also picks the quote that needs fewer escapes.
 
-`strip` wins when you combine it with syntax minification, so types disappear instead of being tightened. Whitespace minification still applies.
+`strip` wins when you combine it with syntax minification, so types disappear instead of being tightened. Whitespace minification applies.
 
 Asking for `quotes: "shortest"` without syntax minification throws:
 
