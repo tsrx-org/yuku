@@ -68,8 +68,8 @@ Paste any TSRX and get it printed clean; flip Minify to go the other way.
 
 <!-- widget:format -->
 ```tsrx
-export function Card({title,ready}) {
-const label='Ready'; if(ready){return <article className = 'card'><h2>{ title }</h2><p>{label}</p></article>;} return <p>Waiting</p>; }
+export function Card({title,ready}) @{
+const label='Ready'; @if(ready){<article class = 'card'><h2>{ title }</h2><p>{label}</p></article>}@else{<p>Waiting</p>} }
 ```
 
 The [Generate guide](/guide/generate) shows every printer option in a larger live diff.
