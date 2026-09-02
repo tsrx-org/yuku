@@ -1,0 +1,152 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "installCommand": "cd .. && corepack enable && pnpm install --frozen-lockfile --ignore-scripts",
+  "buildCommand": "pnpm run build",
+  "outputDirectory": "dist",
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "require-corp"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/guide/introduction",
+      "destination": "/guide/quick-start",
+      "permanent": true
+    },
+    {
+      "source": "/guide/introduction.md",
+      "destination": "/guide/quick-start.md",
+      "permanent": true
+    },
+    {
+      "source": "/guide/getting-started",
+      "destination": "/guide/quick-start",
+      "permanent": true
+    },
+    {
+      "source": "/guide/getting-started.md",
+      "destination": "/guide/quick-start.md",
+      "permanent": true
+    },
+    {
+      "source": "/guide/tsrx-syntax",
+      "destination": "/guide/parse",
+      "permanent": true
+    },
+    {
+      "source": "/guide/tsrx-syntax.md",
+      "destination": "/guide/parse.md",
+      "permanent": true
+    },
+    {
+      "source": "/guide/tsrx",
+      "destination": "/guide/parse",
+      "permanent": true
+    },
+    {
+      "source": "/guide/tsrx.md",
+      "destination": "/guide/parse.md",
+      "permanent": true
+    },
+    {
+      "source": "/guide/parser",
+      "destination": "/guide/parse",
+      "permanent": true
+    },
+    {
+      "source": "/guide/parser.md",
+      "destination": "/guide/parse.md",
+      "permanent": true
+    },
+    {
+      "source": "/guide/analyzer",
+      "destination": "/guide/analyze",
+      "permanent": true
+    },
+    {
+      "source": "/guide/analyzer.md",
+      "destination": "/guide/analyze.md",
+      "permanent": true
+    },
+    {
+      "source": "/guide/codegen",
+      "destination": "/guide/generate",
+      "permanent": true
+    },
+    {
+      "source": "/guide/codegen.md",
+      "destination": "/guide/generate.md",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/yuku-dialect",
+      "destination": "/architecture/dialect",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/yuku-dialect.md",
+      "destination": "/architecture/dialect.md",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/upstreaming-to-yuku",
+      "destination": "/architecture/dialect",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/upstreaming-to-yuku.md",
+      "destination": "/architecture/dialect.md",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/upstream",
+      "destination": "/architecture/dialect",
+      "permanent": true
+    },
+    {
+      "source": "/architecture/upstream.md",
+      "destination": "/architecture/dialect.md",
+      "permanent": true
+    },
+    {
+      "source": "/reference/platform-support",
+      "destination": "/reference/platforms",
+      "permanent": true
+    },
+    {
+      "source": "/reference/platform-support.md",
+      "destination": "/reference/platforms.md",
+      "permanent": true
+    }
+  ]
+}

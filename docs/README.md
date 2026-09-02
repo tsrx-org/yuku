@@ -173,17 +173,12 @@ route are rewritten to the destination at build time.
 
 ## Deploy
 
-The site is a static upload to the Vercel project `yuku-tsrx-docs` in scope
-`jack-shelton`, live at <https://compiled.run/yuku-tsrx> (proxied from the yuku-tsrx-docs Vercel project by compiled-run/website).
+The canonical site at <https://yuku.tsrx.dev> is deployed by Vercel's Git
+integration from the `yuku-website` project root. Its build fetches the pinned,
+prebuilt WASM release artifact and then runs this generator, so Vercel needs no
+Zig or repository secrets; `.github/workflows/site-artifact.yml` builds and
+verifies new WASM bytes and refreshes the pin when `src/` changes on `main`.
 
-```sh
-pnpm run docs:wasm
-pnpm run docs:build
-vercel link --cwd docs/dist --project yuku-tsrx-docs --scope jack-shelton --yes
-vercel deploy --cwd docs/dist --prod --yes --scope jack-shelton
-```
-
-Link after building, not before: the build empties `dist/`, which removes the
-`dist/.vercel/` link file written by `vercel link`.
+See `releasing/site-yuku-tsrx-dev.md` for the one-time Vercel project setup.
 
 Two more optional files per widget: `docs/assets/widgets/NAME.css` (appended to every shell's stylesheet at build, so a widget never edits `style.css`) and `docs/widgets/NAME.verify.mjs` (default export `async ({ routes, open, pagesWith, pageCarrying, check, notes, skipped, waitForParse, statusText })`, run by `docs/verify-playground.mjs` on every page that carries the widget).

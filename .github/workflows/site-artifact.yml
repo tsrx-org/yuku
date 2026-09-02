@@ -1,15 +1,4 @@
-# Build the docs site for https://yuku.tsrx.dev from the exact revision, prove
-# it in a browser, and ship the proven bytes to Vercel. Pull requests build and
-# verify only. A second, redirect-only artifact keeps the old
-# compiled.run/yuku-tsrx location pointing here permanently.
-#
-# Both deploy jobs are gated on repository variables and skip cleanly until
-# whoever holds the Vercel projects creates them:
-#
-#   vars.YUKU_VERCEL_ORG_ID / vars.YUKU_VERCEL_PROJECT_ID / secrets.YUKU_VERCEL_TOKEN
-#   vars.LEGACY_VERCEL_ORG_ID / vars.LEGACY_VERCEL_PROJECT_ID / secrets.LEGACY_VERCEL_TOKEN
-#
-# docs/releasing/site-yuku-tsrx-dev.md has the setup.
+# Build and verify the docs artifact; Vercel's Git integration deploys it.
 name: Build website artifact
 
 on:
@@ -36,12 +25,13 @@ jobs:
     name: Build and verify the site
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - name: Check out the exact source revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
         with:
           path: yuku
-          persist-credentials: false
 
       # The wasm module is a zig artifact built against the sibling seam.
       - name: Check out the pinned Yuku seam
@@ -123,141 +113,51 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # Secrets cannot be read in an `if:`, so the two variables gate the job.
-  deploy:
-    name: Deploy yuku.tsrx.dev
-    needs: build
-    if: >-
-      github.repository == 'tsrx-org/yuku' &&
-      github.ref_name == 'main' &&
-      github.event_name != 'pull_request' &&
-      vars.YUKU_VERCEL_ORG_ID != '' &&
-      vars.YUKU_VERCEL_PROJECT_ID != ''
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions: {}
-    environment:
-      name: yuku-tsrx-dev
-      url: https://yuku.tsrx.dev
-    env:
-      VERCEL_ORG_ID: ${{ vars.YUKU_VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ vars.YUKU_VERCEL_PROJECT_ID }}
-    steps:
-      - name: Download the artifact the build job proved
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: yuku-docs-${{ github.sha }}
-          path: dist
-
-      # No checkout and no build here: the deploy credential is never present
-      # on a runner that executed package scripts.
-      - name: Ship that artifact to production
-        id: ship
+      - name: Publish and pin a new docs WASM source tree
+        if: >-
+          github.repository == 'tsrx-org/yuku' &&
+          github.event_name == 'push' &&
+          github.ref_name == 'main'
+        working-directory: yuku
         env:
-          VERCEL_TOKEN: ${{ secrets.YUKU_VERCEL_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ -z "${VERCEL_TOKEN}" ]; then
-            echo "::error::YUKU_VERCEL_TOKEN is not set, but the two YUKU_VERCEL_* variables are. See docs/releasing/site-yuku-tsrx-dev.md."
-            exit 1
-          fi
-          url="$(npx --yes vercel@57.0.0 deploy --cwd dist --prod --yes --token "${VERCEL_TOKEN}")"
-          echo "Deployed ${url}"
-          echo "url=${url}" >> "${GITHUB_OUTPUT}"
-
-      # Against the deployment URL the CLI printed, not the domain: this proves
-      # the bytes, and a custom domain can be mid-DNS on the first run.
-      - name: Prove that deployment is serving this build
-        env:
-          DEPLOYMENT_URL: ${{ steps.ship.outputs.url }}
-        run: |
-          set -euo pipefail
-          for attempt in 1 2 3 4 5; do
-            if curl -fsS "${DEPLOYMENT_URL}/" -o live-index.html; then break; fi
-            echo "attempt ${attempt} could not read the deployment, retrying"
-            sleep 5
-          done
-          live="$(shasum -a 256 < live-index.html | cut -d" " -f1)"
-          built="$(shasum -a 256 < dist/index.html | cut -d" " -f1)"
-          if [ "${live}" != "${built}" ]; then
-            echo "::error::deployment serves index.html ${live}, this run built ${built}"
-            exit 1
-          fi
-          curl -fsS "${DEPLOYMENT_URL}/guide/getting-started" -o /dev/null
-          echo "the deployment is serving this run's build (${built})"
-
-      - name: Report whether yuku.tsrx.dev resolves to it
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          status="$(curl -fsS -o /dev/null -w '%{http_code}' https://yuku.tsrx.dev || echo 000)"
-          if [ "${status}" = "200" ]; then
-            echo "::notice::https://yuku.tsrx.dev is live"
-          else
-            echo "::warning::https://yuku.tsrx.dev returned ${status}; add the domain per docs/releasing/site-yuku-tsrx-dev.md"
+          src_tree="$(git rev-parse HEAD:src)"
+          pinned_tree="$(jq -r '.srcTree' yuku-website/wasm-pin.json)"
+          if [ "${src_tree}" = "${pinned_tree}" ]; then
+            echo "The pin already matches src tree ${src_tree}."
+            exit 0
           fi
 
-  deploy-legacy-redirect:
-    name: Deploy the compiled.run/yuku-tsrx redirect
-    needs: build
-    if: >-
-      github.repository == 'tsrx-org/yuku' &&
-      github.ref_name == 'main' &&
-      github.event_name != 'pull_request' &&
-      vars.LEGACY_VERCEL_ORG_ID != '' &&
-      vars.LEGACY_VERCEL_PROJECT_ID != ''
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions: {}
-    environment:
-      name: compiled-run-redirect
-      url: https://compiled.run/yuku-tsrx
-    env:
-      VERCEL_ORG_ID: ${{ vars.LEGACY_VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ vars.LEGACY_VERCEL_PROJECT_ID }}
-    steps:
-      - name: Download the redirect-only artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: yuku-docs-legacy-redirect-${{ github.sha }}
-          path: dist
+          short="${src_tree:0:12}"
+          asset="yuku-tsrx-${short}.wasm"
+          upload_dir="$(mktemp -d)"
+          cp zig-out/wasm/yuku-tsrx.wasm "${upload_dir}/${asset}"
+          cp zig-out/wasm/yuku-tsrx.wasm.stamp "${upload_dir}/${asset}.stamp"
 
-      - name: Ship it to the legacy project
-        id: ship
-        env:
-          VERCEL_TOKEN: ${{ secrets.LEGACY_VERCEL_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${VERCEL_TOKEN}" ]; then
-            echo "::error::LEGACY_VERCEL_TOKEN is not set, but the two LEGACY_VERCEL_* variables are. See docs/releasing/site-yuku-tsrx-dev.md."
-            exit 1
-          fi
-          url="$(npx --yes vercel@57.0.0 deploy --cwd dist --prod --yes --token "${VERCEL_TOKEN}")"
-          echo "Deployed ${url}"
-          echo "url=${url}" >> "${GITHUB_OUTPUT}"
+          gh release create docs-wasm \
+            --title "docs-wasm" \
+            --notes "Rolling prebuilt WASM artifacts for the yuku.tsrx.dev Vercel build." \
+            || true
+          gh release upload docs-wasm \
+            "${upload_dir}/${asset}" \
+            "${upload_dir}/${asset}.stamp" \
+            --clobber
 
-      # Prove the redirect rather than a page: a 200 here would mean the old
-      # copy of the docs is live again.
-      - name: Prove the deployment redirects
-        env:
-          DEPLOYMENT_URL: ${{ steps.ship.outputs.url }}
-        run: |
-          set -euo pipefail
-          expect_redirect() {
-            local from="$1" to="$2" status location
-            for attempt in 1 2 3 4 5; do
-              status="$(curl -sS -o /dev/null -w '%{http_code}' "${from}" || echo 000)"
-              if [ "${status}" = "308" ] || [ "${status}" = "301" ]; then break; fi
-              echo "attempt ${attempt}: ${from} returned ${status}, retrying"
-              sleep 5
-            done
-            location="$(curl -sS -o /dev/null -w '%{redirect_url}' "${from}" || echo "")"
-            if { [ "${status}" != "308" ] && [ "${status}" != "301" ]; } || [ "${location}" != "${to}" ]; then
-              echo "::error::${from} answered ${status} -> '${location}', expected a permanent redirect to ${to}"
-              exit 1
-            fi
-            echo "${from} -> ${to} (${status})"
-          }
-          expect_redirect "${DEPLOYMENT_URL}/yuku-tsrx" "https://yuku.tsrx.dev/"
-          expect_redirect "${DEPLOYMENT_URL}/yuku-tsrx/guide/getting-started" "https://yuku.tsrx.dev/guide/getting-started"
-          expect_redirect "${DEPLOYMENT_URL}/yuku-tsrx/playground?share=abc" "https://yuku.tsrx.dev/playground?share=abc"
+          jq -n \
+            --arg release "docs-wasm" \
+            --arg asset "${asset}" \
+            --arg sha256 "$(shasum -a 256 zig-out/wasm/yuku-tsrx.wasm | cut -d' ' -f1)" \
+            --arg srcTree "${src_tree}" \
+            --argjson sizeBytes "$(stat -c%s zig-out/wasm/yuku-tsrx.wasm)" \
+            '{ release: $release, asset: $asset, sha256: $sha256, srcTree: $srcTree, sizeBytes: $sizeBytes }' \
+            > yuku-website/wasm-pin.json
+
+          git add yuku-website/wasm-pin.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "site: pin wasm ${short}"
+          git fetch origin main
+          git rebase FETCH_HEAD
+          git push origin HEAD:main

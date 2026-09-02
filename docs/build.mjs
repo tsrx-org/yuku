@@ -53,6 +53,13 @@ const legacyRedirects = () =>
         { source: `${trimmedBase}/:path*`, destination: `${config.redirectTo}/:path*`, permanent: true },
       ]
     : []
+
+async function writeWebsiteRedirects(redirects) {
+  if (base !== '/') return
+  const vercelPath = path.join(repoRoot, 'yuku-website', 'vercel.json')
+  const vercel = JSON.parse(await readFile(vercelPath, 'utf8'))
+  await writeFile(vercelPath, `${JSON.stringify({ ...vercel, redirects }, null, 2)}\n`)
+}
 function followRedirect(href) {
   const hash = href.indexOf('#')
   const route = hash === -1 ? href : href.slice(0, hash)
@@ -2503,6 +2510,11 @@ async function build() {
       permanent: true,
     }))
   })
+  const vercelRedirects = [
+    ...(trimmedBase ? [{ source: '/', destination: trimmedBase, permanent: false }] : []),
+    ...legacyRedirects(),
+    ...retired,
+  ]
   await writeFile(
     path.join(outDir, 'vercel.json'),
     `${JSON.stringify({
@@ -2510,15 +2522,12 @@ async function build() {
       trailingSlash: false,
       // Vercel applies redirects before the filesystem, so on a legacy build
       // the pages still written under the base stop being reachable there.
-      redirects: [
-        ...(trimmedBase ? [{ source: '/', destination: trimmedBase, permanent: false }] : []),
-        ...legacyRedirects(),
-        ...retired,
-      ],
+      redirects: vercelRedirects,
       rewrites: [],
       headers: [],
     })}\n`,
   )
+  await writeWebsiteRedirects(vercelRedirects)
 
   await writeFile(
     path.join(outDir, 'robots.txt'),
