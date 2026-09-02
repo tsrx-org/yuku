@@ -56,7 +56,7 @@ jobs:
         with:
           node-version: 24.15.0
           cache: pnpm
-          cache-dependency-path: yuku/pnpm-lock.yaml
+          cache-dependency-path: yuku-tsrx/pnpm-lock.yaml
 
       - name: Verify the pinned toolchain and seam
         shell: bash
