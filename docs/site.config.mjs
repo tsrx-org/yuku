@@ -87,7 +87,7 @@ export default {
   },
   hero: {
     name: 'yuku-tsrx',
-    text: 'TSRX for the Yuku parser',
+    text: 'Parse, analyze and print TSRX with the Yuku parser',
     tagline:
       'Parse, analyze and print <a href="https://tsrx.dev">TSRX</a> with the Yuku parser. Type below and watch the tree follow.',
     actions: [
