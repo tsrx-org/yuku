@@ -1,0 +1,32 @@
+export default async function verify({ routes, open, check, notes }) {
+  const widget = '[data-widget="lower-to-tsx"]'
+  for (const route of routes) {
+    const page = await open(route, `lower-to-tsx:${route}`)
+    await page.locator(widget).scrollIntoViewIfNeeded()
+    await page.waitForSelector(`${widget}[data-widget-state="ready"]`, { timeout: 30_000 })
+    const output = () => page.textContent(`${widget} [data-lt-generated]`)
+    const landing = await output()
+    check((await page.textContent(`${widget} [data-lt-readout]`)).trim() === '3 constructs lowered', 'lower-to-tsx: landing readout changed')
+    check((await page.textContent(`${widget} [data-widget-status]`)).trim() === 'output parses', 'lower-to-tsx: landing output does not parse')
+    check(landing.includes('return ('), 'lower-to-tsx: component body has no parenthesized return')
+    check(landing.includes('ready ? <p>'), 'lower-to-tsx: @if did not become a conditional')
+    check(landing.includes('items.map((item) =>'), 'lower-to-tsx: @for did not become map()')
+    check(landing.includes('<li key={item.id}>'), 'lower-to-tsx: keyed loop did not become a key attribute')
+    check(!landing.includes('@if') && !landing.includes('@for') && !landing.includes('@{'), 'lower-to-tsx: TSRX syntax remains in output')
+    const editor = page.locator(`${widget} .ex-editor`)
+    const edited = (await editor.inputValue())
+      .replace('; key item.id)', '; index index; key item.id)')
+      .replace('<section>', '<section>\n    <style>li { color: red; }</style>')
+    await editor.fill(edited)
+    await page.waitForFunction((selector) => document.querySelector(`${selector} [data-lt-generated]`)?.textContent.includes('item, index'), widget)
+    const changed = await output()
+    check(changed.includes('items.map((item, index) =>'), 'lower-to-tsx: index did not become the second map parameter')
+    check(!changed.includes('<style>') && !changed.includes('color: red'), 'lower-to-tsx: style block remains in output')
+    check((await page.textContent(`${widget} [data-lt-note]`)).trim() === '<style> block dropped', 'lower-to-tsx: dropped style has no note')
+    check((await page.getAttribute(widget, 'data-output-parses')) === 'true', 'lower-to-tsx: edited output does not re-parse')
+    check(await page.locator(`${widget} [data-lt-reset]`).isVisible(), 'lower-to-tsx: Reset did not appear after editing')
+    await page.click(`${widget} [data-lt-reset]`)
+    await page.waitForFunction((selector) => document.querySelector(`${selector} [data-lt-generated]`)?.textContent.includes('Loading'), widget)
+    notes.push(`lower-to-tsx readout: 3 constructs lowered; output parses; ${landing.trim()}`)
+  }
+}

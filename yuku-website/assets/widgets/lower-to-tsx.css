@@ -1,0 +1,10 @@
+.widget-lower-to-tsx .lt-output {
+  white-space: pre;
+  overflow: auto;
+}
+.widget-lower-to-tsx .lt-note {
+  margin: 0;
+  padding: 0 16px 12px;
+  color: var(--c-text-2);
+  font-size: 12.5px;
+}

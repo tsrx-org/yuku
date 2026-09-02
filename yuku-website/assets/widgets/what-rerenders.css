@@ -1,0 +1,22 @@
+.widget-what-rerenders .wr-output {
+  white-space: pre;
+  overflow: auto;
+}
+.widget-what-rerenders .wr-name {
+  color: inherit;
+  border-radius: 3px;
+  box-shadow: inset 0 -1px var(--c-text-3);
+  cursor: pointer;
+}
+.widget-what-rerenders .wr-name:hover,
+.widget-what-rerenders .wr-name:focus-visible,
+.widget-what-rerenders .wr-name.wr-selected {
+  background: var(--c-brand-soft);
+  box-shadow: inset 0 -2px var(--c-brand);
+  outline: 0;
+}
+.widget-what-rerenders .wr-change {
+  color: inherit;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--c-brand) 22%, transparent);
+}

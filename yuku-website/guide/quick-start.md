@@ -45,31 +45,37 @@ export function Results({ rows, cards, users }) @{
 
 The [Parse guide](/guide/parse) shows how to walk the rest of the tree and handle diagnostics.
 
-### Analysis: rename only one symbol
+### Analysis: see what re-renders
 
-Rename a variable and only its real references follow; the inner `count` that shadows it stays.
+Click a name and see everything on screen that would change with it, through the constants in between. A compiler uses exactly this to decide what to re-render.
 
-<!-- widget:safe-rename -->
+<!-- widget:what-rerenders -->
 ```tsrx
-export function Counter() @{
-  let count = 1;
-  const doubled = count * 2;
-  const label = () => count + " clicks";
-  const preview = (count) => count + 1;
-  <button>{count} / {doubled} / {label()} / {preview(3)}</button>
+export function Cart({ items, user }) @{
+  const total = items.length;
+  const label = total === 1 ? "item" : "items";
+  const name = user.name;
+  <section><h2>{name}</h2><p>{total} {label}</p><ul>@for (const item of items; key item.id) { <li>{item.title}</li> }</ul></section>
 }
 ```
 
 The [Analyze guide](/guide/analyze) shows what every semantic table answers.
 
-### Codegen: format in either direction
+### Codegen: lower TSRX to plain TSX
 
-Paste any TSRX and get it printed clean; flip Minify to go the other way.
+Every TSRX construct has a plain-TSX meaning. This rewrites the tree and lets the printer say it.
 
-<!-- widget:format -->
+<!-- widget:lower-to-tsx -->
 ```tsrx
-export function Card({title,ready}) @{
-const label='Ready'; @if(ready){<article class = 'card'><h2>{ title }</h2><p>{label}</p></article>}@else{<p>Waiting</p>} }
+export function Results({ items, ready }) @{
+  const heading = "Results";
+  const count = items.length;
+  <section>
+    <h2>{heading}</h2>
+    @if (ready) { <p>{count} ready</p> } @else { <p>Loading</p> }
+    <ul>@for (const item of items; key item.id) { <li>{item.title}</li> }</ul>
+  </section>
+}
 ```
 
 The [Generate guide](/guide/generate) shows every printer option in a larger live diff.
