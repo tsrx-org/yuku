@@ -6,7 +6,7 @@
 # so with no RELEASE_PUSH_TOKEN secret the owner either dispatches publish.yml
 # by hand for the tagged commit or cuts the release from a laptop instead
 # (`pnpm release`, then `git push --follow-tags`), which triggers it directly.
-# docs/releasing/launch-runbook.md has both paths.
+# .github/releasing/launch-runbook.md has both paths.
 name: Manual Release
 
 on:

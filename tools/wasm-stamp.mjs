@@ -1,5 +1,5 @@
 // The stamp beside zig-out/wasm/yuku-tsrx.wasm records which src/ tree the
-// module was built from, so docs/build.mjs can refuse a binary that predates
+// module was built from, so yuku-website/build.mjs can refuse a binary that predates
 // the code it claims to run.
 import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";

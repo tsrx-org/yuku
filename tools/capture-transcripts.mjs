@@ -7,7 +7,7 @@
 // It runs each demo's commands from the repository root with colour disabled,
 // strips any escape sequence that survived that, trims long output to a head
 // and a tail with a labelled marker, and writes one JSON file per demo into
-// docs/transcripts/. docs/build.mjs reads those files and never runs a command
+// yuku-website/transcripts/. yuku-website/build.mjs reads those files and never runs a command
 // itself.
 //
 // The one rule this tool exists to enforce: a command that exits non-zero is
@@ -22,7 +22,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const outDir = path.join(repoRoot, "docs", "transcripts");
+const outDir = path.join(repoRoot, "yuku-website", "transcripts");
 
 // Head and tail kept around the marker. Fifteen each is enough to show a
 // command's opening lines and its verdict without pasting a whole test run.

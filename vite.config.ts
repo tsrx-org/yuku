@@ -14,7 +14,7 @@ const config = {
 			"benchmarks/m5-pairs.json",
 			"benchmarks/m6-baseline.json",
 			"README.md",
-			"docs/**",
+			"yuku-website/**",
 			"test/parser/misc/**",
 			"npm/yuku/decode.js",
 			"npm/yuku/decode-analyzer.js",

@@ -197,7 +197,7 @@ STEP 3 -- publish ${TARGET_VERSION} from CI.
 
   Rehearse first: GitHub -> Actions -> "Publish to npm" -> Run workflow with
   mode=dry-run. Then push the tag v${TARGET_VERSION}; the push publishes.
-  See docs/releasing/launch-runbook.md.
+  See .github/releasing/launch-runbook.md.
 
 STEP 4 -- clean up, but only AFTER ${TARGET_VERSION} is on the registry.
 
