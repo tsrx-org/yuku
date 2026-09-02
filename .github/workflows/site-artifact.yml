@@ -158,6 +158,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "site: pin wasm ${short}"
+          # The build rewrote tracked files (the site's vercel.json); the rebase needs a clean tree.
+          git stash push --include-untracked --quiet || true
           git fetch origin main
           git rebase FETCH_HEAD
           git push origin HEAD:main

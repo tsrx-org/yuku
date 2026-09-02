@@ -79,15 +79,15 @@ jobs:
 
       - name: Check TypeScript
         working-directory: yuku
-        run: pnpm vp check
+        run: pnpm vp check npm test tools benchmarks scripts yuku-website vite.config.ts
 
       - name: Lint
         working-directory: yuku
-        run: pnpm vp lint
+        run: pnpm vp lint npm test tools benchmarks scripts yuku-website vite.config.ts
 
       - name: Check formatting
         working-directory: yuku
-        run: pnpm vp fmt --check
+        run: pnpm vp fmt --check npm test tools benchmarks scripts yuku-website vite.config.ts
 
       - name: Run JavaScript tests
         working-directory: yuku
