@@ -366,6 +366,82 @@ test("a TSRX catch parameter takes any binding pattern", () => {
 		expect(handler.param.lazy ?? false, clause).toBe(lazy);
 		expect(handler.resetParam?.type ?? null, clause).toBe(reset ? "Identifier" : null);
 	}
+
+	for (const [clause, annotation] of [
+		["@catch (&{ message }: { message: string }, reset)", "TSTypeLiteral"],
+		["@catch (e: Result<T>, reset)", "TSTypeReference"],
+		["@catch (e: A | B)", "TSUnionType"],
+	] as const) {
+		const source = `const v = @try { <b/> } ${clause} { <i/> };`;
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, clause).toEqual([]);
+		const param = result.program.body[0].declarations[0].init.statement.handler.param;
+		expect(param.typeAnnotation.typeAnnotation.type, clause).toBe(annotation);
+		if (annotation === "TSTypeReference") {
+			expect(param.typeAnnotation.typeAnnotation.typeArguments.params, clause).toHaveLength(1);
+		}
+	}
+});
+
+test("lazy covers keep parameter and arrow annotations", () => {
+	for (const [source, parameterTyped, returnTyped] of [
+		["const f = (&{ a }: P): string => a;", true, true],
+		["const g = (&{ a }): R => a;", false, true],
+		["const h = (&{ a }) => a;", false, false],
+	] as const) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, source).toEqual([]);
+		const arrow = result.program.body[0].declarations[0].init;
+		expect(arrow.params[0], source).toMatchObject({ type: "ObjectPattern", lazy: true });
+		expect(arrow.params[0].typeAnnotation !== null, source).toBe(parameterTyped);
+		expect(arrow.returnType !== null, source).toBe(returnTyped);
+	}
+
+	const source = "const [a, &{ b }, &[c], { d }] = x;";
+	const result = parse(source, { lang: "tsx" });
+	expect(result.diagnostics).toEqual([]);
+	const pattern = result.program.body[0].declarations[0].id;
+	expect(pattern).toMatchObject({
+		type: "ArrayPattern",
+		elements: [
+			{ type: "Identifier", name: "a" },
+			{ type: "ObjectPattern", lazy: true },
+			{ type: "ArrayPattern", lazy: true },
+			{ type: "ObjectPattern" },
+		],
+	});
+	expect(pattern.lazy ?? false).toBe(false);
+	expect(pattern.elements[3].lazy ?? false).toBe(false);
+});
+
+test("line-leading committed JSX forms a statement boundary", () => {
+	const blockSource = "const view = @{\nconst count = get()\n<button>{'Count: ' + count}</button>\n};";
+	const blockResult = parse(blockSource, { lang: "tsx" });
+	expect(blockResult.diagnostics).toEqual([]);
+	const block = blockResult.program.body[0].declarations[0].init;
+	expect(block.body).toHaveLength(1);
+	expect(block.render).toMatchObject({ type: "JSXElement" });
+
+	for (const source of [
+		"const wide = a < b\n<main>{wide}</main>",
+		"const useValue =\n<T extends Value,>(value: T): T => value\n<main>{useValue(1)}</main>",
+	]) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, source).toEqual([]);
+		expect(result.program.body, source).toHaveLength(2);
+		expect(result.program.body[1], source).toMatchObject({
+			type: "ExpressionStatement",
+			expression: { type: "JSXElement" },
+		});
+	}
+});
+
+test("less-than continuations remain one expression", () => {
+	for (const source of ["a <\nb", "a\n< b", "x = y <T>(z)"]) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, source).toEqual([]);
+		expect(result.program.body, source).toHaveLength(1);
+	}
 });
 
 test("a lazy pattern cannot initialize a C-style for loop", () => {

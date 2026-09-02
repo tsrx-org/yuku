@@ -494,7 +494,10 @@ fn parseCatchParam(comptime Host: type, parser: anytype) Host.ErrorType!?Host.No
         .left_brace, .left_bracket => try Host.parseOrdinaryBinding(parser) orelse return null,
         else => try parseBindingIdentifier(Host, parser) orelse return null,
     };
-    return parseBindingAnnotation(Host, parser, param);
+    if (Host.currentToken(parser) == .colon) {
+        _ = try parser.parseTypeAnnotation(param) orelse return null;
+    }
+    return param;
 }
 
 fn parseBindingIdentifier(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeIndex {
@@ -504,35 +507,12 @@ fn parseBindingIdentifier(comptime Host: type, parser: anytype) Host.ErrorType!?
     return @as(?Host.NodeIndex, try Host.addNode(parser, Host.NodeData{ .binding_identifier = .{ .name = name, .type_annotation = .null } }, name_span));
 }
 
-fn parseBindingAnnotation(comptime Host: type, parser: anytype, binding: Host.NodeIndex) Host.ErrorType!?Host.NodeIndex {
-    var annotation = Host.NodeIndex.null;
-    if (Host.currentToken(parser) == .colon) {
-        const colon_start = Host.currentSpan(parser).start;
-        if (!try Host.advance(parser)) return null;
-        const type_span = Host.currentSpan(parser);
-        const type_name = try Host.addNode(parser, Host.NodeData{ .identifier_reference = .{
-            .name = try stringValue(Host, parser, type_span),
-        } }, type_span);
-        const reference = try Host.addNode(parser, Host.NodeData{ .ts_type_reference = .{ .type_name = type_name } }, type_span);
-        annotation = try Host.addNode(parser, Host.NodeData{ .ts_type_annotation = .{ .type_annotation = reference } }, .{ .start = colon_start, .end = type_span.end });
-        if (!try Host.advance(parser)) return null;
-
-        var data = Host.data(parser, binding);
-        switch (data) {
-            inline .binding_identifier, .object_pattern, .array_pattern => |*value| value.type_annotation = annotation,
-            else => unreachable,
-        }
-        parser.tree.setData(binding, data);
-        var span = Host.nodeSpan(parser, binding);
-        span.end = type_span.end;
-        parser.tree.setSpan(binding, span);
-    }
-    return binding;
-}
-
 fn parseBinding(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeIndex {
     const binding = try parseBindingIdentifier(Host, parser) orelse return null;
-    return parseBindingAnnotation(Host, parser, binding);
+    if (Host.currentToken(parser) == .colon) {
+        _ = try parser.parseTypeAnnotation(binding) orelse return null;
+    }
+    return binding;
 }
 
 /// `parseValueUntil` for a committed directive: a missing expression is reported, never declined.

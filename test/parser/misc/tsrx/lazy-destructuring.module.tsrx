@@ -15,3 +15,8 @@ const &[first, , ...rest] = values;
 export function pick(&{ title: label }: Props) {
     return label;
 }
+
+const f = (&{ a }: P): string => a;
+const g = (&{ a }): R => a;
+const h = (&{ a }) => a;
+const [a, &{ b }, &[c], { d }] = x;

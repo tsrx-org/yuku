@@ -24,3 +24,21 @@ const catch_only = @try {
 } @catch {
     <span>failed</span>
 };
+
+const caught_shape = @try {
+    <span>ready</span>
+} @catch (&{ message }: { message: string }, reset) {
+    <button onClick={reset}>{message}</button>
+};
+
+const caught_result = @try {
+    <span>ready</span>
+} @catch (e: Result<T>, reset) {
+    <button onClick={reset}>{e}</button>
+};
+
+const caught_union = @try {
+    <span>ready</span>
+} @catch (e: A | B) {
+    <span>{e}</span>
+};
