@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
 const artifacts = ["decode.js", "decode-analyzer.js", "encode.js"] as const;

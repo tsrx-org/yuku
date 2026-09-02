@@ -21,7 +21,16 @@ jobs:
       - name: Check out the exact source revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
         with:
+          path: yuku-tsrx
+          persist-credentials: false
+
+      - name: Check out the upstream Yuku the generated decoders are diffed against
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          repository: thejackshelton/yuku
+          ref: eb2adcb4c17da16e7ade1a0517192d81d469e67f
           path: yuku
+          fetch-depth: 1
           persist-credentials: false
 
       - name: Check out the pinned Yuku seam
@@ -58,37 +67,37 @@ jobs:
           test -z "$(git -C yuku-minimal-seam status --porcelain=v1 --untracked-files=all)"
 
       - name: Install dependencies
-        working-directory: yuku
+        working-directory: yuku-tsrx
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Check Zig formatting
-        working-directory: yuku
+        working-directory: yuku-tsrx
         run: zig fmt --check build.zig src tools
 
       - name: Run Zig tests
-        working-directory: yuku
+        working-directory: yuku-tsrx
         run: zig build test
 
       - name: Test semantic and codegen surfaces
-        working-directory: yuku
+        working-directory: yuku-tsrx
         run: zig build test-m4-surfaces
 
       - name: Build the addon
-        working-directory: yuku
+        working-directory: yuku-tsrx
         run: zig build
 
       - name: Check TypeScript
-        working-directory: yuku
+        working-directory: yuku-tsrx
         run: pnpm vp check npm test tools benchmarks scripts yuku-website vite.config.ts
 
       - name: Lint
-        working-directory: yuku
+        working-directory: yuku-tsrx
         run: pnpm vp lint npm test tools benchmarks scripts yuku-website vite.config.ts
 
       - name: Check formatting
-        working-directory: yuku
+        working-directory: yuku-tsrx
         run: pnpm vp fmt --check npm test tools benchmarks scripts yuku-website vite.config.ts
 
       - name: Run JavaScript tests
-        working-directory: yuku
+        working-directory: yuku-tsrx
         run: pnpm test
