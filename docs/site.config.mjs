@@ -34,9 +34,9 @@ export default {
   playground: '/playground',
   nav: [
     { text: 'Guide', link: '/guide/quick-start' },
+    { text: 'Playground', link: '/playground' },
     { text: 'Architecture', link: '/architecture/dialect' },
     { text: 'Reference', link: '/reference/api' },
-    { text: 'Playground', link: '/playground' },
     { text: 'GitHub', link: 'https://github.com/tsrx-org/yuku' },
   ],
   sidebar: [
