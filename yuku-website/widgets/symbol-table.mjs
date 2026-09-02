@@ -1,4 +1,4 @@
-// Renders a source readout or the full semantic tables.
+// Renders the semantic tables beside their source.
 
 export const className = 'explorer ex-figure'
 
@@ -34,23 +34,10 @@ export default async function render({ attrs, fence, ctx }) {
       `symbol-table: expected the unresolved references [${expected.join(', ')}] but the analyzer reports [${unresolved.join(', ')}]`,
     )
   }
-  const readout = attrs.mode === 'readout'
   const payload = JSON.stringify({ source: fence.code, unresolved, mode: attrs.mode ?? 'all' }).replaceAll(
     '<',
     '\\u003c',
   )
-  if (readout) {
-    const landingName = unresolved[0] ?? 'name'
-    return `<div class="projection-map-pane">
-      <h3>Source</h3>
-      <div class="ex-source-host" data-st-source>${fence.html}</div>
-      <p class="st-readout" data-st-readout aria-live="polite">${landingName}: no declaration in this file, symbolId is null</p>
-      <p class="ex-call"><code>analyze(source, "Cart.tsrx").semantic</code></p>
-    </div>
-  <div class="ex-controls ex-toolbar st-readout-toolbar"><button type="button" data-st-reset hidden>Reset source</button></div>
-  <figcaption class="ex-status" data-widget-status aria-live="polite">the analyzer runs in your browser when this widget scrolls into view; with JavaScript off this stays the listing above</figcaption>
-  <script type="application/json" data-st-seed>${payload}</script>`
-  }
   const counts = Object.fromEntries(TABLES.map((name) => [name, semantic[name].count]))
   if (attrs.mode === 'runtime') {
     counts.reference = 0
@@ -83,6 +70,5 @@ export default async function render({ attrs, fence, ctx }) {
 
 export function markdown({ attrs }) {
   const names = expectedUnresolved(attrs)
-  if (attrs.mode === 'readout') return `On the site the source marks ${names.map((name) => `\`${name}\``).join(', ')} as unresolved and reads declarations in place.`
   return `On the site this example is interactive: the analyzer runs in your browser, the five \`SemanticView\` tables are one chip each, hovering a token shows the scope \`nodeScope\` files it under, and the reference${names.length === 1 ? '' : 's'} ${names.map((name) => `\`${name}\``).join(', ')} ${names.length === 1 ? 'is' : 'are'} shown resolving to nothing.`
 }

@@ -28,60 +28,50 @@ console.log(list.children.map((child) => child.type));
 
 ## Some examples
 
-### Parsing: rewrite links at build time
+### Parsing: key every loop before it ships
 
-A router can resolve a link's path at build time when its parameters are literal. Change the id below, or make a parameter a variable, and watch.
+Every `@for` needs a key before it ships. This adds one to each loop that lacks it, from the tree, not from regex.
 
-<!-- widget:link-rewrite rewritten=1 runtime=1 -->
+<!-- widget:keyed-loops -->
 ```tsrx
-const nav = (
-  <nav>
-    <Link href="/users/:id" params={{ id: "42" }}>Profile</Link>
-    <Link href="/posts/:slug" params={{ slug: post.slug }}>Post</Link>
-    <Link href="/pricing">Pricing</Link>
-    <a href="/about">About</a>
-  </nav>
-);
+export function Results({ rows, cards, users }) @{
+  <section>
+    @for (const row of rows) { <p>{row.name}</p> }
+    @for (const card of cards; key card.id) { <p>{card.title}</p> }
+    @for (const user of users) { <p>{user.name}</p> }
+  </section>
+}
 ```
 
 The [Parse guide](/guide/parse) shows how to walk the rest of the tree and handle diagnostics.
 
-### Semantic analysis: catch a name that will be missing at runtime
+### Analysis: rename only one symbol
 
-Hover a name to see where it is declared; reset has none.
+Rename a variable and only its real references follow; the inner `count` that shadows it stays.
 
-<!-- widget:symbol-table unresolved="reset" mode=readout -->
+<!-- widget:safe-rename -->
 ```tsrx
-import { format } from "./format";
-type Label = string;
-
-export function Cart({ items }) @{
-  const total = items.length;
-  const label = (total === 1 ? "item" : "items") as Label;
-
-  <section>
-    <p>{label}</p>
-    <p>{items.map(format)} {reset}</p>
-  </section>
+export function Counter() @{
+  let count = 1;
+  const doubled = count * 2;
+  const label = () => count + " clicks";
+  const preview = (count) => count + 1;
+  <button>{count} / {doubled} / {label()} / {preview(3)}</button>
 }
 ```
 
 The [Analyze guide](/guide/analyze) shows what every semantic table answers.
 
-### Codegen: print the module you will ship
+### Codegen: format in either direction
 
-Turn Strip types off and the types come back.
+Paste any TSRX and get it printed clean; flip Minify to go the other way.
 
-<!-- widget:generate-diff mode=simple b-strip=true -->
+<!-- widget:format -->
 ```tsrx
-import type { Item } from "./item";
-
-// Keep this comment in the shipped module.
-export function label(item: Item): string {
-  return item.name;
-}
+export function Card({title,ready}) {
+const label='Ready'; if(ready){return <article className = 'card'><h2>{ title }</h2><p>{label}</p></article>;} return <p>Waiting</p>; }
 ```
 
-The [Generate guide](/guide/generate) lets you combine every printer option in a larger live diff.
+The [Generate guide](/guide/generate) shows every printer option in a larger live diff.
 
 Not sure this is the right engine for your job? [Oxc or Yuku?](/guide/oxc-or-yuku) is one screen.

@@ -52,9 +52,6 @@ function quickControlsHtml(state) {
   )
 }
 
-const simpleControlsHtml = (state) =>
-  `<button type="button" role="switch" title="strip" data-gd-flag="strip" aria-checked="${state.strip}">Strip types</button>`
-
 function advancedControlsHtml(state) {
   return (
     chips('format', ['pretty', 'compact'], state.format) +
@@ -107,8 +104,7 @@ async function diffHtml(rows) {
 }
 
 export default function mount(root, { cleanup }) {
-  const { source: seed, landing, mode = 'full', full } = JSON.parse(root.querySelector('[data-gd-seed]').textContent)
-  const simple = mode === 'simple'
+  const { source: seed, landing, full } = JSON.parse(root.querySelector('[data-gd-seed]').textContent)
   let source = seed
   const state = { a: { ...DEFAULTS, ...landing.a }, b: { ...DEFAULTS, ...landing.b } }
   const outputs = { a: null, b: null }
@@ -126,7 +122,7 @@ export default function mount(root, { cleanup }) {
   const advanced = root.querySelector('[data-gd-advanced]')
 
   const renderControls = () => {
-    side('b').controls.innerHTML = simple ? simpleControlsHtml(state.b) : quickControlsHtml(state.b)
+    side('b').controls.innerHTML = quickControlsHtml(state.b)
     if (full && advanced) advanced.innerHTML = advancedControlsHtml(state.b)
   }
 
@@ -173,13 +169,6 @@ export default function mount(root, { cleanup }) {
   const runAll = async () => {
     const ticket = ++run
     try {
-      if (simple) {
-        const result = await runSide('b')
-        if (ticket !== run || disposed) return
-        plainStatus(root, `${state.b.strip ? 'types stripped' : 'types kept'} ·`, result.ms, 'generated')
-        root.dataset.widgetState = 'ready'
-        return
-      }
       const [a, b] = await Promise.all([runSide('a'), runSide('b')])
       if (ticket !== run || disposed) return
       const changed = await renderDiff()
@@ -237,7 +226,7 @@ export default function mount(root, { cleanup }) {
     editor?.dispose()
   })
 
-  if (!simple) bindMarkedReadout(root.querySelector('[data-gd-diff]'), root.querySelector('[data-gd-readout]'), 'Focus or hover a changed line to read the difference.')
+  bindMarkedReadout(root.querySelector('[data-gd-diff]'), root.querySelector('[data-gd-readout]'), 'Focus or hover a changed line to read the difference.')
 
   ready()
     .then(() => {
@@ -263,7 +252,7 @@ export default function mount(root, { cleanup }) {
       return runAll()
     })
     .catch((error) => {
-      for (const id of simple ? ['b'] : ['a', 'b']) {
+      for (const id of ['a', 'b']) {
         side(id).out.innerHTML = `<p class="ex-note ex-unavailable">in-browser generator unavailable: ${escapeHtml(
           error?.message ?? String(error),
         )}</p>`

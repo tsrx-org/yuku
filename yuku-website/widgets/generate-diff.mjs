@@ -1,4 +1,4 @@
-// Renders the compact quick-start printer or the full comparison.
+// Renders the full code generation comparison.
 
 export const className = 'explorer ex-figure'
 
@@ -33,26 +33,6 @@ export default async function render({ attrs, fence, ctx }) {
     throw new Error(`generate-diff: the fence does not parse: ${errors[0].message}`)
   }
   const landing = landingOptions(attrs)
-  const simple = attrs.mode === 'simple'
-  if (simple) {
-    const shipped = await ctx.generate(fence.code, PARSE_OPTIONS, landing.b)
-    if (shipped.errors.length) {
-      throw new Error(`generate-diff: the generator reported ${shipped.errors[0].message}`)
-    }
-    const payload = JSON.stringify({ source: fence.code, landing, mode: 'simple' }).replaceAll('<', '\\u003c')
-    return `<div class="projection-map-pane gd-source-pane"><h3>Source</h3><div class="ex-source-host gd-seed" data-gd-source>${fence.html}</div></div>
-  <div class="projection-map-pane gd-side" data-gd-side="b">
-    <h3>Shipped module</h3>
-    <div class="ex-out" data-gd-out="b"><p class="ex-note">The generator runs when this widget scrolls into view.</p></div>
-    <p class="ex-call" data-gd-call="b"></p>
-  </div>
-  <div class="ex-controls ex-toolbar gd-toolbar gd-simple-toolbar">
-    <div class="gd-controls" data-gd-controls="b" aria-label="Shipped module options"></div>
-    <button type="button" data-gd-reset hidden>Reset source</button>
-  </div>
-  <figcaption class="ex-status" data-widget-status aria-live="polite">the generator runs in your browser when this widget scrolls into view; with JavaScript off this stays the listing above</figcaption>
-  <script type="application/json" data-gd-seed>${payload}</script>`
-  }
   const a = await ctx.generate(fence.code, PARSE_OPTIONS, landing.a)
   const b = await ctx.generate(fence.code, PARSE_OPTIONS, landing.b)
   if (a.errors.length || b.errors.length) {
@@ -61,7 +41,7 @@ export default async function render({ attrs, fence, ctx }) {
   if (a.code === b.code) {
     throw new Error('generate-diff: the two landing option sets print the same text, so there is no diff to land on')
   }
-  const payload = JSON.stringify({ source: fence.code, landing, mode: 'full', full: attrs.full === 'true' }).replaceAll('<', '\\u003c')
+  const payload = JSON.stringify({ source: fence.code, landing, full: attrs.full === 'true' }).replaceAll('<', '\\u003c')
   const side = (id, label) => `<div class="projection-map-pane gd-side" data-gd-side="${id}">
       <h3>${label}</h3>
       <div class="ex-out" data-gd-out="${id}"><p class="ex-note">The generator runs when this widget scrolls into view.</p></div>
@@ -87,6 +67,5 @@ export default async function render({ attrs, fence, ctx }) {
 }
 
 export function markdown({ attrs }) {
-  if (attrs.mode === 'simple') return 'On the site the shipped module is generated in your browser.'
   return 'On the site this example is interactive: A prints the source with the generator defaults, B applies the selected options, and a line diff shows what changed.'
 }

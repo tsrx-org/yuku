@@ -1,9 +1,8 @@
-// Verifies the quick-start printer and full generate comparison.
+// Verifies the full generate comparison.
 export default async function verify({ routes, open, check, notes }) {
   const widget = '[data-widget="generate-diff"]'
   for (const route of routes) {
     const label = `generate-diff:${route}`
-    const simple = route.includes('/guide/quick-start')
     const page = await open(route, label)
     await page.locator(widget).first().scrollIntoViewIfNeeded()
     await page.waitForSelector(`${widget}[data-widget-state="ready"]`, { timeout: 30_000 })
@@ -21,36 +20,6 @@ export default async function verify({ routes, open, check, notes }) {
         [widget, id, previous],
         { timeout: 15_000 },
       )
-
-    if (simple) {
-      const headings = await page.$$eval(`${widget} h3`, (nodes) => nodes.map((node) => node.textContent.trim()))
-      const controls = await page.$$eval(`${widget} [data-gd-controls="b"] > *`, (nodes) =>
-        nodes.map((node) => node.textContent.trim()),
-      )
-      check(JSON.stringify(headings) === JSON.stringify(['Source', 'Shipped module']), `${label}: simple headings are ${JSON.stringify(headings)}`)
-      check(JSON.stringify(controls) === JSON.stringify(['Strip types']), `${label}: simple controls are ${JSON.stringify(controls)}`)
-      check((await page.locator(`${widget} [data-gd-side="a"]`).count()) === 0, `${label}: simple mode still renders As written`)
-      check((await page.locator(`${widget} [data-gd-diff]`).count()) === 0, `${label}: simple mode still renders a diff`)
-      check((await page.locator(`${widget} [data-gd-call]`).count()) === 1, `${label}: simple mode does not have one call line`)
-      check((await callOf('b')).trim() === 'generate(program, { strip: true })', `${label}: simple call is ${await callOf('b')}`)
-      check(!(await outputOf('b')).includes('import type'), `${label}: simple landing output still has types`)
-      let status = await page.textContent(`${widget} [data-widget-status]`)
-      check(/types stripped · generated in [\d.]+ ms · runs in your browser/.test(status), `${label}: simple status is ${status}`)
-
-      const editor = page.locator(`${widget} .ex-editor`)
-      await editor.fill(`${await editor.inputValue()}\n`)
-      await page.waitForSelector(`${widget} [data-gd-reset]:not([hidden])`, { timeout: 10_000 })
-      await page.click(`${widget} [data-gd-reset]`)
-      await page.waitForSelector(`${widget} [data-gd-reset][hidden]`, { state: 'attached', timeout: 10_000 })
-      const callBefore = await callOf('b')
-      await page.click(`${widget} [data-gd-flag="strip"]`)
-      await waitForCallChange('b', callBefore)
-      check((await callOf('b')).trim() === 'generate(program, {})', `${label}: strip-off call is ${await callOf('b')}`)
-      check((await outputOf('b')).includes('import type') && (await outputOf('b')).includes(': Item'), `${label}: types did not return when Strip types was turned off`)
-      status = await page.textContent(`${widget} [data-widget-status]`)
-      notes.push(`generate-diff simple: ${status.trim()}`)
-      continue
-    }
 
     const callA = await callOf('a')
     const callB = await callOf('b')
@@ -70,7 +39,6 @@ export default async function verify({ routes, open, check, notes }) {
     const removed = await diffLines('del')
     const added = await diffLines('add')
     const expectsFull = route.includes('/guide/generate')
-    check(expectsFull, `${label}: a non-simple route is not the full generate guide`)
     const expectedDiff = { removed: 4, added: 1 }
     check(
       removed.length === expectedDiff.removed && added.length === expectedDiff.added,

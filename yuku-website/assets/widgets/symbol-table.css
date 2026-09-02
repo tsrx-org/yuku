@@ -3,10 +3,6 @@
   flex-wrap: wrap;
   gap: 6px;
 }
-.widget-symbol-table .st-readout-toolbar .try-button,
-.widget-symbol-table .st-readout-toolbar:not(:has([data-st-reset]:not([hidden]))) {
-  display: none;
-}
 .widget-symbol-table .st-tabs button {
   padding: 3px 9px;
   border: 1px solid var(--c-divider);

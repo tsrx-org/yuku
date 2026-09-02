@@ -149,8 +149,6 @@ function renderTable(model, name) {
 
 export default function mount(root, { cleanup }) {
   const { source: seed, unresolved, mode = 'all' } = JSON.parse(root.querySelector('[data-st-seed]').textContent)
-  const readoutMode = mode === 'readout'
-  const readoutLanding = `${unresolved[0] ?? 'name'}: no declaration in this file, symbolId is null`
   const host = root.querySelector('[data-st-source]')
   const out = root.querySelector('[data-st-out]')
   const tabs = root.querySelector('[data-st-tabs]')
@@ -238,10 +236,6 @@ export default function mount(root, { cleanup }) {
   }
 
   const describe = (offset) => {
-    if (readoutMode) {
-      describeName(offset)
-      return
-    }
     const ref = model?.references.find((candidate) => candidate.start <= offset && candidate.end > offset)
     if (ref?.symbolId === null) {
       readout.innerHTML = `<code>${escapeHtml(ref.name)}</code>: no declaration in this file, <code>symbolId</code> is null.`
@@ -318,7 +312,7 @@ export default function mount(root, { cleanup }) {
   })
   host.addEventListener('mouseleave', () => {
     if (!view) return
-    readout.textContent = readoutMode ? readoutLanding : IDLE_READOUT
+    readout.textContent = IDLE_READOUT
     clearClass(segments, 'ex-scope')
   })
 
@@ -378,7 +372,7 @@ export default function mount(root, { cleanup }) {
     for (const [name, count] of Object.entries(counts)) {
       tabs?.querySelector(`[data-st-count="${name}"]`)?.replaceChildren(String(count))
     }
-    if (!readoutMode) showTable()
+    showTable()
     const first = out?.querySelector('.st-row-unresolved')
     if (first) {
       first.classList.add('ex-row-active')

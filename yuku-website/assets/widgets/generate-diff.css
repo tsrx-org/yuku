@@ -6,9 +6,6 @@
 .widget-generate-diff .gd-controls {
   align-items: center;
 }
-.widget-generate-diff .gd-simple-toolbar .try-button {
-  display: none;
-}
 .widget-generate-diff .gd-toolbar {
   flex-wrap: nowrap;
   overflow-x: auto;

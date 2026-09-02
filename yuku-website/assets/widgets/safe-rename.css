@@ -1,0 +1,15 @@
+.widget-safe-rename .sr-change {
+  color: inherit;
+  background: color-mix(in srgb, var(--c-brand) 22%, transparent);
+  border-radius: 3px;
+}
+
+.widget-safe-rename label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.widget-safe-rename input {
+  width: 9rem;
+}

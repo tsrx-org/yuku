@@ -1,0 +1,6 @@
+.widget-format .fm-output,
+.widget-keyed-loops .kl-output,
+.widget-safe-rename .sr-output {
+  white-space: pre;
+  overflow: auto;
+}

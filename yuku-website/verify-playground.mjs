@@ -475,11 +475,11 @@ async function main() {
       notes.push(`try button on ${tryRoute} loaded ${loaded.split('\n').length} lines into the playground`)
     }
 
-    const quickStartRoutes = await pagesWith('data-widget="link-rewrite"')
+    const quickStartRoutes = await pagesWith('data-widget="keyed-loops"')
     const quickStartRoute = quickStartRoutes.find((route) => route === '/guide/quick-start')
-    if (check(Boolean(quickStartRoute), '/guide/quick-start has no link-rewrite widget')) {
-      const quickStart = await open(quickStartRoute, 'quick-start link rewrite')
-      const widget = quickStart.locator('[data-widget="link-rewrite"]').first()
+    if (check(Boolean(quickStartRoute), '/guide/quick-start has no keyed-loops widget')) {
+      const quickStart = await open(quickStartRoute, 'quick-start keyed loops')
+      const widget = quickStart.locator('[data-widget="keyed-loops"]').first()
       await widget.scrollIntoViewIfNeeded()
       const textarea = widget.locator('.ex-editor')
       await textarea.waitFor({ state: 'visible', timeout: 30_000 })
@@ -487,11 +487,11 @@ async function main() {
       await textarea.type(' ')
       await quickStart.waitForFunction(
         () =>
-          document.querySelector('[data-widget="link-rewrite"] .ex-editor-layer .ex-source')
-            ?.textContent === document.querySelector('[data-widget="link-rewrite"] .ex-editor')?.value &&
+          document.querySelector('[data-widget="keyed-loops"] .ex-editor-layer .ex-source')
+            ?.textContent === document.querySelector('[data-widget="keyed-loops"] .ex-editor')?.value &&
           Boolean(
             document.querySelector(
-              '[data-widget="link-rewrite"] .ex-editor-layer .ex-source span[style*="--shiki-light"]',
+              '[data-widget="keyed-loops"] .ex-editor-layer .ex-source span[style*="--shiki-light"]',
             ),
           ),
         null,
@@ -499,7 +499,7 @@ async function main() {
       )
       check(
         (await widget.locator('.ex-editor-layer .ex-source span[style*="--shiki-light"]').count()) > 0,
-        '/guide/quick-start: typing left the link-rewrite code layer without real Shiki token spans',
+        '/guide/quick-start: typing left the keyed-loops code layer without real Shiki token spans',
       )
     }
 
