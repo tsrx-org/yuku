@@ -145,7 +145,13 @@ export interface TSRXJSXClosingFragment extends BaseNode {
 	type: "JSXClosingFragment";
 }
 
-export type TSRXJSXChild = BaseNode | TSRXExpression | JSXStyleElement;
+export interface JSXText extends BaseNode {
+	type: "JSXText";
+	value: string;
+	raw: string;
+}
+
+export type TSRXJSXChild = BaseNode | TSRXExpression | JSXStyleElement | JSXScriptElement;
 
 export interface TSRXJSXElement extends Expression {
 	type: "JSXElement";
@@ -202,6 +208,14 @@ export interface JSXStyleElement extends Expression {
 	children: StyleSheet[];
 	closingElement: TSRXJSXClosingElement;
 	css: string;
+}
+
+export interface JSXScriptElement extends Expression {
+	type: "JSXScriptElement";
+	openingElement: TSRXJSXOpeningElement;
+	children: JSXText[];
+	closingElement: TSRXJSXClosingElement;
+	raw: string;
 }
 
 export interface DiagnosticLabel {

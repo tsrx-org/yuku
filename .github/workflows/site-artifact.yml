@@ -29,7 +29,7 @@ concurrency:
 
 env:
   SEAM_REPOSITORY: thejackshelton/yuku
-  SEAM_REF: 8a95bfbfc132e3df77bd142943fede6a36f90a7b
+  SEAM_REF: 0aac786cdda22d06e8669abe198d6d1d6bd72183
 
 jobs:
   build:

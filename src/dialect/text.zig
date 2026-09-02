@@ -3,7 +3,29 @@ const abi = @import("dialect_abi");
 
 pub fn boundary(comptime Host: type, source: []const u8, cursor: u32) abi.Decision(bool) {
     _ = Host;
-    return .{ .handled = cursor < source.len and source[cursor] == '@' };
+    return .{ .handled = startsDirective(source, cursor) };
+}
+
+pub fn startsDirective(source: []const u8, cursor: u32) bool {
+    if (cursor >= source.len or source[cursor] != '@') return false;
+    const after_at = cursor + 1;
+    if (after_at < source.len and source[after_at] == '{') return true;
+    inline for (.{ "if", "for", "switch", "try", "else", "empty", "case", "default", "pending", "catch" }) |keyword| {
+        if (keywordAfterAt(source, cursor, keyword)) return true;
+    }
+    return false;
+}
+
+pub fn keywordAfterAt(source: []const u8, cursor: u32, keyword: []const u8) bool {
+    if (cursor >= source.len or source[cursor] != '@') return false;
+    const start: usize = cursor + 1;
+    const end = start + keyword.len;
+    if (end > source.len or !std.mem.eql(u8, source[start..end], keyword)) return false;
+    return end == source.len or !isIdentifierByte(source[end]);
+}
+
+fn isIdentifierByte(byte: u8) bool {
+    return std.ascii.isAlphanumeric(byte) or byte == '_' or byte == '$' or byte >= 0x80;
 }
 
 pub fn value(comptime Host: type, parser: anytype, span: anytype) Host.ErrorType!abi.Decision(Host.Value) {

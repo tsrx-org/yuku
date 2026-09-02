@@ -75,6 +75,14 @@ pub const JSXStyleElement = struct {
     css: abi.StringSlice,
 };
 
+pub const JSXScriptElement = struct {
+    pub const estree_type = "JSXScriptElement";
+    opening_element: abi.NodeRef,
+    children: abi.NodeList,
+    closing_element: abi.OptionalNodeRef,
+    raw: abi.StringSlice,
+};
+
 pub const TSRXExpression = struct {
     pub const estree_type = "TSRXExpression";
     expression: abi.NodeRef,
@@ -116,12 +124,13 @@ pub const Record = union(enum) {
     css_rule: CssRule,
     css_atrule: CssAtrule,
     css_selector: CssSelector,
+    jsx_script_element: JSXScriptElement,
 };
 
 pub const record_count: u8 = @typeInfo(Record).@"union".fields.len;
 
 comptime {
-    std.debug.assert(record_count == 16);
+    std.debug.assert(record_count == 17);
     std.debug.assert(@sizeOf(NodeRecord) <= 28);
     std.debug.assert(@sizeOf(ForOfOverlay) <= 28);
     std.debug.assert(@sizeOf(CatchClauseOverlay) <= 28);
@@ -138,4 +147,5 @@ comptime {
     std.debug.assert(@sizeOf(CssRule) <= 28);
     std.debug.assert(@sizeOf(CssAtrule) <= 28);
     std.debug.assert(@sizeOf(CssSelector) <= 28);
+    std.debug.assert(@sizeOf(JSXScriptElement) <= 28);
 }

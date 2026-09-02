@@ -34,7 +34,8 @@ pub fn analyze(tree: anytype) AnalyzeResult {
                     .consequent = @enumFromInt(value.consequent.raw),
                     .alternate = @enumFromInt(value.alternate.raw),
                 } }
-            else if (comptime std.mem.eql(u8, @tagName(tag), "jsx_style_element"))
+            else if (comptime std.mem.eql(u8, @tagName(tag), "jsx_style_element") or
+                std.mem.eql(u8, @tagName(tag), "jsx_script_element"))
                 .{ .jsx_element = .{
                     .opening_element = @enumFromInt(value.opening_element.raw),
                     .children = .{ .start = value.children.start, .len = value.children.len },

@@ -32,7 +32,6 @@ test("a malformed TSRX construct is a module error, never a silently truncated p
 	// Each of these used to return zero diagnostics and a program cut off at the construct.
 	const sources = [
 		"const z = 1; const v = @for (const i of xs) <b/>; const w = 2;",
-		"const v = @for (const k in obj) { <b/> }; const z = 1;",
 		"const v = @for (const i of xs; index a; index b) { <b/> }; const z = 1;",
 		"const v = @for (const i of xs; key a; index b) { <b/> }; const z = 1;",
 		"const v = @for (const i of xs; foo) { <b/> }; const z = 1;",
@@ -48,6 +47,87 @@ test("a malformed TSRX construct is a module error, never a silently truncated p
 		expect(result.diagnostics.length, source).toBeGreaterThan(0);
 		expect(() => parseModule(source, "module.tsrx"), source).toThrow(SyntaxError);
 	}
+});
+
+test("TSRX for-in uses the for directive surface and tail clauses", () => {
+	const cases = [
+		["const v = @for (const k in obj) { <b>{k}</b> };", "ForInStatement", null, null],
+		["const v = @for (const k in obj; index i) { <b>{k}</b> };", "ForInStatement", "i", null],
+		["const v = @for (const k in obj; key k) { <b>{k}</b> };", "ForInStatement", null, "k"],
+		["const v = @for (const k in obj; index i; key k) { <b>{k}</b> };", "ForInStatement", "i", "k"],
+		["const v = @for (const k of obj; index i; key k) { <b>{k}</b> };", "ForOfStatement", "i", "k"],
+	] as const;
+	for (const [source, type, index, key] of cases) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, source).toEqual([]);
+		const directive = result.program.body[0].declarations[0].init;
+		expect(directive.type, source).toBe("JSXForExpression");
+		const expected = {
+			type,
+			left: { type: "VariableDeclaration", declarations: [{ id: { name: "k" } }] },
+			right: { type: "Identifier", name: "obj" },
+			...(index !== null || key !== null || type === "ForOfStatement"
+				? { index: index === null ? null : { type: "Identifier", name: index } }
+				: {}),
+			...(key !== null ? { key: { type: "Identifier", name: key } } : {}),
+		};
+		expect(directive.statement, source).toMatchObject(expected);
+	}
+});
+
+test("an at sign only starts a complete JSX child directive keyword", () => {
+	for (const [source, value] of [
+		["const view = <p>mail @ home</p>;", "mail @ home"],
+		["const view = <main>@ifπ is text</main>;", "@ifπ is text"],
+		["const view = <p>email@</p>;", "email@"],
+		["const view = <p>@iffy</p>;", "@iffy"],
+		["const view = <p>@else is text</p>;", "@else is text"],
+	] as const) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, source).toEqual([]);
+		expect(result.program.body[0].declarations[0].init.children, source).toEqual([
+			expect.objectContaining({ type: "JSXText", value: expect.stringContaining("@") }),
+		]);
+		expect(result.program.body[0].declarations[0].init.children[0].value, source).toBe(value);
+	}
+
+	const mixed = parse("const view = <p>@if (x) { <b/> } and @ sign</p>;", { lang: "tsx" });
+	expect(mixed.diagnostics).toEqual([]);
+	expect(mixed.program.body[0].declarations[0].init.children).toMatchObject([
+		{ type: "JSXIfExpression" },
+		{ type: "JSXText", value: " and @ sign" },
+	]);
+});
+
+test("dynamic tags preserve conditional and logical expressions", () => {
+	for (const [source, type] of [
+		["const view = <{cond ? A : B}>x</{cond ? A : B}>;", "ConditionalExpression"],
+		["const view = <{a || B}>x</{a || B}>;", "LogicalExpression"],
+	] as const) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, source).toEqual([]);
+		const element = result.program.body[0].declarations[0].init;
+		expect(element.openingElement.name.expression.type, source).toBe(type);
+		expect(element.closingElement.name.expression.type, source).toBe(type);
+		expect(
+			source.slice(
+				element.openingElement.name.expression.start,
+				element.openingElement.name.expression.end,
+			),
+		).toBe(
+			source.slice(
+				element.closingElement.name.expression.start,
+				element.closingElement.name.expression.end,
+			),
+		);
+	}
+
+	const rejected = parse("const view = <{pick()} />;", { lang: "tsx" });
+	expect(rejected.diagnostics).toEqual([
+		expect.objectContaining({
+			message: "TSRX dynamic tag expression must resolve to an element name",
+		}),
+	]);
 });
 
 test("semantic analysis resolves dialect scopes and excludes stylesheet text", () => {
@@ -74,6 +154,46 @@ test("semantic analysis resolves dialect scopes and excludes stylesheet text", (
 	expect(references.find(({ name }) => name === "error")?.symbol).not.toBeNull();
 	expect(references.find(({ name }) => name === "outside")?.symbol).toBeNull();
 	expect(references.some(({ name }) => name === "color" || name === "red")).toBe(false);
+});
+
+test("script raw text and style sheets remain distinct in either fragment order", () => {
+	const [scriptFirst, styleFirst, external] = readFileSync(
+		resolve("test/fixtures/script-raw-text.tsrx"),
+		"utf8",
+	)
+		.trim()
+		.split("\n");
+	for (const source of [scriptFirst, styleFirst]) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, source).toEqual([]);
+		const children = result.program.body[0].expression.children;
+		const script = children.find(({ type }) => type === "JSXScriptElement");
+		const style = children.find(({ type }) => type === "JSXStyleElement");
+		expect(script, source).toMatchObject({
+			type: "JSXScriptElement",
+			raw: '{"a":1}',
+			children: [{ type: "JSXText", value: '{"a":1}', raw: '{"a":1}' }],
+		});
+		expect(style, source).toMatchObject({
+			type: "JSXStyleElement",
+			children: [{ type: "StyleSheet", source: ".a{color:red}", scanned: true }],
+		});
+		const generated = generate(result.program);
+		expect(generated.errors, source).toEqual([]);
+		expect(generated.code, source).toContain('{"a":1}');
+		expect(parse(generated.code, { lang: "tsx" }).diagnostics, source).toEqual([]);
+	}
+
+	const empty = parse(external, { lang: "tsx" });
+	expect(empty.diagnostics).toEqual([]);
+	expect(empty.program.body[0].expression).toMatchObject({
+		type: "JSXScriptElement",
+		raw: "",
+		children: [{ type: "JSXText", value: "", raw: "" }],
+	});
+	const generated = generate(empty.program);
+	expect(generated.errors).toEqual([]);
+	expect(parse(generated.code, { lang: "tsx" }).diagnostics).toEqual([]);
 });
 
 test("all valid fixtures generate and strictly reparse to the same structure", () => {
@@ -246,6 +366,82 @@ test("a TSRX catch parameter takes any binding pattern", () => {
 		expect(handler.param.lazy ?? false, clause).toBe(lazy);
 		expect(handler.resetParam?.type ?? null, clause).toBe(reset ? "Identifier" : null);
 	}
+
+	for (const [clause, annotation] of [
+		["@catch (&{ message }: { message: string }, reset)", "TSTypeLiteral"],
+		["@catch (e: Result<T>, reset)", "TSTypeReference"],
+		["@catch (e: A | B)", "TSUnionType"],
+	] as const) {
+		const source = `const v = @try { <b/> } ${clause} { <i/> };`;
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, clause).toEqual([]);
+		const param = result.program.body[0].declarations[0].init.statement.handler.param;
+		expect(param.typeAnnotation.typeAnnotation.type, clause).toBe(annotation);
+		if (annotation === "TSTypeReference") {
+			expect(param.typeAnnotation.typeAnnotation.typeArguments.params, clause).toHaveLength(1);
+		}
+	}
+});
+
+test("lazy covers keep parameter and arrow annotations", () => {
+	for (const [source, parameterTyped, returnTyped] of [
+		["const f = (&{ a }: P): string => a;", true, true],
+		["const g = (&{ a }): R => a;", false, true],
+		["const h = (&{ a }) => a;", false, false],
+	] as const) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, source).toEqual([]);
+		const arrow = result.program.body[0].declarations[0].init;
+		expect(arrow.params[0], source).toMatchObject({ type: "ObjectPattern", lazy: true });
+		expect(arrow.params[0].typeAnnotation !== null, source).toBe(parameterTyped);
+		expect(arrow.returnType !== null, source).toBe(returnTyped);
+	}
+
+	const source = "const [a, &{ b }, &[c], { d }] = x;";
+	const result = parse(source, { lang: "tsx" });
+	expect(result.diagnostics).toEqual([]);
+	const pattern = result.program.body[0].declarations[0].id;
+	expect(pattern).toMatchObject({
+		type: "ArrayPattern",
+		elements: [
+			{ type: "Identifier", name: "a" },
+			{ type: "ObjectPattern", lazy: true },
+			{ type: "ArrayPattern", lazy: true },
+			{ type: "ObjectPattern" },
+		],
+	});
+	expect(pattern.lazy ?? false).toBe(false);
+	expect(pattern.elements[3].lazy ?? false).toBe(false);
+});
+
+test("line-leading committed JSX forms a statement boundary", () => {
+	const blockSource = "const view = @{\nconst count = get()\n<button>{'Count: ' + count}</button>\n};";
+	const blockResult = parse(blockSource, { lang: "tsx" });
+	expect(blockResult.diagnostics).toEqual([]);
+	const block = blockResult.program.body[0].declarations[0].init;
+	expect(block.body).toHaveLength(1);
+	expect(block.render).toMatchObject({ type: "JSXElement" });
+
+	for (const source of [
+		"const wide = a < b\n<main>{wide}</main>",
+		"const useValue =\n<T extends Value,>(value: T): T => value\n<main>{useValue(1)}</main>",
+	]) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, source).toEqual([]);
+		expect(result.program.body, source).toHaveLength(2);
+		expect(result.program.body[1], source).toMatchObject({
+			type: "ExpressionStatement",
+			expression: { type: "JSXElement" },
+		});
+	}
+});
+
+test("less-than continuations remain one expression", () => {
+	for (const source of ["a <\nb", "a\n< b", "x = y <T>(z)"]) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, source).toEqual([]);
+		expect(result.program.body, source).toHaveLength(1);
+	}
 });
 
 test("a lazy pattern cannot initialize a C-style for loop", () => {
@@ -276,6 +472,39 @@ test("a lazy pattern cannot initialize a C-style for loop", () => {
 	}
 });
 
+test("lazy patterns recurse through object values and array elements", () => {
+	for (const [source, outerType, patternCount, lazyCount] of [
+		["const f = (&{ user: &{ id } }) => id;", "ObjectPattern", 2, 2],
+		["const &{ user: &{ id } } = props;", "ObjectPattern", 2, 2],
+		["const &[ &{ id } ] = props;", "ArrayPattern", 2, 2],
+		["const &{ user: { id }, row: [first] } = props;", "ObjectPattern", 3, 1],
+	] as const) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, source).toEqual([]);
+		let patterns = 0;
+		const lazyPatterns: { type: string; lazy?: boolean; start: number }[] = [];
+		walk(result.program, {
+			enter(node) {
+				if (node.type === "ObjectPattern" || node.type === "ArrayPattern") {
+					patterns += 1;
+				}
+				if ((node.type === "ObjectPattern" || node.type === "ArrayPattern") && node.lazy) {
+					lazyPatterns.push(node);
+				}
+			},
+		});
+		expect(patterns, source).toBe(patternCount);
+		expect(lazyPatterns, source).toHaveLength(lazyCount);
+		expect(lazyPatterns.find(({ start }) => start === source.indexOf("&"))?.type, source).toBe(
+			outerType,
+		);
+		expect(
+			lazyPatterns.every(({ lazy }) => lazy === true),
+			source,
+		).toBe(true);
+	}
+});
+
 test("an unclosed function code block stays in the editor tree", () => {
 	for (const source of [
 		"export function View() @{",
@@ -295,9 +524,7 @@ test("an unclosed function code block stays in the editor tree", () => {
 		expect(
 			result.diagnostics.filter(({ message }) => message === "Unclosed '@{' code block"),
 			source,
-		).toEqual([
-			expect.objectContaining({ start: 23, end: 25 }),
-		]);
+		).toEqual([expect.objectContaining({ start: 23, end: 25 })]);
 		for (const diagnostic of result.diagnostics) {
 			expect(diagnostic.start, diagnostic.message).toBeGreaterThanOrEqual(0);
 			expect(diagnostic.end, diagnostic.message).toBeGreaterThanOrEqual(diagnostic.start);
