@@ -1,11 +1,11 @@
 ---
 title: Parse
-description: Get a tree, comments, and every parsing problem.
+description: Read a .tsrx file into a tree your tools can walk: a position on every node, the comments kept, and problems returned as a list instead of a thrown error.
 ---
 
 # Parse
 
-Get a tree, comments, and every parsing problem.
+Read a `.tsrx` file into a tree your tools can walk: a position on every node, the comments kept, and problems returned as a list instead of a thrown error.
 
 ```js
 import { parse } from "@tsrx/yuku";

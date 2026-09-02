@@ -1,11 +1,11 @@
 ---
 title: Analyze
-description: Find where each name is declared and used.
+description: Every scope, symbol and reference linked into flat tables as soon as a file is parsed, so a compiler asks what a name points at instead of walking the tree to find out.
 ---
 
 # Analyze
 
-Find where each name is declared and used.
+Every scope, symbol and reference linked into flat tables as soon as a file is parsed, so a compiler asks what a name points at instead of walking the tree to find out.
 
 ```js
 import { analyze } from "@tsrx/yuku";

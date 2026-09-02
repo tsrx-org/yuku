@@ -1,11 +1,11 @@
 ---
 title: Walk and transform
-description: Visit matching nodes and build a small codemod.
+description: Visit the nodes you care about, change them and print the result: a codemod in a few lines.
 ---
 
 # Walk and transform
 
-Visit matching nodes and build a small codemod.
+Visit the nodes you care about, change them and print the result: a codemod in a few lines.
 
 ```js
 import { parse, walk } from "@tsrx/yuku";

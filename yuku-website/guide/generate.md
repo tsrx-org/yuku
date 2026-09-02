@@ -1,11 +1,11 @@
 ---
 title: Generate
-description: Print a tree and control its formatting.
+description: Print a tree back to source with types kept or stripped, pretty or minified, comments kept or dropped, and a source map when you need one.
 ---
 
 # Generate
 
-Print a tree and control its formatting.
+Print a tree back to source with types kept or stripped, pretty or minified, comments kept or dropped, and a source map when you need one.
 
 ```js
 import { generate, parse } from "@tsrx/yuku";

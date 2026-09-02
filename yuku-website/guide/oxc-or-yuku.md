@@ -1,11 +1,11 @@
 ---
 title: Oxc or Yuku?
-description: Which TSRX engine fits the job you have.
+description: Oxc for consumers and Vite plugins; Yuku for compilers that lean on semantic analysis and parse speed. One screen says which is yours.
 ---
 
 # Oxc or Yuku?
 
-Two engines parse TSRX. They are for different jobs.
+Oxc for consumers and Vite plugins; Yuku for compilers that lean on semantic analysis and parse speed. One screen says which is yours.
 
 Use [Oxc](https://oxc.tsrx.dev) when you need:
 

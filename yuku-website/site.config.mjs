@@ -110,9 +110,9 @@ export default {
     },
     {
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="0.5" fill="currentColor"/></svg>',
-      title: 'Ask where a name comes from',
+      title: 'Ask what a name points at',
       details:
-        'Point it at a file and it tells you where each variable, import and export is defined, and everywhere it is used.',
+        'Scopes, symbols and references are linked into flat tables as soon as a file is parsed, so a compiler asks what a name points at instead of walking the tree to find out.',
     },
     {
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 20V8m0 0L3.5 11.5M7 8l3.5 3.5M17 4v12m0 0 3.5-3.5M17 16l-3.5-3.5"/></svg>',

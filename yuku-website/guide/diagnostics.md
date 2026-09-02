@@ -1,11 +1,11 @@
 ---
 title: Diagnostics and recovery
-description: Read each problem and underline the right characters.
+description: Every problem in a file reported at once, each with the exact characters to underline, and the parse keeps going past each one.
 ---
 
 # Diagnostics and recovery
 
-Read each problem and underline the right characters.
+Every problem in a file reported at once, each with the exact characters to underline, and the parse keeps going past each one.
 
 ```js
 import { parse } from "@tsrx/yuku";

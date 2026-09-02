@@ -1,11 +1,11 @@
 ---
 title: Build from source
-description: Zig 0.16, one command, a package you can link into any project.
+description: One Zig command builds the addon for any platform the prebuilt packages skip, ready to link into your project.
 ---
 
 # Build from source
 
-Zig 0.16, one command, a package you can link into any project.
+One Zig command builds the addon for any platform the prebuilt packages skip, ready to link into your project.
 
 The source build needs the sibling checkout referenced by `build.zig.zon`:
 

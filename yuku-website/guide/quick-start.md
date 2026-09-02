@@ -80,4 +80,4 @@ export function Results({ items, ready }) @{
 
 The [Generate guide](/guide/generate) shows every printer option in a larger live diff.
 
-Not sure this is the right engine for your job? [Oxc or Yuku?](/guide/oxc-or-yuku) is one screen.
+Choosing between the two TSRX parsers? [Oxc or Yuku?](/guide/oxc-or-yuku) is one screen: Oxc for consumers and Vite plugins, Yuku for compilers that lean on semantic analysis and parse speed.

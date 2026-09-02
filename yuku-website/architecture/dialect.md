@@ -1,11 +1,11 @@
 ---
 title: Yuku parses; this package answers a few questions
-description: Depend on Yuku's parser without carrying a TypeScript fork.
+description: Yuku parses TypeScript; this package adds only the TSRX rules on top, so there is no fork to keep in sync.
 ---
 
 # Yuku parses; this package answers a few questions
 
-Depend on Yuku's parser without carrying a TypeScript fork.
+Yuku parses TypeScript; this package adds only the TSRX rules on top, so there is no fork to keep in sync.
 
 ## Yuku does the parsing
 
