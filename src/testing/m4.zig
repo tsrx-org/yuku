@@ -1290,3 +1290,138 @@ test "a less-than that can open a tag still opens one" {
         });
     }
 }
+
+test "a malformed TSRX construct reports where it breaks instead of truncating the module" {
+    // Each of these used to return zero diagnostics and a program cut off at the construct.
+    const cases = [_]struct {
+        source: []const u8,
+        /// Unique text whose first byte is where the diagnostic must start.
+        needle: []const u8,
+        /// Length of the span the diagnostic must cover from that byte.
+        len: usize,
+        message: []const u8,
+    }{
+        .{
+            .source = "const z = 1; const v = @for (const i of xs) <b/>; const w = 2;",
+            .needle = "<b/>",
+            .len = 4,
+            .message = "Expected '{' after TSRX control-flow directive",
+        },
+        .{
+            .source = "const v = @for (const k in obj) { <b/> }; const z = 1;",
+            .needle = "const k in obj",
+            .len = 14,
+            .message = "for...in",
+        },
+        .{
+            .source = "const v = @for (const i of xs; index a; index b) { <b/> }; const z = 1;",
+            .needle = "index b",
+            .len = 5,
+            .message = "Expected unique 'index' then 'key' clauses",
+        },
+        .{
+            .source = "const v = @for (const i of xs; key a; index b) { <b/> }; const z = 1;",
+            .needle = "index b",
+            .len = 5,
+            .message = "Expected unique 'index' then 'key' clauses",
+        },
+        .{
+            .source = "const v = @for (const i of xs; foo) { <b/> }; const z = 1;",
+            .needle = "foo",
+            .len = 3,
+            .message = "Expected 'index' or 'key' after ';'",
+        },
+        .{
+            .source = "const v = @for (const i of xs; 1) { <b/> }; const z = 1;",
+            .needle = "1)",
+            .len = 1,
+            .message = "Expected 'index' or 'key' after ';'",
+        },
+        .{
+            .source = "const v = @for (const i of xs; index ) { <b/> }; const z = 1;",
+            .needle = ") {",
+            .len = 1,
+            .message = "Expected an expression after a for-of tail clause",
+        },
+        .{
+            .source = "const v = @for (const i of xs) { <b/> } @emptyish { }; const z = 1;",
+            .needle = "emptyish",
+            .len = 8,
+            .message = "Expected 'empty' after '@'",
+        },
+        .{
+            .source = "const v = @fortune (x) { }; const z = 1;",
+            .needle = "fortune",
+            .len = 7,
+            .message = "Expected 'for' after '@'",
+        },
+        .{
+            .source = "const v = @if () { <b/> }; const z = 1;",
+            .needle = ") {",
+            .len = 1,
+            .message = "Expected a condition after '@if ('",
+        },
+        .{
+            .source = "const v = @switch (x) { <b/> }; const z = 1;",
+            .needle = "<b/> }",
+            .len = 1,
+            .message = "Expected '@case' or '@default'",
+        },
+        .{
+            .source = "const v = @try { <b/> } @pendingly { }; const z = 1;",
+            .needle = "pendingly",
+            .len = 9,
+            .message = "Expected 'pending' after '@'",
+        },
+        .{
+            .source = "const v = <{a />; const z = 1;",
+            .needle = "/>",
+            .len = 1,
+            .message = "Expected '}' to close TSRX dynamic tag expression",
+        },
+        .{
+            .source = "let &x = p; const z = 1;",
+            .needle = "x = p",
+            .len = 1,
+            .message = "Expected '[' or '{' after '&'",
+        },
+        .{
+            .source = "let &{ 1 } = p; const z = 1;",
+            .needle = "1 }",
+            .len = 1,
+            .message = "Expected a property name",
+        },
+        .{
+            .source = "let &[ 1 ] = p; const z = 1;",
+            .needle = "1 ]",
+            .len = 1,
+            .message = "Expected an identifier",
+        },
+    };
+    for (cases) |case| {
+        var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
+        defer tree.deinit();
+        const start = std.mem.indexOf(u8, case.source, case.needle) orelse return error.NeedleMissing;
+        const expected: parser.ast.Span = .{ .start = @intCast(start), .end = @intCast(start + case.len) };
+        var found = false;
+        for (tree.diagnostics.items) |diagnostic| {
+            if (std.mem.indexOf(u8, diagnostic.message, case.message) == null) continue;
+            if (diagnostic.span.start == expected.start and diagnostic.span.end == expected.end) found = true;
+        }
+        if (!found) {
+            std.debug.print("\n{s}\n  wanted {s} at {d}:{d}, got {d} diagnostics:\n", .{ case.source, case.message, expected.start, expected.end, tree.diagnostics.items.len });
+            for (tree.diagnostics.items) |diagnostic| std.debug.print("    {s} @{d}:{d}\n", .{ diagnostic.message, diagnostic.span.start, diagnostic.span.end });
+            return error.SilentTruncation;
+        }
+        try std.testing.expect(tree.hasErrors());
+    }
+}
+
+test "a for directive whose comment holds a brace still parses whole" {
+    // The raw brace scan cannot see comments; the host parse can, and its result wins.
+    const source = "const v = @for (const i of xs) { // }\n<b/> }; const z = 1;";
+    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+    defer tree.deinit();
+    try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+    try std.testing.expectEqual(@as(usize, 2), tree.extra(tree.data(tree.root).program.body).len);
+}
