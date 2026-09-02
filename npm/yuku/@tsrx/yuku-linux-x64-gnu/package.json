@@ -1,0 +1,31 @@
+{
+	"name": "@tsrx/yuku-linux-x64-gnu",
+	"version": "0.2.0",
+	"description": "linux-x64-gnu native addon for @tsrx/yuku. Installed automatically as an optional dependency of @tsrx/yuku; do not depend on it directly.",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tsrx-org/yuku.git",
+		"directory": "npm/yuku/@tsrx/yuku-linux-x64-gnu"
+	},
+	"files": [
+		"yuku-tsrx.node"
+	],
+	"os": [
+		"linux"
+	],
+	"cpu": [
+		"x64"
+	],
+	"libc": [
+		"glibc"
+	],
+	"main": "yuku-tsrx.node",
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	},
+	"engines": {
+		"node": ">=22"
+	}
+}

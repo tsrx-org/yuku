@@ -1290,3 +1290,282 @@ test "a less-than that can open a tag still opens one" {
         });
     }
 }
+
+test "a malformed TSRX construct reports where it breaks instead of truncating the module" {
+    // Each of these used to return zero diagnostics and a program cut off at the construct.
+    const cases = [_]struct {
+        source: []const u8,
+        /// Unique text whose first byte is where the diagnostic must start.
+        needle: []const u8,
+        /// Length of the span the diagnostic must cover from that byte.
+        len: usize,
+        message: []const u8,
+    }{
+        .{
+            .source = "const z = 1; const v = @for (const i of xs) <b/>; const w = 2;",
+            .needle = "<b/>",
+            .len = 4,
+            .message = "Expected '{' after TSRX control-flow directive",
+        },
+        .{
+            .source = "const v = @for (const k in obj) { <b/> }; const z = 1;",
+            .needle = "const k in obj",
+            .len = 14,
+            .message = "for...in",
+        },
+        .{
+            .source = "const v = @for (const i of xs; index a; index b) { <b/> }; const z = 1;",
+            .needle = "index b",
+            .len = 5,
+            .message = "Expected unique 'index' then 'key' clauses",
+        },
+        .{
+            .source = "const v = @for (const i of xs; key a; index b) { <b/> }; const z = 1;",
+            .needle = "index b",
+            .len = 5,
+            .message = "Expected unique 'index' then 'key' clauses",
+        },
+        .{
+            .source = "const v = @for (const i of xs; foo) { <b/> }; const z = 1;",
+            .needle = "foo",
+            .len = 3,
+            .message = "Expected 'index' or 'key' after ';'",
+        },
+        .{
+            .source = "const v = @for (const i of xs; 1) { <b/> }; const z = 1;",
+            .needle = "1)",
+            .len = 1,
+            .message = "Expected 'index' or 'key' after ';'",
+        },
+        .{
+            .source = "const v = @for (const i of xs; index ) { <b/> }; const z = 1;",
+            .needle = ") {",
+            .len = 1,
+            .message = "Expected an expression after a for-of tail clause",
+        },
+        .{
+            .source = "const v = @for (const i of xs) { <b/> } @emptyish { }; const z = 1;",
+            .needle = "emptyish",
+            .len = 8,
+            .message = "Expected 'empty' after '@'",
+        },
+        .{
+            .source = "const v = @fortune (x) { }; const z = 1;",
+            .needle = "fortune",
+            .len = 7,
+            .message = "Expected 'for' after '@'",
+        },
+        .{
+            .source = "const v = @if () { <b/> }; const z = 1;",
+            .needle = ") {",
+            .len = 1,
+            .message = "Expected a condition after '@if ('",
+        },
+        .{
+            .source = "const v = @switch (x) { <b/> }; const z = 1;",
+            .needle = "<b/> }",
+            .len = 1,
+            .message = "Expected '@case' or '@default'",
+        },
+        .{
+            .source = "const v = @try { <b/> } @pendingly { }; const z = 1;",
+            .needle = "pendingly",
+            .len = 9,
+            .message = "Expected 'pending' after '@'",
+        },
+        .{
+            .source = "const v = <{a />; const z = 1;",
+            .needle = "/>",
+            .len = 1,
+            .message = "Expected '}' to close TSRX dynamic tag expression",
+        },
+        .{
+            .source = "let &x = p; const z = 1;",
+            .needle = "x = p",
+            .len = 1,
+            .message = "Expected '[' or '{' after '&'",
+        },
+        .{
+            .source = "let &{ 1 } = p; const z = 1;",
+            .needle = "1 }",
+            .len = 1,
+            .message = "Expected a property name",
+        },
+        .{
+            .source = "let &[ 1 ] = p; const z = 1;",
+            .needle = "1 ]",
+            .len = 1,
+            .message = "Expected an identifier",
+        },
+    };
+    for (cases) |case| {
+        var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
+        defer tree.deinit();
+        const start = std.mem.indexOf(u8, case.source, case.needle) orelse return error.NeedleMissing;
+        const expected: parser.ast.Span = .{ .start = @intCast(start), .end = @intCast(start + case.len) };
+        var found = false;
+        for (tree.diagnostics.items) |diagnostic| {
+            if (std.mem.indexOf(u8, diagnostic.message, case.message) == null) continue;
+            if (diagnostic.span.start == expected.start and diagnostic.span.end == expected.end) found = true;
+        }
+        if (!found) {
+            std.debug.print("\n{s}\n  wanted {s} at {d}:{d}, got {d} diagnostics:\n", .{ case.source, case.message, expected.start, expected.end, tree.diagnostics.items.len });
+            for (tree.diagnostics.items) |diagnostic| std.debug.print("    {s} @{d}:{d}\n", .{ diagnostic.message, diagnostic.span.start, diagnostic.span.end });
+            return error.SilentTruncation;
+        }
+        try std.testing.expect(tree.hasErrors());
+    }
+}
+
+test "a for directive whose comment holds a brace still parses whole" {
+    // The raw brace scan cannot see comments; the host parse can, and its result wins.
+    const source = "const v = @for (const i of xs) { // }\n<b/> }; const z = 1;";
+    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+    defer tree.deinit();
+    try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+    try std.testing.expectEqual(@as(usize, 2), tree.extra(tree.data(tree.root).program.body).len);
+}
+
+test "an unclosed function code block stays in the editor tree" {
+    const sources = [_][]const u8{
+        "export function View() @{",
+        "export function View() @{ const value = ",
+        "export function View() @{ @if (",
+        "export function View() @{ @ }",
+        "export function View() @{\n  <div>\n}",
+    };
+    for (sources) |source| {
+        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+        defer tree.deinit();
+        const program = tree.data(tree.root).program;
+        try std.testing.expectEqual(@as(u32, @intCast(source.len)), tree.span(tree.root).end);
+        const body = tree.extra(program.body);
+        try std.testing.expectEqual(@as(usize, 1), body.len);
+        const exported = tree.data(body[0]).export_named_declaration;
+        const function = tree.data(exported.declaration).function;
+        try std.testing.expectEqual(parser.ast.FunctionType.function_declaration, function.type);
+        try std.testing.expect(function.body != .null);
+        const overlay = tree.dialectRecord(@intFromEnum(function.body)) orelse
+            return error.CodeBlockMissing;
+        try std.testing.expectEqual(
+            .jsx_code_block,
+            std.meta.activeTag(tree.dialect_store.records.items[overlay]),
+        );
+        try std.testing.expect(tree.diagnostics.items.len > 0);
+        var unclosed_count: usize = 0;
+        for (tree.diagnostics.items) |diagnostic| {
+            try std.testing.expect(diagnostic.span.start <= diagnostic.span.end);
+            try std.testing.expect(diagnostic.span.end <= source.len);
+            if (std.mem.eql(u8, diagnostic.message, "Unclosed '@{' code block")) {
+                unclosed_count += 1;
+                try std.testing.expectEqual(@as(u32, 23), diagnostic.span.start);
+                try std.testing.expectEqual(@as(u32, 25), diagnostic.span.end);
+            }
+        }
+        try std.testing.expectEqual(@as(usize, 1), unclosed_count);
+    }
+}
+
+test "a closed function code block still keeps its render element" {
+    const source = "function View() @{ const value; <main /> }";
+    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+    defer tree.deinit();
+    const function = tree.data(tree.extra(tree.data(tree.root).program.body)[0]).function;
+    try std.testing.expectEqual(parser.ast.FunctionType.function_declaration, function.type);
+    const overlay = tree.dialectRecord(@intFromEnum(function.body)) orelse
+        return error.CodeBlockMissing;
+    const block = tree.dialect_store.records.items[overlay].jsx_code_block;
+    try std.testing.expectEqual(
+        .jsx_element,
+        std.meta.activeTag(tree.data(@enumFromInt(block.render.raw))),
+    );
+}
+
+test "a TSRX catch parameter takes any binding pattern" {
+    // `@catch` used to read one identifier by hand, so every destructured or lazy parameter failed at ')'.
+    const Case = struct {
+        source: []const u8,
+        param: std.meta.Tag(parser.ast.NodeData),
+        lazy: bool,
+        typed: bool,
+        reset: bool,
+    };
+    const cases = [_]Case{
+        .{ .source = "const v = @try { <b/> } @catch (&{ message }, reset) { <i>{message}</i> };", .param = .object_pattern, .lazy = true, .typed = false, .reset = true },
+        .{ .source = "const v = @try { <b/> } @catch ({ message }, reset) { <i>{message}</i> };", .param = .object_pattern, .lazy = false, .typed = false, .reset = true },
+        .{ .source = "const v = @try { <b/> } @catch ({ message }: ErrorInfo, reset) { <i>{message}</i> };", .param = .object_pattern, .lazy = false, .typed = true, .reset = true },
+        .{ .source = "const v = @try { <b/> } @catch (&[first]) { <i>{first}</i> };", .param = .array_pattern, .lazy = true, .typed = false, .reset = false },
+        .{ .source = "const v = @try { <b/> } @catch (error) { <i>{error}</i> };", .param = .binding_identifier, .lazy = false, .typed = false, .reset = false },
+        .{ .source = "const v = @try { <b/> } @catch (error: Error, reset) { <i>{error}</i> };", .param = .binding_identifier, .lazy = false, .typed = true, .reset = true },
+        .{ .source = "const v = @try { <b/> } @catch (error, reset) { <i>{error}</i> };", .param = .binding_identifier, .lazy = false, .typed = false, .reset = true },
+    };
+    for (cases) |case| {
+        var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
+        defer tree.deinit();
+        if (tree.diagnostics.items.len != 0) {
+            std.debug.print("\n{s}\n", .{case.source});
+            for (tree.diagnostics.items) |diagnostic| std.debug.print("    {s} @{d}:{d}\n", .{ diagnostic.message, diagnostic.span.start, diagnostic.span.end });
+            return error.CatchParameterRejected;
+        }
+        const clause = nodeOfKind(&tree, .catch_clause) orelse return error.CatchClauseMissing;
+        const data = tree.data(clause).catch_clause;
+        try std.testing.expectEqual(case.param, std.meta.activeTag(tree.data(data.param)));
+        try std.testing.expectEqual(case.lazy, isLazyPattern(&tree, data.param));
+        const annotation = switch (tree.data(data.param)) {
+            inline .binding_identifier, .object_pattern, .array_pattern => |value| value.type_annotation,
+            else => unreachable,
+        };
+        try std.testing.expectEqual(case.typed, annotation != .null);
+        const overlay = tree.dialectOverlay(@intFromEnum(clause)) orelse return error.CatchOverlayMissing;
+        const reset = tree.dialect_store.records.items[overlay].catch_clause.reset_param;
+        try std.testing.expectEqual(case.reset, reset.raw != @intFromEnum(parser.ast.NodeIndex.null));
+    }
+}
+
+test "a lazy pattern cannot initialize a C-style for loop" {
+    const invalid = [_][]const u8{
+        "for (&{ bit }; i < 4; i++) { a(bit); }",
+        "const v = @for (&{ bit }; index < 4; index += 1) { <b/> };",
+    };
+    for (invalid) |source| {
+        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+        defer tree.deinit();
+        const diagnostics = boundaryDiagnostics(&tree);
+        try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+        const diagnostic = diagnostics[0];
+        try std.testing.expectEqualStrings("A lazy pattern needs 'of' or 'in' after it", diagnostic.message);
+        const start = std.mem.indexOf(u8, source, "&{ bit }") orelse return error.PatternMissing;
+        try std.testing.expectEqual(@as(u32, @intCast(start)), diagnostic.span.start);
+        try std.testing.expectEqual(@as(u32, @intCast(start + "&{ bit }".len)), diagnostic.span.end);
+    }
+
+    for ([_][]const u8{
+        "for (&{ bit } of items) { a(bit); }",
+        "for (&[key] in table) { a(key); }",
+        "for await (&{ a } of s) { a; }",
+        "const v = @for (&{ id } of items) { <b/> };",
+        "const &{ a } = props;",
+        "const f = (&{ a }) => a;",
+        "try {} catch (&{ cause }) {}",
+    }) |source| {
+        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+    }
+}
+
+fn nodeOfKind(tree: *const parser.ParseResult, kind: std.meta.Tag(parser.ast.NodeData)) ?parser.ast.NodeIndex {
+    for (tree.tree.nodes.items(.data), 0..) |data, index| {
+        if (std.meta.activeTag(data) == kind) return @enumFromInt(index);
+    }
+    return null;
+}
+
+fn isLazyPattern(tree: *const parser.ParseResult, node: parser.ast.NodeIndex) bool {
+    const overlay = tree.dialectOverlay(@intFromEnum(node)) orelse return false;
+    return switch (tree.dialect_store.records.items[overlay]) {
+        .object_pattern => |record| record.lazy,
+        .array_pattern => |record| record.lazy,
+        else => false,
+    };
+}

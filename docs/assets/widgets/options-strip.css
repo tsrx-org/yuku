@@ -1,0 +1,41 @@
+.os-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px 16px;
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+}
+.os-stats div {
+  display: flex;
+  flex-direction: column;
+}
+.os-stats dt {
+  color: var(--c-text-3);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.os-stats dd {
+  margin: 0;
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+}
+.os-split {
+  font-size: 0.8rem;
+  color: var(--c-text-2);
+}
+.os-body {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+}
+.os-body em {
+  color: var(--c-text-3);
+}
+.os-call {
+  margin: 12px 0 4px;
+  font-size: 0.9rem;
+  color: var(--c-text-2);
+}
+.os-out .node-chips {
+  margin: 0 0 8px;
+}

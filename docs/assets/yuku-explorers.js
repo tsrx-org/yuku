@@ -15,7 +15,10 @@
 // not pay for it.
 
 import { analyze, generate, parse, ready, symbolFlags } from './yuku-wasm.js'
-import { escapeHtml, flagNames, formatMs, plural, quickCode } from './yuku-shared.js'
+import { escapeHtml, flagNames, formatMs, plural } from './yuku-shared.js'
+import { createLayeredEditor } from './widgets/_editor.js'
+import { highlightedHtml, plainStatus } from './widgets/_shared.js'
+import { markRanges } from './widgets/_source-pane.js'
 
 const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', semanticErrors: true }
 const ANALYZE_OPTIONS = { lang: 'tsx', sourceType: 'module' }
@@ -24,7 +27,6 @@ const ANALYZE_OPTIONS = { lang: 'tsx', sourceType: 'module' }
 const CODEGEN_PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', attachComments: true }
 
 const MAX_TREE_DEPTH = 12
-const EDIT_DEBOUNCE_MS = 120
 
 // ---------- small shared helpers ----------
 
@@ -56,29 +58,6 @@ export function walkNodes(program) {
   return out
 }
 
-// The source pane as one span per stretch of text that every span in `spans`
-// either wholly contains or wholly misses, so highlighting a range is a class
-// toggle and never a re-render. A guide snippet is a few hundred characters, so
-// this is a few hundred spans.
-function segmentSource(source, spans) {
-  const cuts = new Set([0, source.length])
-  for (const span of spans) {
-    if (span.start >= 0 && span.start <= source.length) cuts.add(span.start)
-    if (span.end >= 0 && span.end <= source.length) cuts.add(span.end)
-  }
-  const offsets = [...cuts].sort((a, b) => a - b)
-  let html = ''
-  for (let i = 0; i < offsets.length - 1; i++) {
-    const start = offsets[i]
-    const end = offsets[i + 1]
-    if (end <= start) continue
-    html += `<span class="ex-seg" data-start="${start}" data-end="${end}">${escapeHtml(
-      source.slice(start, end),
-    )}</span>`
-  }
-  return `<pre class="ex-source"><code>${html}</code></pre>`
-}
-
 const overlaps = (segment, span) => segment.start < span.end && segment.end > span.start
 
 function readSegments(host) {
@@ -105,7 +84,8 @@ function clearClass(segments, className) {
 // Keep a row visible inside the tree's own scroll box without moving the page:
 // scrollIntoView would scroll every scrollable ancestor, including the window.
 function revealInside(container, row) {
-  const top = row.offsetTop - container.offsetTop
+  const top =
+    row.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
   const bottom = top + row.offsetHeight
   if (top < container.scrollTop) container.scrollTop = top
   else if (bottom > container.scrollTop + container.clientHeight) {
@@ -147,93 +127,75 @@ function showError(figure, prefix, error) {
   figure.dataset.exState = 'error'
 }
 
-// ---------- source pane: segmented view, edit mode, reset ----------
+// ---------- source pane ----------
 
 function createSourcePane(figure, { segmented, onChange }) {
   const host = figure.querySelector('[data-ex-source]')
   const original = figure.dataset.source ?? ''
-  const fallback = host.querySelector('.code-block')
   let source = original
-  let editing = false
-  let timer = null
+  let editor = null
+  let currentSpans = []
+
+  const renderEditorMirror = async () => {
+    if (!editor) return
+    await editor.render()
+  }
+
+  const editorHtml = (value) => highlightedHtml(value, 'ex-source ex-source-plain')
 
   const pane = {
     get source() {
       return source
     },
     segments: [],
-    render(spans) {
-      if (editing) return
-      if (!segmented) return
-      host.innerHTML = segmentSource(source, spans ?? [])
-      pane.segments = readSegments(host)
+    async render(spans) {
+      currentSpans = spans ?? []
+      await renderEditorMirror()
     },
     onSegmentHover: null,
     onSegmentClick: null,
+    onSourceLeave: null,
     dispose() {
-      clearTimeout(timer)
+      editor?.dispose()
     },
   }
 
-  const showStatic = () => {
-    host.innerHTML = ''
-    if (segmented) {
-      host.innerHTML = segmentSource(source, [])
-      pane.segments = readSegments(host)
-    } else if (source === original && fallback) {
-      // Unedited, so the shiki-highlighted fence the build shipped is still
-      // exactly this text and is the better rendering of it.
-      host.append(fallback)
-    } else {
-      host.innerHTML = `<pre class="ex-source ex-source-plain"><code>${quickCode(source, {
-        inlineColor: false,
-      })}</code></pre>`
-    }
-  }
-
-  const startEditing = () => {
-    editing = true
-    const textarea = document.createElement('textarea')
-    textarea.className = 'ex-editor'
-    textarea.spellcheck = false
-    textarea.setAttribute('aria-label', 'Editable source for this figure')
-    textarea.value = source
-    textarea.rows = Math.min(Math.max(source.split('\n').length, 6), 30)
-    host.innerHTML = ''
-    host.append(textarea)
-    pane.segments = []
-    textarea.addEventListener('input', () => {
-      clearTimeout(timer)
-      timer = setTimeout(() => {
-        source = textarea.value
-        onChange(source)
-      }, EDIT_DEBOUNCE_MS)
-    })
-    textarea.focus()
-  }
-
-  const stopEditing = () => {
-    editing = false
-    showStatic()
-    onChange(source)
-  }
-
-  pane.toggleEdit = () => {
-    if (editing) stopEditing()
-    else startEditing()
-    return editing
-  }
-  pane.reset = () => {
+  editor = createLayeredEditor({
+    host,
+    source,
+    render: editorHtml,
+    afterRender(mirror) {
+      if (!segmented) return
+      markRanges(mirror, [{ start: 0, end: source.length }, ...currentSpans], 'ex-seg')
+      pane.segments = readSegments(mirror)
+    },
+    onChange(value) {
+      source = value
+      reset.hidden = source === original
+      onChange(source)
+    },
+    ariaLabel: 'Editable source for this figure',
+    rows: Math.min(Math.max(source.split('\n').length, 6), 30),
+    onPointerOffset(target, offset) {
+      const segment = target?.closest('.ex-seg')
+      pane.onSegmentHover?.(Number(segment?.dataset.start ?? offset))
+    },
+    onClickOffset: (offset) => pane.onSegmentClick?.(offset),
+    onFocusOffset: (offset) => pane.onSegmentHover?.(offset),
+  })
+  const controls = figure.querySelector('[data-ex-controls]')
+  const reset = document.createElement('button')
+  reset.type = 'button'
+  reset.dataset.exReset = ''
+  reset.textContent = 'Reset source'
+  reset.hidden = true
+  controls?.append(reset)
+  reset.addEventListener('click', async () => {
     source = original
-    if (editing) {
-      const textarea = host.querySelector('textarea')
-      if (textarea) textarea.value = source
-    } else {
-      showStatic()
-    }
+    reset.hidden = true
+    await editor.setValue(source)
     onChange(source)
-  }
-  pane.isEditing = () => editing
+  })
 
   host.addEventListener('mouseover', (event) => {
     const segment = event.target.closest('.ex-seg')
@@ -243,25 +205,9 @@ function createSourcePane(figure, { segmented, onChange }) {
     const segment = event.target.closest('.ex-seg')
     if (segment && pane.onSegmentClick) pane.onSegmentClick(Number(segment.dataset.start))
   })
+  host.addEventListener('mouseleave', () => pane.onSourceLeave?.())
 
   return pane
-}
-
-// The Edit / Done / Reset pair every figure carries, appended by script so a
-// reader without JavaScript is never shown a control that does nothing.
-function addEditControls(figure, pane) {
-  const controls = figure.querySelector('[data-ex-controls]')
-  if (!controls) return
-  const group = document.createElement('div')
-  group.className = 'ex-chip-group'
-  group.innerHTML =
-    '<button type="button" data-ex-edit>Edit</button><button type="button" data-ex-reset>Reset</button>'
-  controls.append(group)
-  const edit = group.querySelector('[data-ex-edit]')
-  edit.addEventListener('click', () => {
-    edit.textContent = pane.toggleEdit() ? 'Done' : 'Edit'
-  })
-  group.querySelector('[data-ex-reset]').addEventListener('click', () => pane.reset())
 }
 
 function chipGroup(label, name, options) {
@@ -271,8 +217,8 @@ function chipGroup(label, name, options) {
         `<button type="button" data-ex-option="${escapeHtml(name)}" data-ex-value="${escapeHtml(
           option.value,
         )}" aria-pressed="${option.value === options.find((o) => o.selected)?.value}"${
-          option.disabled ? ` disabled title="${escapeHtml(option.title ?? '')}"` : ''
-        }>${escapeHtml(option.label ?? option.value)}</button>`,
+          option.disabled ? ' disabled' : ''
+        } title="${escapeHtml(option.title ?? `${name}=${option.value}`)}">${escapeHtml(option.label ?? `${option.value[0].toUpperCase()}${option.value.slice(1)}`)}</button>`,
     )
     .join('')
   return `<div class="ex-chip-group" role="group" aria-label="${escapeHtml(
@@ -297,7 +243,7 @@ async function runAstExplorer(figure, pane) {
     return
   }
   const nodes = walkNodes(result.program)
-  pane.render(nodes)
+  await pane.render(nodes)
 
   let html = ''
   for (let i = 0; i < nodes.length; i++) {
@@ -318,6 +264,7 @@ async function runAstExplorer(figure, pane) {
     }
   }
   out.innerHTML = `<ul class="ex-tree" data-ex-tree>${html}</ul>`
+  out.scrollTop = 0
   const tree = out.querySelector('[data-ex-tree]')
   const buttons = new Map(
     [...tree.querySelectorAll('[data-ex-node]')].map((button) => [
@@ -334,9 +281,10 @@ async function runAstExplorer(figure, pane) {
       return
     }
     const node = nodes[index]
+    figure.querySelector('[data-ex-readout]').textContent = `${node.type} spans ${node.start}:${node.end}.`
     paint(pane.segments, [node], 'ex-hit')
     const button = buttons.get(index)
-    if (button && reveal) revealInside(tree, button.parentElement)
+    if (button && reveal) revealInside(out, button.parentElement)
   }
 
   tree.addEventListener('mouseover', (event) => {
@@ -364,19 +312,26 @@ async function runAstExplorer(figure, pane) {
 
   // The innermost node under the cursor is the smallest span that contains the
   // offset, which is what a reader pointing at a character means by "this".
-  pane.onSegmentHover = (offset) => {
+  const nodeAt = (offset) => {
     let best = null
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i]
       if (node.start > offset || node.end <= offset) continue
       if (best === null || node.end - node.start <= nodes[best].end - nodes[best].start) best = i
     }
+    return best
+  }
+  pane.onSegmentHover = (offset) => {
+    const best = nodeAt(offset)
     if (best !== null) select(best, { reveal: true })
   }
   pane.onSegmentClick = (offset) => {
-    pane.onSegmentHover(offset)
-    const current = [...buttons].find(([, button]) => button.getAttribute('aria-pressed') === 'true')
-    pinned = current ? current[0] : null
+    pinned = nodeAt(offset)
+    select(pinned)
+  }
+  pane.onSourceLeave = () => {
+    select(pinned)
+    out.scrollTop = 0
   }
 
   const errors = result.diagnostics.length
@@ -392,13 +347,7 @@ async function runAstExplorer(figure, pane) {
           .join('')}</ul>`
       : ''
   }
-  statusLine(
-    figure,
-    `parsed in ${formatMs(result.ms)} ms · ${plural(result.nodeCount, 'node')} · ${plural(
-      errors,
-      'diagnostic',
-    )} · runs in your browser`,
-  )
+  plainStatus(figure, `${plural(result.nodeCount, 'node')} parsed with ${plural(errors, 'diagnostic')}.`, result.ms)
   figure.dataset.exState = 'ready'
 }
 
@@ -436,7 +385,7 @@ async function runSymbolExplorer(figure, pane) {
   for (let r = 0; r < semantic.reference.count; r++) {
     const span = { start: semantic.reference.start(r), end: semantic.reference.end(r) }
     const symbolId = semantic.reference.symbolId(r)
-    if (symbolId === null) unresolved.push(span)
+    if (symbolId === null) unresolved.push({ ...span, name: semantic.reference.name(r) })
     else if (symbols[symbolId]) symbols[symbolId].refs.push(span)
   }
   const scopes = []
@@ -453,7 +402,7 @@ async function runSymbolExplorer(figure, pane) {
   const spans = [...unresolved]
   for (const symbol of symbols) spans.push(...symbol.decls, ...symbol.refs)
   for (const scope of scopes) spans.push(scope)
-  pane.render(spans)
+  await pane.render(spans)
   paint(pane.segments, unresolved, 'ex-unresolved')
   for (const segment of pane.segments) {
     if (segment.node.classList.contains('ex-unresolved')) {
@@ -508,11 +457,20 @@ async function runSymbolExplorer(figure, pane) {
     clearClass(pane.segments, 'ex-decl')
     clearClass(pane.segments, 'ex-ref')
     if (index === null || !symbols[index]) return
+    figure.querySelector('[data-ex-readout]').textContent = `${symbols[index].name}: ${symbols[index].scope} scope, symbol ${index}.`
     paint(pane.segments, symbols[index].decls, 'ex-decl')
     paint(pane.segments, symbols[index].refs, 'ex-ref')
   }
 
   body.addEventListener('click', (event) => {
+    const row = event.target.closest('[data-ex-symbol]')
+    if (row) selectSymbol(Number(row.dataset.exSymbol))
+  })
+  body.addEventListener('mouseover', (event) => {
+    const row = event.target.closest('[data-ex-symbol]')
+    if (row) selectSymbol(Number(row.dataset.exSymbol))
+  })
+  body.addEventListener('focusin', (event) => {
     const row = event.target.closest('[data-ex-symbol]')
     if (row) selectSymbol(Number(row.dataset.exSymbol))
   })
@@ -531,7 +489,10 @@ async function runSymbolExplorer(figure, pane) {
     clearClass(pane.segments, 'ex-scope')
     if (id === null) return
     const scope = scopes.find((candidate) => candidate.id === id)
-    if (scope) paint(pane.segments, [scope], 'ex-scope')
+    if (scope) {
+      paint(pane.segments, [scope], 'ex-scope')
+      figure.querySelector('[data-ex-readout]').textContent = `Scope ${id} is ${scope.kind} and spans ${scope.start}:${scope.end}.`
+    }
   }
   scopeList.addEventListener('mouseover', (event) => {
     const button = event.target.closest('[data-ex-scope]')
@@ -552,14 +513,25 @@ async function runSymbolExplorer(figure, pane) {
     if (index >= 0) selectSymbol(index)
   }
 
-  statusLine(
+  pane.onSegmentHover = (offset) => {
+    const missing = unresolved.find((span) => span.start <= offset && span.end > offset)
+    if (missing) {
+      figure.querySelector('[data-ex-readout]').textContent = `${missing.name}: no declaration in this file, symbolId is null.`
+      return
+    }
+    const index = symbols.findIndex((symbol) =>
+      [...symbol.decls, ...symbol.refs].some((span) => span.start <= offset && span.end > offset),
+    )
+    if (index >= 0) selectSymbol(index)
+  }
+
+  plainStatus(
     figure,
-    `${plural(semantic.scope.count, 'scope')} · ${plural(
-      semantic.symbol.count,
-      'symbol',
-    )} · ${plural(semantic.reference.count, 'reference')}${
-      unresolved.length ? ` (${unresolved.length} unresolved)` : ''
-    } · runs in your browser`,
+    unresolved.length
+      ? `${plural(unresolved.length, 'name')} resolves to nothing: ${unresolved.map((entry) => entry.name).join(', ')}`
+      : 'Every name resolves to a declaration.',
+    view.ms,
+    'analyzed',
   )
   figure.dataset.exState = 'ready'
 }
@@ -593,12 +565,12 @@ function codegenControls(figure, state, onChange) {
   const options = document.createElement('div')
   options.className = 'ex-option-rows'
   options.innerHTML =
-    chipGroup('format', 'format', [
+    chipGroup('Formatting', 'format', [
       { value: 'pretty', selected: true },
       { value: 'compact' },
     ]) +
-    `<div class="ex-chip-group"><span class="ex-chip-label">indent</span><input type="number" min="0" max="8" step="1" value="2" data-ex-indent aria-label="Spaces per indentation level"></div>` +
-    chipGroup('quotes', 'quotes', [
+    `<div class="ex-chip-group"><span class="ex-chip-label">Indent</span><input title="indent" type="number" min="0" max="8" step="1" value="2" data-ex-indent aria-label="Spaces per indentation level"></div>` +
+    chipGroup('Quotes', 'quotes', [
       { value: 'preserve', selected: true },
       { value: 'double' },
       { value: 'single' },
@@ -609,16 +581,16 @@ function codegenControls(figure, state, onChange) {
           'not available: the Quotes enum in src/dialect/codegen.zig has preserve, double and single, so the host cannot request shortest',
       },
     ]) +
-    chipGroup('comments', 'comments', [
+    chipGroup('Comments', 'comments', [
       { value: 'none' },
       { value: 'all' },
       { value: 'some', selected: true },
       { value: 'line' },
       { value: 'block' },
     ]) +
-    `<div class="ex-chip-group"><span class="ex-chip-label">entry points</span>` +
-    `<label class="ex-check"><input type="checkbox" data-ex-flag="strip"> strip</label>` +
-    `<label class="ex-check"><input type="checkbox" data-ex-flag="minify"> minify syntax</label>` +
+    `<div class="ex-chip-group">` +
+    `<button type="button" role="switch" title="strip" data-ex-flag="strip" aria-checked="false">Strip types</button>` +
+    `<button type="button" role="switch" title="minify" data-ex-flag="minify" aria-checked="false">Minify syntax</button>` +
     `</div>`
   controls.prepend(options)
 
@@ -629,12 +601,19 @@ function codegenControls(figure, state, onChange) {
 
   options.addEventListener('click', (event) => {
     const chip = event.target.closest('[data-ex-option]')
-    if (!chip || chip.disabled) return
-    state[chip.dataset.exOption] = chip.dataset.exValue
-    for (const sibling of chip.parentElement.querySelectorAll('[data-ex-option]')) {
-      sibling.setAttribute('aria-pressed', String(sibling === chip))
+    if (chip && !chip.disabled) {
+      state[chip.dataset.exOption] = chip.dataset.exValue
+      for (const sibling of chip.parentElement.querySelectorAll('[data-ex-option]')) {
+        sibling.setAttribute('aria-pressed', String(sibling === chip))
+      }
+      syncIndent()
+      onChange()
+      return
     }
-    syncIndent()
+    const flag = event.target.closest('[data-ex-flag]')
+    if (!flag) return
+    state[flag.dataset.exFlag] = flag.getAttribute('aria-checked') !== 'true'
+    flag.setAttribute('aria-checked', String(state[flag.dataset.exFlag]))
     onChange()
   })
   options.addEventListener('change', (event) => {
@@ -644,11 +623,6 @@ function codegenControls(figure, state, onChange) {
       indentInput.value = String(state.indent)
       onChange()
       return
-    }
-    const flag = event.target.closest('[data-ex-flag]')
-    if (flag) {
-      state[flag.dataset.exFlag] = flag.checked
-      onChange()
     }
   })
   syncIndent()
@@ -680,20 +654,17 @@ async function runCodegen(figure, pane, state) {
         )
         .join('')}</ul>`
     : ''
-  out.innerHTML = `${errors}<pre class="ex-generated" data-ex-generated><code>${quickCode(
+  out.innerHTML = `${errors}${await highlightedHtml(
     result.code,
-    { inlineColor: false },
-  )}</code></pre><p class="ex-call"><code>${escapeHtml(equivalentCall(state))}</code></p>`
-  statusLine(figure, `generated in ${formatMs(result.ms)} ms · runs in your browser`)
+    'ex-generated',
+  )}<p class="ex-call"><code>${escapeHtml(equivalentCall(state))}</code></p>`
+  out.querySelector('.ex-generated')?.setAttribute('data-ex-generated', '')
+  const summary = `${state.strip ? 'types stripped' : 'types kept'}, ${state.comments === 'none' ? 'comments removed' : `${state.comments === 'all' ? 'all' : state.comments} comments kept`}.`
+  plainStatus(figure, summary, result.ms, 'generated')
   figure.dataset.exState = 'ready'
 }
 
 // ---------- 3.11 measure in this tab (reference/benchmarks) ----------
-// The figure times `parse()` calls in the reader's own tab and prints what it
-// measured. It measures the WebAssembly build, on one small sample, with the
-// decode into JavaScript objects inside the timed region, which is a different
-// thing from the report on the same page; the caveat above the numbers is part
-// of the figure and is on screen before a run and after it.
 
 const BENCH_WARMUP = 20
 // A browser clamps performance.now() to about a tenth of a millisecond, and one
@@ -811,10 +782,7 @@ async function runBench(figure, state) {
     <tr><th scope="row">MB per second</th><td data-bench-throughput>${megabytes.toFixed(1)}</td></tr>
   </tbody>
 </table></div>`
-  statusLine(
-    figure,
-    `your machine · ${browserLabel()} · ${integer(parsed)} parses in ${formatMs(wall)} ms`,
-  )
+  plainStatus(figure, `${integer(parsed)} parses completed on ${sample.label} in ${browserLabel()}.`, wall, 'measured')
   figure.dataset.benchState = 'ready'
   state.running = false
   run.disabled = false
@@ -852,11 +820,7 @@ function bootFigure(figure, cleanupCallbacks) {
     ready()
       .then(() => {
         figure.querySelector('[data-bench-run]').disabled = false
-        figure.dataset.benchState = 'idle'
-        statusLine(
-          figure,
-          `the parser is loaded and ready · your machine · ${browserLabel()} · nothing has been measured yet`,
-        )
+        return runBench(figure, state)
       })
       .catch((error) => unavailable(figure, error))
     return
@@ -871,7 +835,6 @@ function bootFigure(figure, cleanupCallbacks) {
     ready()
       .then(() => {
         codegenControls(figure, state, () => runCodegen(figure, pane, state))
-        addEditControls(figure, pane)
         return runCodegen(figure, pane, state)
       })
       .catch((error) => unavailable(figure, error))
@@ -884,7 +847,6 @@ function bootFigure(figure, cleanupCallbacks) {
   cleanupCallbacks.push(() => pane.dispose())
   ready()
     .then(() => {
-      addEditControls(figure, pane)
       return run()
     })
     .catch((error) => unavailable(figure, error))

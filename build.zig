@@ -103,13 +103,13 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "transfer", .module = production_transfer_module },
             },
             .npm = .{
-                .scope = "@yuku-tsrx",
+                .scope = "@tsrx",
                 .description = "Native TSRX parser bindings",
                 .dts = .auto,
             },
         });
         installNpmHostWrapper(b);
-        installNpmHostAddon(b, "yuku-tsrx", "@yuku-tsrx", target);
+        installNpmHostAddon(b, "yuku-tsrx", "npm/yuku/@tsrx/yuku", target);
 
         napi_zig.addLib(b, napi_dep, .{
             .name = "yuku-tsrx-performance",
@@ -568,8 +568,8 @@ fn installNpmHostWrapper(b: *std.Build) void {
         "walk.js",
     }) |name| {
         const overlay = b.addInstallFile(
-            b.path(b.fmt("npm/yuku-tsrx/{s}", .{name})),
-            b.fmt("npm/yuku-tsrx/{s}", .{name}),
+            b.path(b.fmt("npm/yuku/{s}", .{name})),
+            b.fmt("npm/yuku/{s}", .{name}),
         );
         for (generated_steps) |generated| overlay.step.dependOn(generated);
         install_step.dependOn(&overlay.step);
@@ -582,13 +582,13 @@ fn installNpmHostWrapper(b: *std.Build) void {
         \\const header = typeof report === "string" ? JSON.parse(report).header : report?.header;
         \\const libc = process.platform === "linux" ? (header?.glibcVersionRuntime ? "-gnu" : "-musl") : "";
         \\const suffix = `${process.platform}-${process.arch}${libc}`;
-        \\const local = fileURLToPath(new URL(`./@yuku-tsrx/binding-${suffix}/yuku-tsrx.node`, import.meta.url));
+        \\const local = fileURLToPath(new URL(`./@tsrx/yuku-${suffix}/yuku-tsrx.node`, import.meta.url));
         \\let binding;
         \\try { binding = require(local); }
         \\catch (localError) {
-        \\  try { binding = require(`@yuku-tsrx/binding-${suffix}/yuku-tsrx.node`); }
+        \\  try { binding = require(`@tsrx/yuku-${suffix}/yuku-tsrx.node`); }
         \\  catch (packageError) {
-        \\    throw new Error(`Failed to load @yuku-tsrx native binding for ${suffix}`, {
+        \\    throw new Error(`Failed to load the @tsrx/yuku native binding for ${suffix}`, {
         \\      cause: new AggregateError([localError, packageError]),
         \\    });
         \\  }
@@ -596,7 +596,7 @@ fn installNpmHostWrapper(b: *std.Build) void {
         \\export default binding;
         \\
     );
-    const binding_overlay = b.addInstallFile(host_binding, "npm/yuku-tsrx/binding.js");
+    const binding_overlay = b.addInstallFile(host_binding, "npm/yuku/binding.js");
     for (generated_steps) |generated| binding_overlay.step.dependOn(generated);
     install_step.dependOn(&binding_overlay.step);
 
@@ -611,22 +611,24 @@ fn installNpmHostWrapper(b: *std.Build) void {
     // publish, and a missing manifest would be harder to notice than a
     // rejected one.
     inline for ([_][]const u8{
-        "@yuku-tsrx/binding-darwin-arm64",
-        "@yuku-tsrx/binding-linux-x64-gnu",
+        "@tsrx/yuku-darwin-arm64",
+        "@tsrx/yuku-linux-x64-gnu",
     }) |package| {
         const manifest = b.addInstallFile(
-            b.path(b.fmt("npm/yuku-tsrx/{s}/package.json", .{package})),
-            b.fmt("npm/yuku-tsrx/{s}/package.json", .{package}),
+            b.path(b.fmt("npm/yuku/{s}/package.json", .{package})),
+            b.fmt("npm/yuku/{s}/package.json", .{package}),
         );
         for (generated_steps) |generated| manifest.step.dependOn(generated);
         install_step.dependOn(&manifest.step);
     }
 }
 
+/// `binding_prefix` is the staged binding package path minus its platform
+/// suffix: `npm/yuku/@tsrx/yuku` becomes `npm/yuku/@tsrx/yuku-darwin-arm64/`.
 fn installNpmHostAddon(
     b: *std.Build,
     name: []const u8,
-    scope: []const u8,
+    binding_prefix: []const u8,
     target: std.Build.ResolvedTarget,
 ) void {
     if (npmReleaseRequested(b)) return;
@@ -641,8 +643,8 @@ fn installNpmHostAddon(
         }
     } else return;
     const addon_install = b.addInstallFile(addon, b.fmt(
-        "npm/{s}/{s}/binding-{s}/{s}.node",
-        .{ name, scope, platform.suffix(), name },
+        "{s}-{s}/{s}.node",
+        .{ binding_prefix, platform.suffix(), name },
     ));
     install_step.dependOn(&addon_install.step);
 }

@@ -1,0 +1,137 @@
+# Weekly, non-blocking probes of the two things this package sits on and does
+# not pin: Yuku's main branch and Zig's master. A red result here is a heads-up
+# for the migration off the pinned seam, never a release gate.
+name: Non-blocking upstream advisories
+
+on:
+  schedule:
+    - cron: "17 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-advisories
+  cancel-in-progress: true
+
+jobs:
+  yuku-main:
+    name: Yuku main as the seam
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - name: Check out the exact source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          path: yuku
+          persist-credentials: false
+
+      # Upstream main in the sibling slot build.zig.zon reads, instead of the
+      # pinned fork branch. Since yuku-toolchain/yuku#164 merged in 0.9.1 the
+      # extension surface differs from the seam, so until the migration lands
+      # this is expected to fail; the summary records exactly where.
+      - name: Check out Yuku main into the seam slot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          repository: yuku-toolchain/yuku
+          ref: main
+          path: yuku-minimal-seam
+          persist-credentials: false
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.16.0
+
+      - name: Record the candidate
+        id: candidate
+        shell: bash
+        run: |
+          revision=$(git -C yuku-minimal-seam rev-parse HEAD)
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "Yuku main candidate: $revision"
+
+      - name: Build against it
+        id: build
+        working-directory: yuku
+        shell: bash
+        run: zig build
+
+      - name: Run the Zig tests against it
+        id: test
+        working-directory: yuku
+        shell: bash
+        run: zig build test
+
+      - name: Summarize
+        if: always()
+        shell: bash
+        run: |
+          {
+            printf '## Yuku main advisory\n\n'
+            printf -- '- Candidate: `%s`\n' '${{ steps.candidate.outputs.revision }}'
+            printf -- '- zig build: `%s`\n' '${{ steps.build.outcome }}'
+            printf -- '- zig build test: `%s`\n' '${{ steps.test.outcome }}'
+            printf -- '- Policy: advisory only; releases build against the seam pinned in release-candidate.yml.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  zig-master:
+    name: Zig master with the pinned seam
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    env:
+      SEAM_REPOSITORY: thejackshelton/yuku
+      SEAM_REF: 8a95bfbfc132e3df77bd142943fede6a36f90a7b
+    steps:
+      - name: Check out the exact source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          path: yuku
+          persist-credentials: false
+
+      - name: Check out the pinned Yuku seam
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          repository: ${{ env.SEAM_REPOSITORY }}
+          ref: ${{ env.SEAM_REF }}
+          path: yuku-minimal-seam
+          persist-credentials: false
+
+      - name: Set up Zig master
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: master
+
+      - name: Record the candidate
+        id: candidate
+        shell: bash
+        run: |
+          echo "version=$(zig version)" >> "$GITHUB_OUTPUT"
+          zig version
+
+      - name: Build with it
+        id: build
+        working-directory: yuku
+        shell: bash
+        run: zig build
+
+      - name: Run the Zig tests with it
+        id: test
+        working-directory: yuku
+        shell: bash
+        run: zig build test
+
+      - name: Summarize
+        if: always()
+        shell: bash
+        run: |
+          {
+            printf '## Zig master advisory\n\n'
+            printf -- '- Candidate: `%s`\n' '${{ steps.candidate.outputs.version }}'
+            printf -- '- zig build: `%s`\n' '${{ steps.build.outcome }}'
+            printf -- '- zig build test: `%s`\n' '${{ steps.test.outcome }}'
+            printf -- '- Policy: advisory only; releases build with Zig 0.16.0.\n'
+          } >> "$GITHUB_STEP_SUMMARY"

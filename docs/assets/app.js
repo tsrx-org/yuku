@@ -4,6 +4,7 @@
 // ---------- theme toggle (persistent chrome) ----------
 const themeToggle = document.getElementById('theme-toggle')
 const root = document.documentElement
+root.dataset.assetVersion = new URL(import.meta.url).search
 
 function syncThemeButton() {
   themeToggle.setAttribute('aria-pressed', String(root.classList.contains('dark')))
@@ -18,6 +19,38 @@ themeToggle.addEventListener('click', () => {
   } catch {}
   syncThemeButton()
 })
+
+const afterFirstLoadQueue = []
+let firstLoadFlushed = false
+
+function flushAfterFirstLoad() {
+  if (firstLoadFlushed) return
+  firstLoadFlushed = true
+  for (const type of ['pointerdown', 'keydown', 'touchstart']) {
+    window.removeEventListener(type, flushAfterFirstLoad, true)
+  }
+  root.dataset.afterFirstLoad = 'true'
+  window.dispatchEvent(new Event('yuku-after-first-load'))
+  for (const callback of afterFirstLoadQueue.splice(0)) callback()
+}
+
+function afterFirstLoad(callback) {
+  if (firstLoadFlushed) callback()
+  else afterFirstLoadQueue.push(callback)
+}
+
+const scheduleAfterFirstLoad = () => {
+  setTimeout(() => {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(flushAfterFirstLoad)
+    else setTimeout(flushAfterFirstLoad)
+  }, 200)
+}
+
+if (document.readyState === 'complete') scheduleAfterFirstLoad()
+else window.addEventListener('load', scheduleAfterFirstLoad, { once: true })
+for (const type of ['pointerdown', 'keydown', 'touchstart']) {
+  window.addEventListener(type, flushAfterFirstLoad, { capture: true, passive: true })
+}
 
 // ---------- mobile sidebar drawer (sidebar/backdrop are per-page, so query lazily) ----------
 const menuToggle = document.getElementById('menu-toggle')
@@ -676,6 +709,48 @@ window.addEventListener(
   { passive: true },
 )
 
+// Registry widgets (docs/widgets/*.mjs at build, docs/assets/widgets/*.js here).
+// Each module is fetched only on a page that carries its element, and only once
+// the element is near the viewport, so a widget that boots the engine costs
+// nothing to a reader who never scrolls to it.
+function initWidgets() {
+  for (const root of document.querySelectorAll('[data-widget]:not([data-widget-ready])')) {
+    root.dataset.widgetReady = '1'
+    const name = root.dataset.widget
+    const boot = () => {
+      const failed = (error) => {
+        root.dataset.widgetState = 'unavailable'
+        const status = root.querySelector('[data-widget-status]')
+        if (status) status.textContent = `widget unavailable: ${error?.message ?? error}`
+      }
+      if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+        failed(new Error(`bad widget name ${name}`))
+        return
+      }
+      import(new URL(`./widgets/${name}.js`, import.meta.url))
+        .then((module) => module.default(root, { cleanup: pageCleanupCallbacks }))
+        .then((dispose) => {
+          if (typeof dispose === 'function') pageCleanupCallbacks.push(dispose)
+        })
+        .catch(failed)
+    }
+    if (typeof IntersectionObserver !== 'function') {
+      boot()
+      continue
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        observer.disconnect()
+        boot()
+      },
+      { rootMargin: '400px 0px' },
+    )
+    observer.observe(root)
+    pageCleanupCallbacks.push(() => observer.disconnect())
+  }
+}
+
 function initPage() {
   initCopyButtons()
   initPmTabs()
@@ -685,6 +760,7 @@ function initPage() {
   initTerminalDemos()
   initFacetTabs()
   initCliBuilder()
+  initWidgets()
   collectOutline()
   // The hero panel and the /playground workbench are the same component. It
   // pulls in the WebAssembly build of the dialect, so it is only fetched on a
@@ -695,15 +771,29 @@ function initPage() {
     demo.dataset.ready = '1'
     let dispose = null
     let disposed = false
-    import(new URL('./yuku-playground.js', import.meta.url))
-      .then((module) => module.initDemo(demo))
-      .then((cleanup) => {
-        dispose = cleanup
-        if (disposed) dispose?.()
-      })
-      .catch(() => {})
+    let ready = false
+    let pendingScenario = null
+    const rememberScenario = (event) => {
+      const button = event.target.closest?.('[data-scenario]')
+      if (!ready && button && demo.closest('main')?.contains(button)) pendingScenario = button
+    }
+    demo.closest('main')?.addEventListener('click', rememberScenario)
+    afterFirstLoad(() => {
+      if (disposed) return
+      import(new URL('./yuku-playground.js', import.meta.url))
+        .then((module) => module.initDemo(demo))
+        .then((cleanup) => {
+          dispose = cleanup
+          ready = true
+          if (disposed) dispose?.()
+          else pendingScenario?.click()
+          pendingScenario = null
+        })
+        .catch(() => {})
+    })
     pageCleanupCallbacks.push(() => {
       disposed = true
+      demo.closest('main')?.removeEventListener('click', rememberScenario)
       dispose?.()
     })
   }
@@ -745,9 +835,11 @@ function initPage() {
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return
         io.disconnect()
-        import(new URL('./fuel.js', import.meta.url))
-          .then((module) => module.init(fuelRows, pageCleanupCallbacks))
-          .catch(() => {})
+        afterFirstLoad(() => {
+          import(new URL('./fuel.js', import.meta.url))
+            .then((module) => module.init(fuelRows, pageCleanupCallbacks))
+            .catch(() => {})
+        })
       },
       { rootMargin: '200px 0px' },
     )
@@ -1134,7 +1226,7 @@ if ('navigation' in window) {
   document.addEventListener('pointerover', (event) => {
     const link = event.target.closest('.sidebar a, .top-nav a, .pager a, .hero-actions a')
     if (link && new URL(link.href).origin === location.origin) {
-      fetchPage(link.href).catch(() => {})
+      afterFirstLoad(() => fetchPage(link.href).catch(() => {}))
     }
   })
 }

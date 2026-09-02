@@ -1,9 +1,0 @@
-200 /
-200 /oxc-tsrx
-200 /oxc-tsrx/guide/introduction
-200 /oxc-tsrx/playground
-200 /guessless
-200 /yuku-tsrx
-200 /yuku-tsrx/guide/introduction
-200 /yuku-tsrx/playground
-200 /robots.txt

@@ -1,0 +1,43 @@
+/* Diagnostic underlines and lists shared by the registry widgets. */
+.wd-source {
+  white-space: pre;
+}
+.wd-diag {
+  border-bottom: 2px solid #f85149;
+  background: rgba(248, 81, 73, 0.16);
+  border-radius: 2px;
+  cursor: help;
+}
+.wd-diag.wd-warning {
+  border-bottom-color: #d29922;
+  background: rgba(210, 153, 34, 0.16);
+}
+.wd-eof {
+  margin-left: 4px;
+  padding: 0 4px;
+  font-size: 0.75em;
+  color: var(--c-text-2);
+}
+.wd-diagnostics {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.wd-diagnostics li + li {
+  margin-top: 6px;
+}
+.wd-severity {
+  font-weight: 600;
+}
+.wd-severity.wd-error {
+  color: #f85149;
+}
+.wd-severity.wd-warning {
+  color: #d29922;
+}
+.wd-help {
+  display: block;
+  color: var(--c-text-2);
+}

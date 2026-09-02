@@ -21,7 +21,7 @@ import type {
 	TSRXJSXElement,
 	TSRXJSXFragment,
 	VariableDeclaration,
-} from "yuku-tsrx";
+} from "@tsrx/yuku";
 
 const expression: Expression = { type: "Identifier", start: 1, end: 2 };
 const tsrxExpression: TSRXExpression = {

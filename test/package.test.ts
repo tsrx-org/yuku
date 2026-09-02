@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { expect, test } from "vitest";
 
 test("generated npm host composes the compatibility wrapper with package-relative binding", async () => {
-	const packageRoot = resolve("zig-out/npm/yuku-tsrx");
+	const packageRoot = resolve("zig-out/npm/yuku");
 	const entry = pathToFileURL(resolve(packageRoot, "index.js"));
 	entry.searchParams.set("self-contained", String(Date.now()));
 	const module = await import(entry.href);
@@ -16,7 +16,7 @@ test("generated npm host composes the compatibility wrapper with package-relativ
 
 	const binding = readFileSync(resolve(packageRoot, "binding.js"), "utf8");
 	expect(binding).not.toContain("YUKU_TSRX_BINDING");
-	expect(binding).toContain("@yuku-tsrx");
+	expect(binding).toContain("@tsrx/yuku-");
 
 	const manifest = JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8"));
 	// 0.1.0 ships exactly the two bindings that are built and exercised. The
@@ -25,8 +25,8 @@ test("generated npm host composes the compatibility wrapper with package-relativ
 	// consumer cannot resolve an addon built from different source than the
 	// JavaScript that loads it.
 	expect(manifest.optionalDependencies).toEqual({
-		"@yuku-tsrx/binding-darwin-arm64": manifest.version,
-		"@yuku-tsrx/binding-linux-x64-gnu": manifest.version,
+		"@tsrx/yuku-darwin-arm64": manifest.version,
+		"@tsrx/yuku-linux-x64-gnu": manifest.version,
 	});
 	expect(manifest.files).toEqual(
 		expect.arrayContaining([
@@ -42,7 +42,7 @@ test("generated npm host composes the compatibility wrapper with package-relativ
 });
 
 test("generated npm host infers TSRX through query and hash suffixes", async () => {
-	const entry = pathToFileURL(resolve("zig-out/npm/yuku-tsrx/index.js"));
+	const entry = pathToFileURL(resolve("zig-out/npm/yuku/index.js"));
 	entry.searchParams.set("query-suffixes", String(Date.now()));
 	const { parseModule } = await import(entry.href);
 	const source = "const view = @if (ready) { <p /> };";

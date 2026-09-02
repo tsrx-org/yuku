@@ -40,9 +40,8 @@ const flag = struct {
     const loose: u32 = 1 << 8;
 };
 
-/// Codegen option bits packed by the JS host. `strip` and `minify` select a
-/// codegen entry point rather than a field, because the dialect's
-/// `codegen.Options` has neither.
+/// Codegen option bits packed by the JS host. `strip` and `minify` select the
+/// printer configuration (`codegen.Config`), the rest fill `codegen.Options`.
 const opt = struct {
     const strip: u32 = 1 << 0;
     const minify: u32 = 1 << 1;
@@ -145,13 +144,10 @@ fn runGenerate(source: []const u8, flags: u32, opts: u32) ![]u8 {
     var tree = try parser.parse(gpa, source, parseOptions(flags));
     defer tree.deinit();
 
-    const options = codegenOptions(opts);
-    const result = if (opts & opt.strip != 0)
-        try parser.codegen.strip(gpa, &tree, options)
-    else if (opts & opt.minify != 0)
-        try parser.codegen.minify(gpa, &tree, options)
-    else
-        try parser.codegen.print(gpa, &tree, options);
+    const result = try parser.codegen.emit(gpa, &tree, .{
+        .strip_ts = opts & opt.strip != 0,
+        .minify = opts & opt.minify != 0,
+    }, codegenOptions(opts));
     defer result.deinit(gpa);
 
     var payload: usize = 4 + result.code.len + 4;

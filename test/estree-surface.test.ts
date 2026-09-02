@@ -11,7 +11,7 @@ import {
 	type JSXForExpression,
 	type JSXSwitchExpression,
 	type JSXTryExpression,
-} from "yuku-tsrx";
+} from "@tsrx/yuku";
 
 // These three capabilities were each re-implemented downstream (markless, and
 // frameless after it) because the package did not offer them. They live here so

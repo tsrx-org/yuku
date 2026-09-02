@@ -20,17 +20,17 @@ const config = {
 			"docs/**",
 			"goal.md",
 			"test/parser/misc/**",
-			"npm/yuku-tsrx/decode.js",
-			"npm/yuku-tsrx/decode-analyzer.js",
-			"npm/yuku-tsrx/encode.js",
+			"npm/yuku/decode.js",
+			"npm/yuku/decode-analyzer.js",
+			"npm/yuku/encode.js",
 		],
 	},
 	lint: {
 		ignorePatterns: [
 			"test/parser/misc/**",
-			"npm/yuku-tsrx/decode.js",
-			"npm/yuku-tsrx/decode-analyzer.js",
-			"npm/yuku-tsrx/encode.js",
+			"npm/yuku/decode.js",
+			"npm/yuku/decode-analyzer.js",
+			"npm/yuku/encode.js",
 		],
 	},
 	test: {

@@ -692,6 +692,15 @@ pub fn minify(allocator: Allocator, tree: *Tree, options: Options) Error!Result 
     return printImpl(.{ .minify = true }, allocator, tree, options);
 }
 
+/// Runtime dispatch over the printers, for a host that receives `strip` and
+/// `minify` as data. `strip` wins when both are set: each printer is its own
+/// comptime instantiation and a combined one costs the wasm ~140 KiB.
+pub fn emit(allocator: Allocator, tree: *Tree, cfg: Config, options: Options) Error!Result {
+    if (cfg.strip_ts) return strip(allocator, tree, options);
+    if (cfg.minify) return minify(allocator, tree, options);
+    return print(allocator, tree, options);
+}
+
 pub fn printImpl(
     comptime cfg: Config,
     allocator: Allocator,

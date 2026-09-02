@@ -1,52 +1,28 @@
-# Publish yuku-tsrx and its two binding packages to npm.
+# Publish @tsrx/yuku and its two binding packages to npm.
+#
+# Pushing a tag `v<version>` publishes that version. A manual dispatch defaults
+# to a dry run that rehearses everything and publishes nothing; publishing from
+# a dispatch additionally needs the confirmation phrase `PUBLISH <version>`.
 #
 # Authentication is npm Trusted Publishing over GitHub Actions OIDC. There is no
-# NPM_TOKEN anywhere in this file and none is needed: the npm CLI notices the
-# OIDC environment that `permissions: id-token: write` creates, exchanges the
-# short-lived GitHub token for a short-lived registry token, and publishes.
+# NPM_TOKEN anywhere in this file and none is needed: `id-token: write` on the
+# publish job is the whole credential, and npm attaches a provenance attestation
+# on its own. Two things must be true first, and neither is something a workflow
+# can do for itself: each of the three names must already exist on the registry
+# (scripts/publish-placeholders.mjs), and each must have a trusted publisher
+# pointing at this repository and at the file name `publish.yml` exactly
+# (scripts/trust-publishers.sh). docs/releasing/launch-runbook.md is the order.
 #
-# Two things must be true before this workflow can authenticate, and neither one
-# is something a workflow can do for itself:
-#
-#   1. Each of the three package names must already exist on the registry. npm
-#      configures a trusted publisher on an existing package, so the very first
-#      version of a brand new name cannot be published this way.
-#   2. Each package must have a trusted publisher pointing at THIS repository and
-#      at the file name `publish.yml` exactly.
-#
-# `node scripts/publish-placeholders.mjs --publish` does the first, from the
-# owner's laptop, and then prints the clicks for the second.
-# docs/releasing/publish-runbook.md is the long form.
-#
-# Safety: this workflow only runs from a manual dispatch, it defaults to
-# `mode: dry-run`, and publishing additionally requires typing a confirmation
-# phrase that contains the version. Publishing to npm is irreversible after the
-# 72 hour unpublish window, so the default has to be the harmless one.
-#
-# One deliberate difference from the oxc-tsrx workflow this is adapted from.
-# There, the publish job downloads a `release-candidate-<sha>` artifact produced
-# by a separate reviewed workflow, and refuses to publish bytes that came from
-# anywhere else. yuku-tsrx has no candidate workflow to download from, so the
-# equivalent guarantee is built the only other honest way: the build jobs below
-# compile the addons from this exact dispatched revision, on this run, and the
-# publish job consumes nothing but their artifacts. The property being preserved
-# is "the bytes published were built from a named revision by CI, not uploaded
-# by a human"; the mechanism is different because the infrastructure is.
-#
-# The second difference is that each addon is built on its own native runner.
-# Zig can cross-compile a darwin addon from linux, and napi-zig's own release
-# mode does exactly that, but nothing in this repository has ever proven that
-# path end to end. 0.1.0 ships what is proven: darwin-arm64 from macOS,
-# linux-x64-gnu from linux.
+# The bytes published are the ones release-candidate.yml built on this run from
+# this exact revision, checksummed, and never touched by a human.
 name: Publish to npm
 
 on:
+  push:
+    tags:
+      - "v[0-9]*"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to publish, for example 0.1.0. Must match every manifest."
-        required: true
-        type: string
       mode:
         description: "dry-run rehearses everything and publishes nothing. publish is irreversible."
         required: true
@@ -66,10 +42,6 @@ on:
         default: ""
         type: string
 
-# `contents: read` is the whole write surface of this workflow apart from the
-# publish itself. `id-token: write`, granted only on the publish job below, is
-# what makes OIDC possible and is the one permission npm trusted publishing
-# requires.
 permissions:
   contents: read
 
@@ -80,188 +52,20 @@ concurrency:
 env:
   npm_config_audit: "false"
   npm_config_fund: "false"
-  # The Yuku seam yuku-tsrx builds against: the head of
-  # yuku-toolchain/yuku#164, branch `agent/minimal-parser-extension` on the
-  # thejackshelton/yuku fork. Pinned to a SHA, not a branch name, because a
-  # release must ship the seam it was proven against and a PR branch moves.
-  SEAM_REPOSITORY: thejackshelton/yuku
-  SEAM_REF: 8a95bfbfc132e3df77bd142943fede6a36f90a7b
 
 jobs:
-  # The gate, first and alone, so that a mistyped confirmation phrase costs one
-  # cheap job instead of two full Zig builds.
+  # First and alone, so a mistyped phrase or a tag that does not match the
+  # manifests costs one cheap job instead of two Zig builds.
   gate:
-    name: gate ${{ inputs.mode }} ${{ inputs.version }}
+    name: gate
     # A fork cannot publish these names, and should not try.
-    if: github.repository == 'compiled-run/yuku-tsrx'
+    if: github.repository == 'tsrx-org/yuku'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    steps:
-      # Free-text dispatch inputs are never interpolated into a shell command.
-      # They are passed through the environment so that a value containing shell
-      # syntax stays a value.
-      - name: Check the publish gate
-        shell: bash
-        env:
-          MODE: ${{ inputs.mode }}
-          CONFIRM: ${{ inputs.confirm }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          case "$VERSION" in
-            [0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "version must look like 1.2.3 or 1.2.3-rc.1, got: $VERSION" >&2; exit 1 ;;
-          esac
-          if [[ "$MODE" == "dry-run" ]]; then
-            echo "mode=dry-run: nothing will be published."
-            exit 0
-          fi
-          if [[ "$MODE" != "publish" ]]; then
-            echo "unknown mode: $MODE" >&2
-            exit 1
-          fi
-          if [[ "$CONFIRM" != "PUBLISH $VERSION" ]]; then
-            echo "mode=publish requires confirm to be exactly: PUBLISH $VERSION" >&2
-            exit 1
-          fi
-          echo "mode=publish confirmed for $VERSION. This is irreversible."
-
-  build:
-    name: build ${{ matrix.binding }}
-    needs: gate
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          # The linux job is the one that carries the meta package, because its
-          # host target is linux-x64-gnu and because the publish job needs
-          # exactly one copy of index.js, binding.js and package.json rather
-          # than two possibly-different ones merged over each other. It
-          # excludes the darwin binding directory, which `zig build` stages a
-          # manifest into on every platform but can only fill in on macOS.
-          # cpu pins a portable baseline. Without one, `zig build` compiles for
-          # the build runner's native CPU, and 0.1.2's linux binding - built on
-          # a newer microarchitecture than the fleet average - died with SIGILL
-          # ("Illegal instruction") on every consumer runner. x86_64_v2 (SSE4.2,
-          # no AVX requirement) runs on anything GitHub hosts; Apple Silicon is
-          # pinned to its own floor for the same hygiene.
-          - runner: ubuntu-24.04
-            binding: linux-x64-gnu
-            cpu: x86_64_v2
-            upload: |
-              yuku-tsrx/zig-out/npm/yuku-tsrx
-              !yuku-tsrx/zig-out/npm/yuku-tsrx/@yuku-tsrx/binding-darwin-arm64
-          - runner: macos-14
-            binding: darwin-arm64
-            cpu: apple_m1
-            upload: yuku-tsrx/zig-out/npm/yuku-tsrx/@yuku-tsrx/binding-darwin-arm64
-    steps:
-      - name: Check out the exact source revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
-        with:
-          path: yuku-tsrx
-          persist-credentials: false
-
-      # build.zig.zon resolves `.yuku` through the relative path
-      # ../yuku-minimal-seam, so the seam has to be a sibling of the checkout
-      # and has to be named exactly that.
-      - name: Check out the pinned Yuku seam
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
-        with:
-          repository: ${{ env.SEAM_REPOSITORY }}
-          ref: ${{ env.SEAM_REF }}
-          path: yuku-minimal-seam
-          persist-credentials: false
-
-      - name: Set up Zig 0.16.0
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
-        with:
-          version: 0.16.0
-
-      - name: Verify the pinned toolchain and seam
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(zig version)" = 0.16.0
-          test "$(git -C yuku-minimal-seam rev-parse HEAD)" = "$SEAM_REF"
-          test -z "$(git -C yuku-minimal-seam status --porcelain=v1 --untracked-files=all)"
-
-      # Debug for both platforms, deliberately and for consistency rather than
-      # for speed: the addon 0.1.0 ships is the addon this project has been
-      # testing against all along, and switching one platform to ReleaseFast
-      # for the release would make the shipped binary the one nobody ran.
-      - name: Build the addon
-        working-directory: yuku-tsrx
-        shell: bash
-        run: zig build -Dcpu=${{ matrix.cpu }}
-
-      # Only the ELF. A Debug ELF carries about 58MB of DWARF that no consumer
-      # can use, and npm would ship every byte of it. --strip-debug only, never
-      # --strip-all: the dynamic symbol table is how Node finds
-      # napi_register_module_v1. scripts/release-local.mjs does the same thing
-      # for a laptop rehearsal.
-      - name: Strip debug info from the linux addon
-        if: matrix.binding == 'linux-x64-gnu'
-        working-directory: yuku-tsrx
-        shell: bash
-        run: |
-          set -euo pipefail
-          addon=zig-out/npm/yuku-tsrx/@yuku-tsrx/binding-linux-x64-gnu/yuku-tsrx.node
-          before=$(stat -c %s "$addon")
-          # ubuntu runners ship GNU binutils, not LLVM; either objcopy strips
-          # ELF debug sections identically for our purpose.
-          strip_tool=$(command -v llvm-objcopy || command -v objcopy)
-          "$strip_tool" --strip-debug "$addon"
-          echo "stripped with $strip_tool: $before -> $(stat -c %s "$addon") bytes"
-
-      # A staged tree that does not contain the addon it advertises is the
-      # failure that produces a package which installs and then throws on first
-      # import, so it is caught here, per platform, before anything is uploaded.
-      - name: Check the staged tree
-        working-directory: yuku-tsrx
-        shell: bash
-        env:
-          BINDING: ${{ matrix.binding }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          stage="zig-out/npm/yuku-tsrx"
-          test -f "$stage/@yuku-tsrx/binding-$BINDING/yuku-tsrx.node"
-          test -f "$stage/@yuku-tsrx/binding-$BINDING/package.json"
-          node --input-type=module <<'NODE'
-          import assert from "node:assert/strict";
-          import { readFile } from "node:fs/promises";
-          const binding = process.env.BINDING;
-          const version = process.env.VERSION;
-          const stage = "zig-out/npm/yuku-tsrx";
-          const manifest = JSON.parse(
-            await readFile(`${stage}/@yuku-tsrx/binding-${binding}/package.json`, "utf8"),
-          );
-          assert.equal(manifest.name, `@yuku-tsrx/binding-${binding}`);
-          assert.equal(manifest.version, version, `binding-${binding} is not ${version}`);
-          const meta = JSON.parse(await readFile(`${stage}/package.json`, "utf8"));
-          assert.equal(meta.version, version, `meta package is not ${version}`);
-          console.log(`binding-${binding} staged at ${version}`);
-          NODE
-
-      - name: Upload the staged tree
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: stage-${{ matrix.binding }}
-          path: ${{ matrix.upload }}
-          if-no-files-found: error
-          retention-days: 14
-
-  publish:
-    name: ${{ inputs.mode }} ${{ inputs.version }}
-    needs: build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      id-token: write
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      mode: ${{ steps.resolve.outputs.mode }}
+      dist_tag: ${{ steps.resolve.outputs.dist_tag }}
     steps:
       - name: Check out the exact source revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
@@ -272,194 +76,198 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.15.0
-          registry-url: "https://registry.npmjs.org"
-          # A release build should resolve everything fresh.
           package-manager-cache: false
 
-      # The pin below is deliberate: it keeps the publishing npm from moving
-      # when the Node pin moves, and the assert turns a silently too-old npm
-      # into a failed job instead of an unexplained ENEEDAUTH.
+      # Free-text inputs are passed through the environment, never
+      # interpolated into a shell command.
+      - name: Resolve the version and the mode
+        id: resolve
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_CONFIRM: ${{ inputs.confirm }}
+          INPUT_DIST_TAG: ${{ inputs.dist_tag }}
+        run: |
+          set -euo pipefail
+          manifest_version=$(node -p "require('./package.json').version")
+          if [[ "$EVENT" == "push" ]]; then
+            version="${REF_NAME#v}"
+            mode=publish
+            if [[ "$version" != "$manifest_version" ]]; then
+              echo "tag $REF_NAME does not match the root package.json version $manifest_version" >&2
+              exit 1
+            fi
+          else
+            version="$manifest_version"
+            mode="$INPUT_MODE"
+            if [[ "$mode" == "publish" && "$INPUT_CONFIRM" != "PUBLISH $version" ]]; then
+              echo "mode=publish requires confirm to be exactly: PUBLISH $version" >&2
+              exit 1
+            fi
+          fi
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "version must look like 1.2.3 or 1.2.3-rc.1, got: $version" >&2; exit 1 ;;
+          esac
+          node scripts/sync-version.ts --check --version "$version"
+          test -f LICENSE || { echo "no LICENSE file at the repository root" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=${INPUT_DIST_TAG:-latest}" >> "$GITHUB_OUTPUT"
+          if [[ "$mode" == "publish" ]]; then
+            echo "mode=publish for $version. This is irreversible."
+          else
+            echo "mode=dry-run for $version: nothing will be published."
+          fi
+
+  candidate:
+    name: candidate
+    needs: gate
+    uses: ./.github/workflows/release-candidate.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: ${{ needs.gate.outputs.mode }} ${{ needs.gate.outputs.version }}
+    needs:
+      - gate
+      - candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+      MODE: ${{ needs.gate.outputs.mode }}
+      DIST_TAG: ${{ needs.gate.outputs.dist_tag }}
+    steps:
+      - name: Install Node.js 24.15.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      # Pinned so the publishing npm does not move when the Node pin moves; the
+      # assert turns a silently too-old npm into a failed job rather than an
+      # unexplained ENEEDAUTH.
       - name: Pin an npm new enough for trusted publishing
         shell: bash
         run: |
           set -euo pipefail
-          node --version
-          npm --version
           npm install -g npm@11.18.0
-          npm --version
           node --input-type=module <<'NODE'
           import assert from "node:assert/strict";
           import { execFileSync } from "node:child_process";
           const actual = execFileSync("npm", ["--version"], { encoding: "utf8" }).trim();
-          const minimum = "11.5.1";
-          const order = (value) => value.split(".").map(Number);
-          const [aMajor, aMinor, aPatch] = order(actual);
-          const [mMajor, mMinor, mPatch] = order(minimum);
-          const ok =
-            aMajor > mMajor ||
-            (aMajor === mMajor && aMinor > mMinor) ||
-            (aMajor === mMajor && aMinor === mMinor && aPatch >= mPatch);
-          assert.ok(ok, `npm ${actual} is older than ${minimum}, which trusted publishing requires`);
-          console.log(`npm ${actual} satisfies the ${minimum} trusted-publishing floor`);
+          const [a, b, c] = actual.split(".").map(Number);
+          const ok = a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1)));
+          assert.ok(ok, `npm ${actual} is older than 11.5.1, which trusted publishing requires`);
+          console.log(`npm ${actual} satisfies the trusted-publishing floor`);
           NODE
 
-      # Two downloads rather than one merged one, because the two artifacts have
-      # different roots and each has exactly one correct destination. Nothing
-      # here overlaps: the linux artifact excluded the darwin binding directory.
-      - name: Download the staged tree built on linux
+      - name: Download the candidate this run built
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: stage-linux-x64-gnu
-          path: zig-out/npm/yuku-tsrx
+          name: ${{ needs.candidate.outputs.artifact }}
+          path: release
 
-      - name: Download the darwin binding built on macOS
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: stage-darwin-arm64
-          path: zig-out/npm/yuku-tsrx/@yuku-tsrx/binding-darwin-arm64
-
-      - name: Show what is about to be published
+      - name: Re-verify the candidate checksums
         shell: bash
-        run: find zig-out/npm/yuku-tsrx -type f | sort
+        working-directory: release
+        run: sha256sum --check SHA256SUMS
 
-      # The gate. Nothing below this step is allowed to run in either mode,
-      # because everything below it is either a rehearsal of the publish or the
-      # publish itself.
-      #
-      # This is scripts/release-local.mjs, the same file a laptop rehearsal
-      # runs, so the checks cannot drift apart from the ones a human ran before
-      # committing. It asserts every manifest's version, access, provenance,
-      # os/cpu/libc and repository; that every path each manifest declares in
-      # its own `files` array is really there; that each addon's magic bytes are
-      # the format its os/cpu claims; that the meta package's
-      # optionalDependencies are exactly the two bindings, each pinned to this
-      # exact version; and then it runs `npm publish --dry-run` on all three.
-      - name: Gate and rehearse the staged packages
+      # Bindings first, meta last. @tsrx/yuku lists both bindings in
+      # optionalDependencies and npm resolves those at install time against
+      # whatever is on the registry at that moment: publish the meta package
+      # first and a consumer in that window installs JavaScript with no addon
+      # behind it and no error saying so.
+      - name: Resolve the publish order from the tarballs
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { execFileSync } from "node:child_process";
+          import { writeFile } from "node:fs/promises";
+          const version = process.env.VERSION;
+          const order = ["@tsrx/yuku-darwin-arm64", "@tsrx/yuku-linux-x64-gnu", "@tsrx/yuku"];
+          const tarball = (name) =>
+            name === "@tsrx/yuku"
+              ? `release/tsrx-yuku-${version}.tgz`
+              : `release/tsrx-yuku-${name.slice("@tsrx/yuku-".length)}-${version}.tgz`;
+          const manifests = new Map();
+          for (const name of order) {
+            const path = tarball(name);
+            const manifest = JSON.parse(
+              execFileSync("tar", ["-xzOf", path, "package/package.json"], { encoding: "utf8" }),
+            );
+            assert.equal(manifest.name, name, `${path}: unexpected package name`);
+            assert.equal(manifest.version, version, `${name}: version is not ${version}`);
+            assert.equal(manifest.publishConfig?.access, "public", `${name}: not public`);
+            assert.equal(manifest.publishConfig?.provenance, true, `${name}: provenance is off`);
+            assert.notEqual(manifest.license, "UNLICENSED", `${name}: unlicensed`);
+            manifests.set(name, path);
+          }
+          const meta = JSON.parse(
+            execFileSync("tar", ["-xzOf", tarball("@tsrx/yuku"), "package/package.json"], { encoding: "utf8" }),
+          );
+          assert.deepEqual(
+            Object.keys(meta.optionalDependencies ?? {}).sort(),
+            order.slice(0, -1).sort(),
+            "@tsrx/yuku optionalDependencies must be exactly the two bindings",
+          );
+          for (const name of order.slice(0, -1)) {
+            assert.equal(meta.optionalDependencies[name], version, `${name} must be pinned to ${version}`);
+          }
+          await writeFile("publish-order.txt", `${order.map((name) => `${name} ${manifests.get(name)}`).join("\n")}\n`);
+          for (const name of order) console.log(`  ${name}  ${manifests.get(name)}`);
+          NODE
+          if [[ "$DIST_TAG" != "latest" ]]; then
+            echo "WARNING: the dist-tag is $DIST_TAG, so \`npm install @tsrx/yuku\` will not resolve it."
+          fi
+
+      # Always rehearsed, in both modes. Provenance is off for the rehearsal
+      # only: a dry run has nothing to attest. This is also the check that the
+      # version is still free on the registry.
+      - name: Rehearse the publish
         shell: bash
         env:
-          # A dry run has nothing to attest, and asking Sigstore for a signature
-          # it will never use only adds a failure mode to the step whose whole
-          # job is to be safe.
           NPM_CONFIG_PROVENANCE: "false"
         run: |
           set -euo pipefail
-          node scripts/release-local.mjs --dry-run --json release-gate-report.json
-
-      - name: Check that the version matches the dispatch
-        shell: bash
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          node --input-type=module <<'NODE'
-          import assert from "node:assert/strict";
-          import { readFile } from "node:fs/promises";
-          const report = JSON.parse(await readFile("release-gate-report.json", "utf8"));
-          assert.equal(
-            report.version,
-            process.env.VERSION,
-            `the staged tree is ${report.version} but the dispatch asked for ${process.env.VERSION}`,
-          );
-          console.log(`staged tree is ${report.version}, as dispatched`);
-          NODE
-
-      - name: Retain the gate report
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: publish-gate-report-${{ inputs.version }}-${{ inputs.mode }}
-          path: release-gate-report.json
-          if-no-files-found: warn
-          retention-days: 90
-
-      # A repository with no LICENSE file has granted nobody the right to use
-      # what it publishes, and "UNLICENSED" says exactly that. Rehearsing an
-      # unlicensed package is harmless; putting one on a public registry is a
-      # decision only the owner can make, and it is not reversible after 72
-      # hours. So this refuses publish mode, and only publish mode, until the
-      # owner has picked a license and committed a LICENSE file.
-      - name: Refuse to publish without a license
-        if: inputs.mode == 'publish'
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f LICENSE || {
-            echo "no LICENSE file at the repository root. Pick a license before publishing." >&2
-            exit 1
-          }
-          node --input-type=module <<'NODE'
-          import assert from "node:assert/strict";
-          import { readFile } from "node:fs/promises";
-          for (const path of [
-            "zig-out/npm/yuku-tsrx/package.json",
-            "zig-out/npm/yuku-tsrx/@yuku-tsrx/binding-darwin-arm64/package.json",
-            "zig-out/npm/yuku-tsrx/@yuku-tsrx/binding-linux-x64-gnu/package.json",
-          ]) {
-            const manifest = JSON.parse(await readFile(path, "utf8"));
-            assert.notEqual(
-              manifest.license,
-              "UNLICENSED",
-              `${manifest.name} is still UNLICENSED; set a real SPDX license before publishing`,
-            );
-            assert.ok(manifest.license, `${manifest.name} has no license field`);
-          }
-          console.log("every manifest carries a license");
-          NODE
-
-      # The only step that writes to the registry. It cannot run unless the
-      # operator both selected `publish` and typed the confirmation phrase,
-      # which the gate job above already checked.
-      #
-      # No NODE_AUTH_TOKEN and no NPM_TOKEN: `id-token: write` on this job is
-      # the entire credential. npm generates provenance automatically for a
-      # trusted publish from a public repository, and every manifest also
-      # carries publishConfig.provenance true.
-      #
-      # The order is not negotiable. The meta package lists both bindings in
-      # optionalDependencies and npm resolves those at install time against
-      # whatever is on the registry at that moment. Publish the meta package
-      # first and you open a window in which a consumer installs the JavaScript
-      # with no addon behind it, and gets no error saying so.
-      - name: Publish, bindings first
-        if: inputs.mode == 'publish'
-        shell: bash
-        env:
-          DIST_TAG: ${{ inputs.dist_tag }}
-        run: |
-          set -euo pipefail
-          tag="${DIST_TAG:-latest}"
-          if [[ "$tag" != "latest" ]]; then
-            echo "WARNING: the dist-tag is $tag, so \`npm install yuku-tsrx\` will not resolve it."
-          fi
-          stage="$PWD/zig-out/npm/yuku-tsrx"
-          for target in \
-            "$stage/@yuku-tsrx/binding-darwin-arm64" \
-            "$stage/@yuku-tsrx/binding-linux-x64-gnu" \
-            "$stage"
-          do
-            echo "::group::publish $target"
-            # An absolute path, deliberately: npm reads a bare relative `a/b`
-            # as the GitHub shorthand `user/repo` and tries to clone it.
-            npm publish "$target" --tag "$tag" --access public
+          while read -r name path; do
+            echo "::group::dry-run $name"
+            # `./` is load-bearing: npm reads a bare `release/x.tgz` as the
+            # GitHub shorthand `user/repo`.
+            npm publish "./$path" --tag "$DIST_TAG" --access public --dry-run
             echo "::endgroup::"
-          done
+          done < publish-order.txt
 
-      # The backstop, and only the backstop. npm versions are immutable and
-      # unpublish is restricted, so nothing here can prevent a bad release; it
-      # can only find one, and the only remedy is deprecate and patch.
-      # Prevention lives in the gate above.
-      #
-      # What this sees that no pre-publish check can is npm's own handling of
-      # the upload: it installs yuku-tsrx@<version> from the registry into a
-      # project outside this workspace, resolves the binding through the
-      # published optionalDependencies the way a consumer's first install does,
-      # and then parses a real .tsrx source through the installed addon. One
-      # platform, linux-x64-gnu, because this is detection rather than coverage.
-      - name: Install the published release from the registry and run it
-        if: inputs.mode == 'publish'
+      # The only step that writes to the registry.
+      - name: Publish, bindings first
+        if: needs.gate.outputs.mode == 'publish'
         shell: bash
-        env:
-          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          while read -r name path; do
+            echo "::group::publish $name"
+            npm publish "./$path" --tag "$DIST_TAG" --access public
+            echo "::endgroup::"
+          done < publish-order.txt
+
+      # The backstop, and only the backstop: npm versions are immutable, so
+      # nothing here can prevent a bad release, only find one (the remedy is
+      # deprecate and patch). It installs the published version into a project
+      # outside this workspace, resolves the binding through the published
+      # optionalDependencies the way a consumer's first install does, and
+      # parses a real .tsrx source through the installed addon.
+      - name: Install the published release from the registry and run it
+        if: needs.gate.outputs.mode == 'publish'
+        shell: bash
         run: |
           set -euo pipefail
           probe="$RUNNER_TEMP/publish-probe"
@@ -467,13 +275,12 @@ jobs:
           mkdir -p "$probe"
           cd "$probe"
           npm init -y > /dev/null
-          # A read can hit a replica that has not caught up with the write that
-          # just succeeded, so the install gets one retry.
-          npm install "yuku-tsrx@$VERSION" || (sleep 30 && npm install "yuku-tsrx@$VERSION")
-          test -f node_modules/@yuku-tsrx/binding-linux-x64-gnu/yuku-tsrx.node
+          # A read can hit a replica that has not caught up with the write.
+          npm install "@tsrx/yuku@$VERSION" || (sleep 30 && npm install "@tsrx/yuku@$VERSION")
+          test -f node_modules/@tsrx/yuku-linux-x64-gnu/yuku-tsrx.node
           node --input-type=module <<'NODE'
           import assert from "node:assert/strict";
-          import { parseModule } from "yuku-tsrx";
+          import { parseModule } from "@tsrx/yuku";
           const program = parseModule("export const view = <p>published</p>;", "probe.tsrx");
           assert.equal(program.type, "Program");
           assert.equal(program.body.length, 1);

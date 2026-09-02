@@ -16,7 +16,7 @@
 // caption.
 
 import { spawnSync } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,7 +29,40 @@ const outDir = path.join(repoRoot, "docs", "transcripts");
 const HEAD_LINES = 15;
 const TAIL_LINES = 15;
 
+async function prepareFirstParse() {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "yuku-first-parse-"));
+  const scopeDir = path.join(cwd, "node_modules", "@tsrx");
+  await mkdir(scopeDir, { recursive: true });
+  await symlink(
+    path.join(repoRoot, "zig-out", "npm", "yuku"),
+    path.join(scopeDir, "yuku"),
+    "dir",
+  );
+  await writeFile(
+    path.join(cwd, "list.mjs"),
+    `// list.mjs
+import { parseModule } from "@tsrx/yuku";
+
+const source = \`<ul>@for (const item of items; key item.id) { <li>{item.label}</li> }</ul>\`;
+const program = parseModule(source, "list.tsrx");
+const list = program.body[0].expression;
+console.log(list.children.map((child) => child.type));
+`,
+  );
+  return cwd;
+}
+
 const DEMOS = [
+  {
+    name: "getting-started-first-parse",
+    prepare: prepareFirstParse,
+    commands: [
+      {
+        comment: "parse the first TSRX file",
+        argv: ["node", "list.mjs"],
+      },
+    ],
+  },
   {
     name: "getting-started-build",
     commands: [
@@ -39,7 +72,7 @@ const DEMOS = [
       },
       {
         comment: "zig build prints nothing on success, so look at what it wrote",
-        argv: ["ls", "zig-out/npm/yuku-tsrx"],
+        argv: ["ls", "zig-out/npm/yuku"],
       },
       {
         comment: "the Zig test suite; --summary all only adds the tree at the end",
@@ -94,10 +127,10 @@ function trimOutput(output) {
   };
 }
 
-function runCommand(argv) {
+function runCommand(argv, cwd = repoRoot) {
   const started = Date.now();
   const result = spawnSync(argv[0], argv.slice(1), {
-    cwd: repoRoot,
+    cwd,
     shell: false,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
@@ -140,12 +173,13 @@ await mkdir(outDir, { recursive: true });
 
 let wrote = 0;
 for (const demo of DEMOS) {
+  const cwd = demo.prepare ? await demo.prepare() : repoRoot;
   const transcript = [];
   const dropped = [];
   for (const command of demo.commands) {
     const display = command.argv.join(" ");
     process.stderr.write(`${demo.name}: $ ${display}\n`);
-    const { exitCode, output, durationMs } = runCommand(command.argv);
+    const { exitCode, output, durationMs } = runCommand(command.argv, cwd);
     if (exitCode !== 0) {
       // The rule, in one branch: nothing that failed is published, and the
       // output is never touched up to make it look like it did not.
@@ -165,6 +199,7 @@ for (const demo of DEMOS) {
   }
 
   if (transcript.length === 0) {
+    if (demo.prepare) await rm(cwd, { recursive: true, force: true });
     throw new Error(`${demo.name}: every command failed, so there is nothing honest to publish`);
   }
 
@@ -177,10 +212,7 @@ for (const demo of DEMOS) {
         generated_by: "tools/capture-transcripts.mjs",
         captured_at: capturedAt,
         platform,
-        caption:
-          `Captured on ${capturedAt.slice(0, 10)} by tools/capture-transcripts.mjs on ` +
-          `${platform.os} ${platform.arch} (${platform.cpu}), Node ${platform.node}, Zig ${platform.zig}. ` +
-          "Every line is what the command printed; long output is trimmed where marked.",
+        caption: '',
         dropped,
         transcript,
       },
@@ -189,6 +221,7 @@ for (const demo of DEMOS) {
     )}\n`,
   );
   wrote += 1;
+  if (demo.prepare) await rm(cwd, { recursive: true, force: true });
   process.stderr.write(
     `${demo.name}: wrote ${path.relative(repoRoot, file)} (${transcript.length} commands, ${dropped.length} dropped)\n`,
   );

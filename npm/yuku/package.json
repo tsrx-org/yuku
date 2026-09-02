@@ -1,0 +1,54 @@
+{
+	"name": "@tsrx/yuku",
+	"version": "0.2.0",
+	"description": "TSRX parser, analyzer, and code generator: a compile-time dialect on Yuku, with a JavaScript API on a native addon",
+	"keywords": [
+		"analyzer",
+		"ast",
+		"codegen",
+		"estree",
+		"parser",
+		"tsrx",
+		"yuku"
+	],
+	"homepage": "https://yuku.tsrx.dev",
+	"bugs": {
+		"url": "https://github.com/tsrx-org/yuku/issues"
+	},
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tsrx-org/yuku.git",
+		"directory": "npm/yuku"
+	},
+	"files": [
+		"index.js",
+		"index.d.ts",
+		"binding.js",
+		"decode.js",
+		"decode-analyzer.js",
+		"diagnostic-spans.js",
+		"encode.js",
+		"walk.js"
+	],
+	"type": "module",
+	"main": "index.js",
+	"types": "index.d.ts",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"import": "./index.js"
+		}
+	},
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	},
+	"optionalDependencies": {
+		"@tsrx/yuku-darwin-arm64": "0.2.0",
+		"@tsrx/yuku-linux-x64-gnu": "0.2.0"
+	},
+	"engines": {
+		"node": ">=22"
+	}
+}

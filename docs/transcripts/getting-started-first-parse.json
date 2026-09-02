@@ -1,0 +1,23 @@
+{
+  "generated_by": "tools/capture-transcripts.mjs",
+  "captured_at": "2026-09-02T16:12:56.658Z",
+  "platform": {
+    "os": "Darwin 25.5.0",
+    "arch": "arm64",
+    "cpu": "Apple M5 Pro",
+    "node": "v24.15.0",
+    "zig": "0.16.0"
+  },
+  "caption": "",
+  "dropped": [],
+  "transcript": [
+    {
+      "comment": "parse the first TSRX file",
+      "command": "node list.mjs",
+      "exit_code": 0,
+      "duration_ms": 35,
+      "output": "[ 'JSXForExpression' ]",
+      "omitted_lines": 0
+    }
+  ]
+}

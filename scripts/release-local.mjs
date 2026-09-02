@@ -33,7 +33,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const STAGE = join(REPO, "zig-out", "npm", "yuku-tsrx");
+const STAGE = join(REPO, "zig-out", "npm", "yuku");
 
 // The publish order is not negotiable, and it is the same reason it is not
 // negotiable in oxc-tsrx: npm resolves optionalDependencies at install time
@@ -42,8 +42,8 @@ const STAGE = join(REPO, "zig-out", "npm", "yuku-tsrx");
 // JavaScript with no addon behind it, and no error saying so.
 const BINDINGS = [
   {
-    name: "@yuku-tsrx/binding-darwin-arm64",
-    dir: "@yuku-tsrx/binding-darwin-arm64",
+    name: "@tsrx/yuku-darwin-arm64",
+    dir: "@tsrx/yuku-darwin-arm64",
     os: "darwin",
     cpu: "arm64",
     libc: undefined,
@@ -52,8 +52,8 @@ const BINDINGS = [
     format: "Mach-O 64-bit",
   },
   {
-    name: "@yuku-tsrx/binding-linux-x64-gnu",
-    dir: "@yuku-tsrx/binding-linux-x64-gnu",
+    name: "@tsrx/yuku-linux-x64-gnu",
+    dir: "@tsrx/yuku-linux-x64-gnu",
     os: "linux",
     cpu: "x64",
     libc: "glibc",
@@ -62,7 +62,7 @@ const BINDINGS = [
     format: "ELF 64-bit",
   },
 ];
-const META = "yuku-tsrx";
+const META = "@tsrx/yuku";
 const PUBLISH_ORDER = [...BINDINGS.map((binding) => binding.dir), "."];
 
 const argv = process.argv.slice(2);
@@ -190,14 +190,14 @@ if (wants("--strip-linux")) {
     "objcopy",
   ].find((candidate) => spawnSync(candidate, ["--version"], { stdio: "ignore" }).status === 0);
   assert.ok(objcopy, "llvm-objcopy not found; install LLVM or drop --strip-linux");
-  const addon = join(STAGE, "@yuku-tsrx/binding-linux-x64-gnu", "yuku-tsrx.node");
+  const addon = join(STAGE, "@tsrx/yuku-linux-x64-gnu", "yuku-tsrx.node");
   const before = statSync(addon).size;
   // --strip-debug only, never --strip-all: the dynamic symbol table is how
   // Node finds napi_register_module_v1.
   execFileSync(objcopy, ["--strip-debug", addon], { stdio: "inherit" });
   const after = statSync(addon).size;
   console.log(`stripped linux-x64-gnu addon: ${before} -> ${after} bytes`);
-  const entry = report.packages.find((pkg) => pkg.name === "@yuku-tsrx/binding-linux-x64-gnu");
+  const entry = report.packages.find((pkg) => pkg.name === "@tsrx/yuku-linux-x64-gnu");
   if (entry) entry.bytes = after;
 }
 

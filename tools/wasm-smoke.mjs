@@ -52,15 +52,27 @@ function packFlags(options = {}) {
   return flags >>> 0;
 }
 
+// Same refusals as docs/assets/yuku-wasm.js and npm/yuku-tsrx/index.js.
+const QUOTES_SHORTEST_UNSUPPORTED =
+  'yuku-tsrx generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself';
+const SOURCE_MAPS_UNSUPPORTED =
+  "yuku-tsrx generate: sourceMaps is not supported here; the wasm build carries no source maps";
+
 function packGenerateOptions(options = {}) {
   const {
     strip = false,
     minify = false,
     format = "pretty",
-    quotes = "preserve",
     comments = "some",
     indent = 2,
+    sourceMaps,
   } = options;
+  let { quotes = "preserve" } = options;
+  if (sourceMaps) throw new TypeError(SOURCE_MAPS_UNSUPPORTED);
+  if (quotes === "shortest") {
+    if (!minify) throw new TypeError(QUOTES_SHORTEST_UNSUPPORTED);
+    quotes = "preserve";
+  }
   const quoteIndex = QUOTES.indexOf(quotes);
   const commentIndex = COMMENT_MODES.indexOf(comments);
   if (quoteIndex < 0) throw new Error(`unknown quotes ${quotes}`);
@@ -192,6 +204,56 @@ function findNodeType(root, type) {
   return null;
 }
 
+function deadEmptyLoops(root, source) {
+  const lengthAliases = new Map();
+  const compared = new Set(["<", "<=", ">", ">=", "==", "===", "!=", "!=="]);
+  const textOf = (node) => source.slice(node.start, node.end);
+  const lengthTarget = (node) => {
+    if (
+      node?.type === "MemberExpression" &&
+      !node.computed &&
+      node.property?.type === "Identifier" &&
+      node.property.name === "length"
+    ) {
+      return textOf(node.object);
+    }
+    return node?.type === "Identifier" ? lengthAliases.get(node.name) : undefined;
+  };
+  const visits = (value, visit, seen = new Set()) => {
+    if (value === null || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    visit(value);
+    for (const child of Array.isArray(value) ? value : Object.values(value)) {
+      visits(child, visit, seen);
+    }
+  };
+  visits(root, (node) => {
+    if (node.type !== "VariableDeclarator" || node.id?.type !== "Identifier") return;
+    const target = lengthTarget(node.init);
+    if (target) lengthAliases.set(node.id.name, target);
+  });
+  const testTargets = (test) => {
+    if (test?.type !== "BinaryExpression" || !compared.has(test.operator)) return [];
+    return [lengthTarget(test.left), lengthTarget(test.right)].filter(Boolean);
+  };
+  const found = [];
+  const walk = (value, enclosingTests = [], seen = new Set()) => {
+    if (value === null || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    const tests = value.type === "JSXIfExpression" ? [...enclosingTests, value.test] : enclosingTests;
+    if (value.type === "JSXForExpression" && value.empty && value.statement?.right) {
+      const iterable = textOf(value.statement.right);
+      const test = enclosingTests.find((candidate) => testTargets(candidate).includes(iterable));
+      if (test) found.push({ iterable, test: textOf(test) });
+    }
+    for (const child of Array.isArray(value) ? value : Object.values(value)) {
+      walk(child, tests, seen);
+    }
+  };
+  walk(root);
+  return found;
+}
+
 const failures = [];
 
 function check(condition, message) {
@@ -295,6 +357,11 @@ async function runSmoke() {
     findNodeType(program, "JSXCodeBlock") !== null,
     "heroCode program has no JSXCodeBlock node",
   );
+  for (const dead of deadEmptyLoops(program, heroCode)) {
+    failures.push(
+      `heroCode has a dead @empty: the @for iterable \`${dead.iterable}\` sits under @if (${dead.test}), which compares that iterable's .length`,
+    );
+  }
 
   const semantic = analyze(heroCode, { lang: "tsx", sourceType: "module" }).semantic;
   check(semantic.symbol.count > 0, "heroCode analyze reported 0 symbols");
@@ -350,9 +417,9 @@ async function runSmoke() {
 
 async function main() {
   wasm = await instantiate();
-  ({ decode } = await import(pathToFileURL(path.join(repoRoot, "npm", "yuku-tsrx", "decode.js"))));
+  ({ decode } = await import(pathToFileURL(path.join(repoRoot, "npm", "yuku", "decode.js"))));
   ({ decode: decodeAnalyzer } = await import(
-    pathToFileURL(path.join(repoRoot, "npm", "yuku-tsrx", "decode-analyzer.js"))
+    pathToFileURL(path.join(repoRoot, "npm", "yuku", "decode-analyzer.js"))
   ));
 
   if (process.argv.includes("--fences")) {

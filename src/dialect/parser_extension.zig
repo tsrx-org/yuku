@@ -266,7 +266,10 @@ pub fn Host(comptime Parser: type) type {
             if (!try p.expect(.left_brace, "Expected '{'", null)) return null;
             var expression = try parseSimpleExpression(p);
             if (expression == null or p.current_token.tag != .right_brace) {
-                const close = matchingBrace(p.source, start) orelse return null;
+                const close = matchingBrace(p.source, start) orelse {
+                    try p.reportExpected(p.current_token.span, "Expected '}' to close TSRX dynamic tag expression", .{});
+                    return null;
+                };
                 const inner: Span = .{ .start = start + 1, .end = close };
                 expression = try p.tree.addNode(.{ .numeric_literal = .{
                     .kind = .decimal,
@@ -698,25 +701,39 @@ pub fn Host(comptime Parser: type) type {
             // entry point.  A TSRX directive needs exactly one statement, so
             // select the token immediately following its balanced body as a
             // temporary terminator and recover the sole parsed node.
+            const head = p.current_token.span;
             const body_end = balancedBodyEnd(p);
             const terminator: Token = statementTerminator(p, body_end);
             const saved = p.checkpoint();
             const saved_store = container(p).store.checkpoint();
             const body = try p.parseBody(terminator, .other);
             const nodes = p.tree.extra(body);
-            // A directive body that stopped anywhere other than its own
-            // balanced close means the terminator lookahead was wrong and the
-            // parser has run past the directive.  Discard that speculative
-            // parse - together with its diagnostics - and decline instead of
-            // leaving the surrounding template holding a bad token position.
-            const consumed_exactly_one = nodes.len == 1 and
-                (body_end == null or p.tree.span(nodes[0]).end == body_end.?);
-            if (!consumed_exactly_one) {
-                p.rewind(saved);
+            if (nodes.len == 0) {
+                // The caller committed at `@`: diagnostics must outlive the rewind.
+                if (p.diagnostics.items.len == saved.diagnostics_len) {
+                    try p.report(head, "Expected a statement after '@'", .{});
+                }
+                var restore = saved;
+                restore.diagnostics_len = p.diagnostics.items.len;
+                p.rewind(restore);
                 container(p).store.rewind(saved_store);
                 return null;
             }
-            return nodes[0];
+            const first = nodes[0];
+            const end = p.tree.span(first).end;
+            if (nodes.len == 1 and (body_end == null or end == body_end.?)) return first;
+            // Terminator guess was wrong (unbraced body, brace inside a comment): keep the first statement, resume after it.
+            var comments_len = saved.lexer_comments_len;
+            while (comments_len < p.lexer.comments.items.len and
+                p.lexer.comments.items[comments_len].span.start < end) comments_len += 1;
+            var restore = saved;
+            restore.nodes_len = p.tree.nodes.len;
+            restore.extra_len = p.tree.extras.items.len;
+            restore.diagnostics_len = p.diagnostics.items.len;
+            restore.lexer_comments_len = comments_len;
+            p.rewind(restore);
+            if (!try resumeAfterRawSpan(p, end, .statement)) return null;
+            return first;
         }
 
         /// Source offset just past the balanced `{ ... }` body that follows the
@@ -815,7 +832,10 @@ pub fn Host(comptime Parser: type) type {
             defer properties.deinit(p.allocator());
             while (p.current_token.tag != .right_brace and p.current_token.tag != .eof) {
                 const key_token = p.current_token;
-                if (!key_token.tag.isIdentifierLike()) return null;
+                if (!key_token.tag.isIdentifierLike()) {
+                    try p.reportExpected(key_token.span, "Expected a property name in TSRX lazy object pattern", .{});
+                    return null;
+                }
                 const name = try p.identifierName(key_token);
                 const key = try p.tree.addNode(.{ .identifier_name = .{ .name = name } }, key_token.span);
                 try p.advance() orelse return null;
@@ -824,13 +844,19 @@ pub fn Host(comptime Parser: type) type {
                 if (p.current_token.tag == .colon) {
                     shorthand = false;
                     try p.advance() orelse return null;
-                    value = try parseBindingIdentifier(p) orelse return null;
+                    value = try parseBindingIdentifier(p) orelse {
+                        try p.reportExpected(p.current_token.span, "Expected an identifier after ':' in TSRX lazy object pattern", .{});
+                        return null;
+                    };
                 } else {
                     value = try p.tree.addNode(.{ .binding_identifier = .{ .name = name } }, key_token.span);
                 }
                 if (p.current_token.tag == .assign) {
                     try p.advance() orelse return null;
-                    const right = try parseSimpleExpression(p) orelse return null;
+                    const right = try parseSimpleExpression(p) orelse {
+                        try p.reportExpected(p.current_token.span, "Expected a default value after '=' in TSRX lazy object pattern", .{});
+                        return null;
+                    };
                     value = try p.tree.addNode(.{ .assignment_pattern = .{ .left = value, .right = right } }, .{
                         .start = p.tree.span(value).start,
                         .end = p.tree.span(right).end,
@@ -870,14 +896,20 @@ pub fn Host(comptime Parser: type) type {
                 if (p.current_token.tag == .spread) {
                     const rest_start = p.current_token.span.start;
                     try p.advance() orelse return null;
-                    const argument = try parseBindingIdentifier(p) orelse return null;
+                    const argument = try parseBindingIdentifier(p) orelse {
+                        try p.reportExpected(p.current_token.span, "Expected an identifier after '...' in TSRX lazy array pattern", .{});
+                        return null;
+                    };
                     rest = try p.tree.addNode(.{ .binding_rest_element = .{ .argument = argument } }, .{
                         .start = rest_start,
                         .end = p.tree.span(argument).end,
                     });
                     break;
                 }
-                try elements.append(p.allocator(), try parseBindingIdentifier(p) orelse return null);
+                try elements.append(p.allocator(), try parseBindingIdentifier(p) orelse {
+                    try p.reportExpected(p.current_token.span, "Expected an identifier in TSRX lazy array pattern", .{});
+                    return null;
+                });
                 if (p.current_token.tag != .comma) break;
                 try p.advance() orelse return null;
             }

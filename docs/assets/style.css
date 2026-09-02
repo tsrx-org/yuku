@@ -1682,6 +1682,19 @@ html.dark .gs-terminal-line-error {
   max-height: 440px;
   overflow: auto;
 }
+.ex-editor-layer {
+  position: relative;
+  height: 220px;
+  overflow: hidden;
+  background: var(--c-code-bg);
+}
+.ex-editor-layer .ex-source {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
 .ex-source-host .code-block {
   margin: 0;
   border: 0;
@@ -1713,14 +1726,13 @@ html.dark .gs-terminal-line-error {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-/* quickCode paints the two shiki stops as custom properties and leaves the
-   choice to the page, because a guide page follows the reader's theme. */
+/* Live Shiki output follows the reader's theme. */
 .ex-generated span,
-.ex-source-plain span {
+.ex-source span[style] {
   color: var(--shiki-light);
 }
 html.dark .ex-generated span,
-html.dark .ex-source-plain span {
+html.dark .ex-source span[style] {
   color: var(--shiki-dark);
 }
 .ex-seg {
@@ -1841,6 +1853,35 @@ html.dark .ex-source-plain span {
   border-color: var(--c-brand);
   background: var(--c-brand-soft);
 }
+.ex-controls button[role="switch"][aria-checked="true"] {
+  border-color: var(--c-brand);
+  background: var(--c-brand-soft);
+  box-shadow: inset 0 -2px var(--c-brand);
+}
+.ex-toolbar {
+  justify-content: space-between;
+}
+.ex-toolbar-label {
+  color: var(--c-text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+.ex-readout {
+  min-height: 2.4em;
+  margin: 0;
+  padding: 8px 14px;
+  border-top: 1px solid var(--c-divider);
+  color: var(--c-text-2);
+  font-size: 12.5px;
+}
+.ex-status-meta {
+  margin-left: 0.35em;
+  color: var(--c-text-3);
+}
+[data-readout]:focus-visible {
+  outline: 2px solid var(--c-brand);
+  outline-offset: 1px;
+}
 /* A control that is off is said so by a dashed edge and the muted token, never
    by fading it: an opacity here takes the label under 4.5:1 in both themes. */
 .ex-controls button[disabled] {
@@ -1891,17 +1932,34 @@ html.dark .ex-source-plain span {
   font-size: 12.5px;
 }
 .ex-editor {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   display: block;
   width: 100%;
-  min-height: 220px;
+  height: 100%;
+  margin: 0;
   padding: 14px 16px;
   border: 0;
-  color: var(--c-text-1);
-  background: var(--c-code-bg);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--c-text-1);
+  background: transparent;
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.65;
-  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 2;
+  resize: none;
+  outline: none;
+}
+.ex-editor::selection {
+  background: color-mix(in srgb, var(--c-brand) 35%, transparent);
+}
+.ex-editor:focus-visible {
+  outline: 2px solid var(--c-brand);
+  outline-offset: -2px;
 }
 .ex-status {
   padding: 9px 14px 11px;
@@ -2513,33 +2571,6 @@ p.home-bench-link {
   margin: 26px auto 4px;
   text-align: center;
   font-size: 14px;
-}
-.home-upstream {
-  max-width: 880px;
-  margin: 0 auto;
-  padding: 40px 24px 56px;
-}
-.home-upstream h2 {
-  margin: 0 0 8px;
-  font-family: var(--font-display);
-  font-size: 26px;
-  letter-spacing: -0.01em;
-  text-align: center;
-}
-.home-upstream > p {
-  max-width: 640px;
-  margin: 0 auto 20px;
-  text-align: center;
-  font-size: 14.5px;
-  color: var(--c-text-2);
-}
-.home-upstream > p a {
-  color: var(--c-brand);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.home-upstream > p a:hover {
-  color: var(--c-brand-hover);
 }
 p.home-upstream-link {
   margin: 0 auto 4px;
@@ -4611,3 +4642,21 @@ html.dark .page-status-label {
 }
 
 /* #css-pages-end */
+/* A widget narrower than ~760px stacks its panes; side by side only fits the playground. */
+figure.widget,
+.ex-figure {
+  container-type: inline-size;
+}
+@container (max-width: 760px) {
+  .projection-map-panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .projection-map-pane + .projection-map-pane {
+    border-left: 0;
+    border-top: 1px solid var(--c-divider);
+  }
+  .ex-source-host,
+  .ex-out {
+    max-height: 320px;
+  }
+}

@@ -1,6 +1,6 @@
 {
-	"name": "yuku-tsrx-workspace",
-	"version": "0.0.0",
+	"name": "yuku-workspace",
+	"version": "0.2.0",
 	"private": true,
 	"type": "module",
 	"scripts": {
@@ -8,32 +8,39 @@
 		"check:m3-generated": "node tools/m3-generated.ts --check",
 		"docs:assets": "node docs/generate-assets.mjs",
 		"docs:build": "node docs/build.mjs",
+		"docs:readme-hero": "node tools/readme-hero.mjs",
 		"docs:serve": "node docs/serve.mjs",
 		"docs:social-card": "node docs/generate-social-card.mjs",
 		"docs:transcripts": "node tools/capture-transcripts.mjs",
 		"docs:verify-playground": "node docs/verify-playground.mjs",
-		"docs:wasm": "zig build wasm -Doptimize=ReleaseSmall",
+		"docs:wasm": "node tools/build-wasm.mjs",
 		"docs:wasm-smoke": "node tools/wasm-smoke.mjs",
 		"fmt": "vp fmt",
 		"gen:npm": "node tools/m3-generated.ts --sync",
 		"lint": "vp lint",
 		"prepare": "git config core.hooksPath .githooks",
+		"release": "bumpp package.json --no-commit --no-tag --no-push && node scripts/sync-version.ts",
+		"release:check": "node scripts/sync-version.ts --check",
+		"release:notes": "node scripts/release-notes.ts",
 		"test": "vp test"
 	},
 	"dependencies": {
 		"@tsrx/core": "0.1.32"
 	},
 	"devDependencies": {
+		"@tsrx/yuku": "workspace:*",
 		"@types/node": "24.12.2",
+		"bumpp": "^10.3.1",
+		"changelogen": "^0.6.2",
 		"marked": "^18.0.6",
 		"minisearch": "^7.2.0",
 		"playwright-core": "^1.61.1",
+		"rolldown": "^1.0.3",
 		"shiki": "^4.3.1",
 		"typescript": "5.9.3",
 		"vite": "8.0.16",
 		"vite-plus": "0.1.20",
-		"vitest": "4.1.5",
-		"yuku-tsrx": "workspace:*"
+		"vitest": "4.1.5"
 	},
 	"engines": {
 		"node": ">=22"
