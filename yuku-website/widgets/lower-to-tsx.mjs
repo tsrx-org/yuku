@@ -1,10 +1,8 @@
-import { generate } from '@tsrx/yuku'
-import { lowerProgram } from '../assets/widgets/_lower-to-tsx.js'
+import { generatedSource, lowerProgram } from '../assets/widgets/_lower-to-tsx.js'
 
 export const className = 'explorer ex-figure'
 
 const OPTIONS = { lang: 'tsx', sourceType: 'module' }
-const PRINT = { format: 'pretty', indent: 2 }
 
 export default async function render({ fence, ctx }) {
   if (!fence || fence.lang !== 'tsrx') throw new Error('lower-to-tsx needs a ```tsrx fence right after its marker')
@@ -12,8 +10,8 @@ export default async function render({ fence, ctx }) {
   const error = parsed.diagnostics.find((item) => item.severity === 'error')
   if (error) throw new Error(`lower-to-tsx: the fence does not parse: ${error.message}`)
   const lowered = lowerProgram(parsed.program, fence.code)
-  const printed = generate(lowered.program, PRINT)
-  if (printed.errors.length) throw new Error(`lower-to-tsx: generate failed: ${printed.errors[0].message}`)
+  // The browser prints through the wasm printer; at build only the serialized tree is checked.
+  const printed = { code: generatedSource(lowered.program) }
   const reparsed = await ctx.parse(printed.code, OPTIONS)
   const parseError = reparsed.diagnostics.find((item) => item.severity === 'error')
   if (parseError) throw new Error(`lower-to-tsx: output does not parse: ${parseError.message}`)
