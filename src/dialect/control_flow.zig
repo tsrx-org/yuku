@@ -1,6 +1,7 @@
 const std = @import("std");
 const abi = @import("dialect_abi");
 const schema = @import("dialect_schema");
+const patterns = @import("patterns.zig");
 
 pub fn statement(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
     return dispatch(Host, parser);
@@ -366,7 +367,7 @@ fn parseCatch(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeInd
     var reset = Host.NodeIndex.null;
     if (Host.currentToken(parser) == .left_paren) {
         if (!try Host.advance(parser)) return null;
-        param = try parseBinding(Host, parser) orelse return null;
+        param = try parseCatchParam(Host, parser) orelse return null;
         if (Host.currentToken(parser) == .comma) {
             if (!try Host.advance(parser)) return null;
             reset = try parseBinding(Host, parser) orelse return null;
@@ -385,12 +386,27 @@ fn parseCatch(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeInd
     return node;
 }
 
-fn parseBinding(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeIndex {
+fn parseCatchParam(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeIndex {
+    const param = switch (Host.currentToken(parser)) {
+        .bitwise_and => switch (try patterns.binding(Host, parser)) {
+            .unhandled => unreachable,
+            .handled => |node| node orelse return null,
+        },
+        .left_brace, .left_bracket => try Host.parseOrdinaryBinding(parser) orelse return null,
+        else => try parseBindingIdentifier(Host, parser) orelse return null,
+    };
+    return parseBindingAnnotation(Host, parser, param);
+}
+
+fn parseBindingIdentifier(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeIndex {
     const name_span = Host.currentSpan(parser);
     const name = try stringValue(Host, parser, name_span);
     if (!try Host.advance(parser)) return null;
+    return @as(?Host.NodeIndex, try Host.addNode(parser, Host.NodeData{ .binding_identifier = .{ .name = name, .type_annotation = .null } }, name_span));
+}
+
+fn parseBindingAnnotation(comptime Host: type, parser: anytype, binding: Host.NodeIndex) Host.ErrorType!?Host.NodeIndex {
     var annotation = Host.NodeIndex.null;
-    var end = name_span.end;
     if (Host.currentToken(parser) == .colon) {
         const colon_start = Host.currentSpan(parser).start;
         if (!try Host.advance(parser)) return null;
@@ -400,10 +416,24 @@ fn parseBinding(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeI
         } }, type_span);
         const reference = try Host.addNode(parser, Host.NodeData{ .ts_type_reference = .{ .type_name = type_name } }, type_span);
         annotation = try Host.addNode(parser, Host.NodeData{ .ts_type_annotation = .{ .type_annotation = reference } }, .{ .start = colon_start, .end = type_span.end });
-        end = type_span.end;
         if (!try Host.advance(parser)) return null;
+
+        var data = Host.data(parser, binding);
+        switch (data) {
+            inline .binding_identifier, .object_pattern, .array_pattern => |*value| value.type_annotation = annotation,
+            else => unreachable,
+        }
+        parser.tree.setData(binding, data);
+        var span = Host.nodeSpan(parser, binding);
+        span.end = type_span.end;
+        parser.tree.setSpan(binding, span);
     }
-    return @as(?Host.NodeIndex, try Host.addNode(parser, Host.NodeData{ .binding_identifier = .{ .name = name, .type_annotation = annotation } }, .{ .start = name_span.start, .end = end }));
+    return binding;
+}
+
+fn parseBinding(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeIndex {
+    const binding = try parseBindingIdentifier(Host, parser) orelse return null;
+    return parseBindingAnnotation(Host, parser, binding);
 }
 
 /// `parseValueUntil` for a committed directive: a missing expression is reported, never declined.

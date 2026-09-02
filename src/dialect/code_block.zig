@@ -35,10 +35,34 @@ fn startsBlock(comptime Host: type, parser: anytype) bool {
 
 fn parse(comptime Host: type, parser: anytype, allow_return: bool) Host.ErrorType!?Host.NodeIndex {
     const start = Host.currentSpan(parser).start;
+    const extras_start = (try Host.addExtra(parser, &.{})).start;
     if (!try Host.advance(parser)) return null;
-    // Parse template blocks with return syntax enabled so the dialect owns the
-    // single template-specific diagnostic below. Function bodies retain it.
-    const block = try Host.parseBlockWithTemporaryReturn(parser, true) orelse return null;
+    // Parse with return enabled; expression blocks validate returns below.
+    const parsed = try Host.parseBlockWithTemporaryReturn(parser, true);
+    const block = parsed orelse blk: {
+        if (Host.currentToken(parser) != .eof) return null;
+        const extras_end = (try Host.addExtra(parser, &.{})).start;
+        const produced_range: Host.IndexRange = .{
+            .start = extras_start,
+            .len = extras_end - extras_start,
+        };
+        const produced = Host.extra(parser, produced_range);
+        var body_start = produced.len;
+        var next_start: u32 = @intCast(Host.source(parser).len);
+        while (body_start > 0) {
+            const node = produced[body_start - 1];
+            if (!Host.data(parser, node).isStatement()) break;
+            const span = Host.nodeSpan(parser, node);
+            if (span.start < start + 2 or span.end > next_start) break;
+            body_start -= 1;
+            next_start = span.start;
+        }
+        const body = try Host.addExtra(parser, produced[body_start..]);
+        try Host.report(parser, .{ .start = start, .end = start + 2 }, "Unclosed '@{' code block");
+        break :blk try Host.addNode(parser, Host.NodeData{ .block_statement = .{
+            .body = body,
+        } }, .{ .start = start + 1, .end = @intCast(Host.source(parser).len) });
+    };
     if (!allow_return) try reportReturns(Host, parser, block, 0);
 
     const range = switch (Host.data(parser, block)) {

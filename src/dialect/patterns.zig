@@ -23,6 +23,9 @@ fn lazyPattern(comptime Host: type, parser: anytype, start: u32) Host.ErrorType!
     }
     const node = try Host.parseLazyPattern(parser) orelse return .{ .handled = null };
     Host.extendNodeStart(parser, node, start);
+    if (Host.currentToken(parser) == .semicolon) {
+        try Host.report(parser, Host.nodeSpan(parser, node), "A lazy pattern needs 'of' or 'in' after it");
+    }
     const record = try Host.addRecord(parser, switch (open) {
         .left_bracket => schema.Record{ .array_pattern = .{
             .host_node = abi.OverlayHost.init(@intFromEnum(node)),

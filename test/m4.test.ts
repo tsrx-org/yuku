@@ -225,3 +225,92 @@ function holds(parent: unknown, child: object): boolean {
 	}
 	return false;
 }
+
+test("a TSRX catch parameter takes any binding pattern", () => {
+	// `@catch` used to read one identifier by hand, so every destructured or lazy parameter failed at ')'.
+	const cases: [clause: string, type: string, lazy: boolean, reset: boolean][] = [
+		["@catch (&{ message }, reset)", "ObjectPattern", true, true],
+		["@catch ({ message }, reset)", "ObjectPattern", false, true],
+		["@catch ({ message }: ErrorInfo, reset)", "ObjectPattern", false, true],
+		["@catch (&[first])", "ArrayPattern", true, false],
+		["@catch (error)", "Identifier", false, false],
+		["@catch (error: Error, reset)", "Identifier", false, true],
+		["@catch (error, reset)", "Identifier", false, true],
+	];
+	for (const [clause, type, lazy, reset] of cases) {
+		const source = `const v = @try { <b/> } ${clause} { <i/> };`;
+		const result = parse(source, { lang: "tsx" });
+		expect(result.diagnostics, clause).toEqual([]);
+		const handler = result.program.body[0].declarations[0].init.statement.handler;
+		expect(handler.param.type, clause).toBe(type);
+		expect(handler.param.lazy ?? false, clause).toBe(lazy);
+		expect(handler.resetParam?.type ?? null, clause).toBe(reset ? "Identifier" : null);
+	}
+});
+
+test("a lazy pattern cannot initialize a C-style for loop", () => {
+	for (const source of [
+		"for (&{ bit }; i < 4; i++) { a(bit); }",
+		"const v = @for (&{ bit }; index < 4; index += 1) { <b/> };",
+	]) {
+		const result = parse(source, { lang: "tsx" });
+		const start = source.indexOf("&{ bit }");
+		expect(result.diagnostics).toHaveLength(1);
+		expect(result.diagnostics[0]).toMatchObject({
+			message: "A lazy pattern needs 'of' or 'in' after it",
+			start,
+			end: start + "&{ bit }".length,
+		});
+	}
+
+	for (const source of [
+		"for (&{ bit } of items) { a(bit); }",
+		"for (&[key] in table) { a(key); }",
+		"for await (&{ a } of s) { a; }",
+		"const v = @for (&{ id } of items) { <b/> };",
+		"const &{ a } = props;",
+		"const f = (&{ a }) => a;",
+		"try {} catch (&{ cause }) {}",
+	]) {
+		expect(parse(source, { lang: "tsx" }).diagnostics, source).toEqual([]);
+	}
+});
+
+test("an unclosed function code block stays in the editor tree", () => {
+	for (const source of [
+		"export function View() @{",
+		"export function View() @{ const value = ",
+		"export function View() @{ @if (",
+		"export function View() @{ @ }",
+		"export function View() @{\n  <div>\n}",
+	]) {
+		const result = parse(source, { lang: "tsx" });
+		expect(result.program.end, source).toBe(source.length);
+		expect(result.program.body, source).toHaveLength(1);
+		const exported = result.program.body[0];
+		expect(exported.type, source).toBe("ExportNamedDeclaration");
+		expect(exported.declaration?.type, source).toBe("FunctionDeclaration");
+		expect(exported.declaration?.body?.type, source).toBe("JSXCodeBlock");
+		expect(result.diagnostics.length, source).toBeGreaterThan(0);
+		expect(
+			result.diagnostics.filter(({ message }) => message === "Unclosed '@{' code block"),
+			source,
+		).toEqual([
+			expect.objectContaining({ start: 23, end: 25 }),
+		]);
+		for (const diagnostic of result.diagnostics) {
+			expect(diagnostic.start, diagnostic.message).toBeGreaterThanOrEqual(0);
+			expect(diagnostic.end, diagnostic.message).toBeGreaterThanOrEqual(diagnostic.start);
+			expect(diagnostic.end, diagnostic.message).toBeLessThanOrEqual(source.length);
+		}
+	}
+});
+
+test("a closed function code block still keeps its render element", () => {
+	const source = "function View() @{ const value; <main /> }";
+	const result = parse(source, { lang: "tsx" });
+	expect(result.program.body[0]).toMatchObject({
+		type: "FunctionDeclaration",
+		body: { type: "JSXCodeBlock", render: { type: "JSXElement" } },
+	});
+});
