@@ -357,12 +357,12 @@ export default async function render({ ctx }) {
     ${items.join('\n    ')}
   </details>`)
   }
-  return `<div class="api-groups" data-api-groups data-api-functions="${declared.size}">
-  ${sections.join('\n  ')}
-  </div>
-  <div class="ex-controls ex-toolbar api-toolbar">
-    <label class="api-filter-label">Filter exports <input type="search" data-api-filter placeholder="parse, quotes, Scope…" aria-label="Filter the exports by name or any word in a signature" autocomplete="off"></label>
+  return `<div class="ex-controls ex-toolbar api-toolbar">
+    <label class="api-filter-label">Filter exports <input type="search" data-api-filter placeholder="Filter exports" aria-label="Filter the exports by name or any word in a signature" autocomplete="off"></label>
     <span class="api-count" data-api-count>${entries.length} exports</span>
+  </div>
+  <div class="api-groups" data-api-groups data-api-functions="${declared.size}">
+  ${sections.join('\n  ')}
   </div>
   <figcaption class="ex-status" data-widget-status aria-live="polite">read from npm/yuku/index.d.ts when this page was built; ${declared.size} functions checked against index.js</figcaption>`
 }

@@ -15,6 +15,14 @@
   background: color-mix(in srgb, var(--c-brand) 22%, transparent);
   border-radius: 3px;
 }
+.widget-link-rewrite .lr-removed {
+  display: inline-block;
+  width: 0.35em;
+  height: 0.75em;
+  margin: 0 0.08em;
+  border-bottom: 2px solid var(--c-brand);
+  vertical-align: baseline;
+}
 .widget-link-rewrite [data-lr-diagnostics] {
   padding: 4px 0 14px;
 }

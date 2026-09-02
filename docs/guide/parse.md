@@ -28,7 +28,7 @@ const program = parseModule(source, "Cart.tsrx");
 
 The filename selects the language: `.tsrx` and `.tsx` use `tsx`, `.jsx` uses `jsx`, `.d.ts` uses `dts`, and `.ts` uses `ts`. Everything else uses `js`; an explicit `lang` wins.
 
-`parseModule` also checks names and treats the file as a module. It throws a `SyntaxError` on the first error, while warnings still return a program.
+`parseModule` also checks names and treats the file as a module. It throws a `SyntaxError` on the first error, while warnings return a program.
 
 ```js
 const errors = [];

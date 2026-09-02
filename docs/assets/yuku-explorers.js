@@ -1,8 +1,7 @@
 // The engine-backed figures on the guide pages.
 //
-// Four of them, one per page: the AST/source explorer on Parser, the symbol
-// explorer on Analyzer, the codegen options walkthrough on Code Generator, and
-// the measure-in-this-tab figure on Benchmarks.
+// Three of them, one per page: the AST/source explorer on Parser, the symbol
+// explorer on Analyzer, and the codegen options walkthrough on Code Generator.
 // Every line any of them prints comes from docs/assets/yuku-wasm.js, which is
 // the real yuku-tsrx dialect compiled to WebAssembly and running in the
 // reader's tab. There is no pre-computed output in this file: if the module
@@ -131,6 +130,7 @@ function showError(figure, prefix, error) {
 
 function createSourcePane(figure, { segmented, onChange }) {
   const host = figure.querySelector('[data-ex-source]')
+  const tryButton = figure.querySelector('.try-button')
   const original = figure.dataset.source ?? ''
   let source = original
   let editor = null
@@ -171,6 +171,7 @@ function createSourcePane(figure, { segmented, onChange }) {
     },
     onChange(value) {
       source = value
+      if (tryButton) tryButton.dataset.code = source
       reset.hidden = source === original
       onChange(source)
     },
@@ -368,6 +369,7 @@ async function runSymbolExplorer(figure, pane) {
 
   const symbols = []
   for (let i = 0; i < semantic.symbol.count; i++) {
+    const scopeId = semantic.symbol.scopeId(i)
     const decls = []
     for (let j = 0; j < semantic.symbol.declCount(i); j++) {
       const node = semantic.symbol.declNode(i, j)
@@ -376,7 +378,8 @@ async function runSymbolExplorer(figure, pane) {
     symbols.push({
       name: semantic.symbol.name(i),
       flags: flagNames(semantic.symbol.flags(i), table),
-      scope: semantic.scope.kind(semantic.symbol.scopeId(i)),
+      scopeId,
+      scope: semantic.scope.kind(scopeId),
       decls,
       refs: [],
     })
@@ -422,28 +425,27 @@ async function runSymbolExplorer(figure, pane) {
     .join('')
 
   const childrenOf = (parentId) => scopes.filter((scope) => scope.parentId === parentId)
-  const scopeTree = (parentId, depth) =>
+  const scopeTree = (parentId) =>
     childrenOf(parentId)
-      .map(
-        (scope) =>
-          `<li class="ex-tree-row" style="--ex-depth:${depth}"><button type="button" aria-pressed="false" data-ex-scope="${scope.id}"><code>${escapeHtml(
-            scope.kind,
-          )}</code> <span class="explorer-span">${scope.start}:${scope.end}</span></button></li>${scopeTree(
-            scope.id,
-            depth + 1,
-          )}`,
-      )
+      .map((scope) => {
+        const names = symbols.filter((symbol) => symbol.scopeId === scope.id).map((symbol) => symbol.name)
+        const children = scopeTree(scope.id)
+        const declarations = names.length
+          ? names.map((name) => `<code>${escapeHtml(name)}</code>`).join(', ')
+          : '<span class="ex-scope-empty">none</span>'
+        return `<li class="ex-scope-node"><button type="button" aria-pressed="false" data-ex-scope="${scope.id}"><code class="ex-scope-kind">${escapeHtml(
+          scope.kind,
+        )}</code><span class="explorer-span">${scope.start}:${scope.end}</span><span class="ex-scope-declarations">names: ${declarations}</span></button>${
+          children ? `<ul class="ex-scope-children">${children}</ul>` : ''
+        }</li>`
+      })
       .join('')
 
-  out.innerHTML =
-    `<div class="table-wrap"><table><thead><tr><th>Symbol</th><th>Flags</th><th>Scope</th><th class="num">Decls</th><th class="num">Refs</th></tr></thead><tbody data-ex-symbols>${rows}</tbody></table></div>` +
-    `<details open class="ex-scopes"><summary>Scope tree</summary><ul class="ex-tree" data-ex-scope-tree>${scopeTree(
-      null,
-      0,
-    )}</ul></details>`
+  out.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Symbol</th><th>Flags</th><th>Scope</th><th class="num">Decls</th><th class="num">Refs</th></tr></thead><tbody data-ex-symbols>${rows}</tbody></table></div>`
 
   const body = out.querySelector('[data-ex-symbols]')
-  const scopeList = out.querySelector('[data-ex-scope-tree]')
+  const scopeList = figure.querySelector('[data-ex-scope-tree]')
+  scopeList.innerHTML = scopeTree(null)
 
   const selectSymbol = (index) => {
     for (const row of body.querySelectorAll('[data-ex-symbol]')) {
@@ -494,15 +496,32 @@ async function runSymbolExplorer(figure, pane) {
       figure.querySelector('[data-ex-readout]').textContent = `Scope ${id} is ${scope.kind} and spans ${scope.start}:${scope.end}.`
     }
   }
+  let hoveredScope = null
+  let focusedScope = null
+  const showActiveScope = () => highlightScope(hoveredScope ?? focusedScope)
   scopeList.addEventListener('mouseover', (event) => {
     const button = event.target.closest('[data-ex-scope]')
-    if (button) highlightScope(Number(button.dataset.exScope))
+    if (button) {
+      hoveredScope = Number(button.dataset.exScope)
+      showActiveScope()
+    }
   })
   scopeList.addEventListener('focusin', (event) => {
     const button = event.target.closest('[data-ex-scope]')
-    if (button) highlightScope(Number(button.dataset.exScope))
+    if (button) {
+      focusedScope = Number(button.dataset.exScope)
+      showActiveScope()
+    }
   })
-  scopeList.addEventListener('mouseleave', () => highlightScope(null))
+  scopeList.addEventListener('focusout', (event) => {
+    const button = event.relatedTarget?.closest?.('[data-ex-scope]')
+    focusedScope = button && scopeList.contains(button) ? Number(button.dataset.exScope) : null
+    showActiveScope()
+  })
+  scopeList.addEventListener('mouseleave', () => {
+    hoveredScope = null
+    showActiveScope()
+  })
 
   // Clicking the source is the same question asked from the other side: the
   // symbol whose declaration or reference covers this character.
@@ -664,167 +683,9 @@ async function runCodegen(figure, pane, state) {
   figure.dataset.exState = 'ready'
 }
 
-// ---------- 3.11 measure in this tab (reference/benchmarks) ----------
-
-const BENCH_WARMUP = 20
-// A browser clamps performance.now() to about a tenth of a millisecond, and one
-// parse of a guide-sized snippet is faster than that, so timing single parses
-// would print a column of zeroes and a made-up median. Parses are timed in
-// batches sized from the warm-up to take at least this long, and every number
-// below is a per-parse figure derived from a batch that the clock could
-// actually resolve. The table says so, because it changes what p95 means: it is
-// the p95 of the batches, not of individual parses.
-const BENCH_BATCH_TARGET_MS = 1
-const BENCH_MIN_BATCHES = 4
-// The first parses after the module boots are far slower than the steady state,
-// so the batch size is calibrated from a second short burst rather than from
-// the warm-up, which would size the batches off the cold numbers.
-const BENCH_CALIBRATION = 20
-// Long runs are handed back to the event loop between batches so the tab can
-// paint. The yield never sits inside a timed region.
-const BENCH_YIELD_MS = 40
-
-function percentileOf(sorted, fraction) {
-  if (sorted.length === 0) return 0
-  const index = Math.min(sorted.length - 1, Math.ceil(fraction * sorted.length) - 1)
-  return sorted[Math.max(index, 0)]
-}
-
-const integer = (value) => Math.round(value).toLocaleString('en-US')
-
-function browserLabel() {
-  const brands = navigator.userAgentData?.brands ?? []
-  const brand = brands.find((entry) => !/not.*brand/i.test(entry.brand))
-  if (brand) return `${brand.brand} ${brand.version}`
-  const match = /(Firefox|Edg|Chrome|Safari)\/(\d+)/.exec(navigator.userAgent ?? '')
-  return match ? `${match[1] === 'Edg' ? 'Edge' : match[1]} ${match[2]}` : 'your browser'
-}
-
-function benchState(figure) {
-  const script = figure.querySelector('[data-bench-samples]')
-  const samples = JSON.parse(script.textContent)
-  const first = figure.querySelector('[data-bench-sample][aria-pressed="true"]')
-  const iterations = figure.querySelector('[data-bench-iterations][aria-pressed="true"]')
-  return {
-    samples,
-    sample: first?.dataset.benchSample ?? Object.keys(samples)[0],
-    iterations: Number(iterations?.dataset.benchIterations ?? 500),
-    running: false,
-  }
-}
-
-async function runBench(figure, state) {
-  if (state.running) return
-  state.running = true
-  const out = figure.querySelector('[data-ex-out]')
-  const run = figure.querySelector('[data-bench-run]')
-  const sample = state.samples[state.sample]
-  const bytes = new TextEncoder().encode(sample.source).length
-  run.disabled = true
-  figure.dataset.benchState = 'running'
-  statusLine(figure, `parsing ${sample.label} ${state.iterations} times in this tab`)
-  out.innerHTML = `<p class="ex-note">running ${state.iterations} parses of ${escapeHtml(
-    sample.label,
-  )}</p>`
-  const timings = []
-  const started = performance.now()
-  let batchSize = 1
-  let batches = 0
-  try {
-    for (let i = 0; i < BENCH_WARMUP; i++) await parse(sample.source, PARSE_OPTIONS)
-    const calibrationStarted = performance.now()
-    for (let i = 0; i < BENCH_CALIBRATION; i++) await parse(sample.source, PARSE_OPTIONS)
-    const perParse = (performance.now() - calibrationStarted) / BENCH_CALIBRATION
-    // Big enough for the clock to resolve, small enough that a median and a
-    // p95 are taken over more than a couple of numbers.
-    batchSize = Math.max(
-      1,
-      Math.min(
-        state.iterations,
-        Math.ceil(BENCH_BATCH_TARGET_MS / Math.max(perParse, 0.001)),
-        Math.floor(state.iterations / BENCH_MIN_BATCHES) || 1,
-      ),
-    )
-    batches = Math.max(1, Math.floor(state.iterations / batchSize))
-    let painted = performance.now()
-    for (let batch = 0; batch < batches; batch++) {
-      const at = performance.now()
-      for (let i = 0; i < batchSize; i++) await parse(sample.source, PARSE_OPTIONS)
-      timings.push((performance.now() - at) / batchSize)
-      if (performance.now() - painted > BENCH_YIELD_MS) {
-        await new Promise((resolve) => setTimeout(resolve, 0))
-        painted = performance.now()
-      }
-    }
-  } catch (error) {
-    state.running = false
-    run.disabled = false
-    showError(figure, 'parse failed', error)
-    return
-  }
-  const wall = performance.now() - started
-  const parsed = batches * batchSize
-  const sorted = [...timings].sort((a, b) => a - b)
-  const medianMs = percentileOf(sorted, 0.5)
-  const p95Ms = percentileOf(sorted, 0.95)
-  const perSecond = medianMs > 0 ? 1000 / medianMs : 0
-  const megabytes = (bytes * perSecond) / 1e6
-  out.innerHTML = `<div class="table-wrap"><table>
-  <thead><tr><th scope="col">Measure</th><th scope="col">In this tab</th></tr></thead>
-  <tbody>
-    <tr><th scope="row">Sample</th><td>${escapeHtml(sample.label)}</td></tr>
-    <tr><th scope="row">Sample bytes</th><td>${integer(bytes)}</td></tr>
-    <tr><th scope="row">Parses timed</th><td>${integer(parsed)} of ${integer(state.iterations)} asked for, after ${BENCH_WARMUP + BENCH_CALIBRATION} warm-up and calibration parses</td></tr>
-    <tr><th scope="row">Timed in</th><td>${integer(batches)} batch${batches === 1 ? '' : 'es'} of ${integer(batchSize)}, because a browser clock cannot resolve one parse</td></tr>
-    <tr><th scope="row">Median ns per parse</th><td data-bench-median>${integer(medianMs * 1e6)}</td></tr>
-    <tr><th scope="row">p95 ns per parse, by batch</th><td data-bench-p95>${integer(p95Ms * 1e6)}</td></tr>
-    <tr><th scope="row">Parses per second</th><td data-bench-rate>${integer(perSecond)}</td></tr>
-    <tr><th scope="row">MB per second</th><td data-bench-throughput>${megabytes.toFixed(1)}</td></tr>
-  </tbody>
-</table></div>`
-  plainStatus(figure, `${integer(parsed)} parses completed on ${sample.label} in ${browserLabel()}.`, wall, 'measured')
-  figure.dataset.benchState = 'ready'
-  state.running = false
-  run.disabled = false
-}
-
-function benchControls(figure, state) {
-  const press = (group, attribute, value) => {
-    for (const chip of figure.querySelectorAll(`[${attribute}]`)) {
-      chip.setAttribute('aria-pressed', String(chip.getAttribute(attribute) === value))
-    }
-  }
-  figure.addEventListener('click', (event) => {
-    const sample = event.target.closest('[data-bench-sample]')
-    if (sample) {
-      state.sample = sample.dataset.benchSample
-      press(figure, 'data-bench-sample', state.sample)
-      return
-    }
-    const iterations = event.target.closest('[data-bench-iterations]')
-    if (iterations) {
-      state.iterations = Number(iterations.dataset.benchIterations)
-      press(figure, 'data-bench-iterations', iterations.dataset.benchIterations)
-      return
-    }
-    if (event.target.closest('[data-bench-run]')) runBench(figure, state)
-  })
-}
-
 // ---------- boot ----------
 
 function bootFigure(figure, cleanupCallbacks) {
-  if (figure.hasAttribute('data-bench-live')) {
-    const state = benchState(figure)
-    benchControls(figure, state)
-    ready()
-      .then(() => {
-        figure.querySelector('[data-bench-run]').disabled = false
-        return runBench(figure, state)
-      })
-      .catch((error) => unavailable(figure, error))
-    return
-  }
   if (figure.hasAttribute('data-codegen-walkthrough')) {
     const state = { ...CODEGEN_DEFAULTS }
     const pane = createSourcePane(figure, {
@@ -854,7 +715,7 @@ function bootFigure(figure, cleanupCallbacks) {
 
 export function init(cleanupCallbacks = []) {
   const figures = document.querySelectorAll(
-    '[data-ast-explorer]:not([data-ex-ready]), [data-symbol-explorer]:not([data-ex-ready]), [data-codegen-walkthrough]:not([data-ex-ready]), [data-bench-live]:not([data-ex-ready])',
+    '[data-ast-explorer]:not([data-ex-ready]), [data-symbol-explorer]:not([data-ex-ready]), [data-codegen-walkthrough]:not([data-ex-ready])',
   )
   for (const figure of figures) {
     figure.dataset.exReady = '1'

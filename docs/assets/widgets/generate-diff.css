@@ -9,10 +9,30 @@
 .widget-generate-diff .gd-controls {
   align-items: center;
 }
+.widget-generate-diff .gd-toolbar {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
 .widget-generate-diff .gd-controls {
   display: flex;
-  flex-wrap: wrap;
+  flex: none;
+  flex-wrap: nowrap;
   gap: 8px;
+}
+.widget-generate-diff .gd-more {
+  border-top: 1px solid var(--c-divider);
+  background: var(--c-bg-alt);
+}
+.widget-generate-diff .gd-more > summary {
+  width: fit-content;
+  padding: 9px 14px;
+  color: var(--c-text-2);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.widget-generate-diff .gd-more .gd-advanced {
+  border-top: 1px solid var(--c-divider);
 }
 .widget-generate-diff .gd-side .ex-out {
   max-height: 360px;

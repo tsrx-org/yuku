@@ -446,6 +446,16 @@ async function main() {
     if (check(Boolean(tryRoute), 'no built doc page carries a "Try in playground" button')) {
       const guide = await open(tryRoute, `try:${tryRoute}`)
       const button = guide.locator('.try-button').first()
+      const figure = button.locator('xpath=ancestor::figure[1]')
+      await figure.scrollIntoViewIfNeeded()
+      await guide.waitForFunction(
+        (node) =>
+          node?.dataset.widget
+            ? node.dataset.widgetState === 'ready'
+            : node?.dataset.exState === 'ready',
+        await figure.elementHandle(),
+        { timeout: 60_000 },
+      )
       const fence = await button.getAttribute('data-code')
       check(Boolean(fence), `${tryRoute}: the first try button carries no source`)
       await button.click({ force: true })
@@ -573,7 +583,35 @@ async function main() {
       check(refCount >= 1, `${symbolRoute}: the selected symbol lit no reference`)
       const scopeRows = await analyzerPage.locator('[data-symbol-explorer] [data-ex-scope]').count()
       check(scopeRows >= 3, `${symbolRoute}: the scope tree has ${scopeRows} rows, expected 3 or more`)
-      notes.push(`symbol click lit ${declCount} declaration and ${refCount} reference segments`)
+      const scopePane = analyzerPage.locator('[data-symbol-explorer] [data-ex-scope-pane]')
+      check(await scopePane.isVisible(), `${symbolRoute}: the scope tree pane is not visible`)
+      check(
+        (await scopePane.locator('details').count()) === 0,
+        `${symbolRoute}: the scope tree is still hidden in a disclosure`,
+      )
+      check(
+        (await analyzerPage.locator('[data-symbol-explorer] [data-ex-out] [data-ex-scope]').count()) === 0,
+        `${symbolRoute}: the scope tree is still inside the scrolling symbol table`,
+      )
+      check(
+        (await scopePane.locator('.ex-scope-children [data-ex-scope]').count()) >= 1,
+        `${symbolRoute}: the scopes are not nested by parent`,
+      )
+      check(
+        (await scopePane.locator('[data-ex-scope] .ex-scope-declarations').count()) === scopeRows,
+        `${symbolRoute}: one or more scope rows do not list their declared names`,
+      )
+      const firstScope = scopePane.locator('[data-ex-scope]').first()
+      await firstScope.hover()
+      const hoveredScopeSegments = await analyzerPage.locator('[data-symbol-explorer] .ex-scope').count()
+      check(hoveredScopeSegments >= 1, `${symbolRoute}: hovering a scope lit no source range`)
+      await firstScope.focus()
+      await analyzerPage.mouse.move(0, 0)
+      const focusedScopeSegments = await analyzerPage.locator('[data-symbol-explorer] .ex-scope').count()
+      check(focusedScopeSegments >= 1, `${symbolRoute}: focusing a scope lit no source range`)
+      notes.push(
+        `symbol click lit ${declCount} declaration and ${refCount} reference segments; scope hover/focus lit ${hoveredScopeSegments}/${focusedScopeSegments} segments`,
+      )
     }
 
     const codegenRoute = await pageCarrying('data-codegen-walkthrough', 'codegen walkthrough')
@@ -772,53 +810,6 @@ async function main() {
       ).trim()
       check(matrixStatus.includes('Showing 7 of 20 hooks'), `${matrixRoute}: the status line reads "${matrixStatus}"`)
       notes.push(`hook matrix on ${matrixRoute}: ${hookRowCount} rows, ${matrixStatus}`)
-    }
-
-    // ---- measure in this tab ----
-    const benchRoute = await pageCarrying('data-bench-live', 'bench live')
-    if (benchRoute) {
-      const benchPage = await open(benchRoute)
-      const benchFigure = benchPage.locator('[data-bench-live]').first()
-      const caveat = benchPage.locator('[data-bench-live] .bench-live-caveat').first()
-      check(await caveat.isVisible(), `${benchRoute}: the benchmark intro is not visible`)
-      check(
-        (await caveat.textContent()).includes('It is not the native-addon report above'),
-        `${benchRoute}: the intro does not distinguish this run from the report above`,
-      )
-      // Nothing in this figure may repeat a number from the committed table.
-      const figureText = await benchFigure.textContent()
-      for (const committed of ['29,666', '103,075', '33,708', '9,702', '0.2878']) {
-        check(!figureText.includes(committed), `${benchRoute}: the in-tab figure repeats ${committed} from the committed table`)
-      }
-      await benchFigure.scrollIntoViewIfNeeded()
-      await benchPage.waitForSelector('[data-bench-live][data-bench-state="ready"]', { timeout: 60_000 })
-      const automatic = await benchPage.$$eval(
-        '[data-bench-live] [data-bench-median], [data-bench-live] [data-bench-p95], [data-bench-live] [data-bench-rate], [data-bench-live] [data-bench-throughput]',
-        (nodes) => nodes.map((node) => node.textContent.trim()),
-      )
-      check(
-        automatic.length === 4 && automatic.every((value) => /^\d/.test(value)),
-        `${benchRoute}: the automatic results are ${automatic.join(' | ') || 'missing'}`,
-      )
-      await benchPage.click('[data-bench-live] [data-bench-iterations="100"]')
-      await benchPage.click('[data-bench-live] [data-bench-run]')
-      await benchPage.waitForFunction(
-        () => document.querySelector('[data-bench-live]')?.textContent?.includes('of 100 asked for'),
-        null,
-        { timeout: 60_000 },
-      )
-      const measured = await benchPage.$$eval(
-        '[data-bench-live] [data-bench-median], [data-bench-live] [data-bench-p95], [data-bench-live] [data-bench-rate], [data-bench-live] [data-bench-throughput]',
-        (nodes) => nodes.map((node) => node.textContent.trim()),
-      )
-      check(
-        measured.length === 4 && measured.every((value) => /^\d/.test(value)),
-        `${benchRoute}: the results are ${measured.join(' | ') || 'missing'}`,
-      )
-      const benchStatus = (await benchPage.textContent('[data-bench-live] [data-ex-status]')).trim()
-      check(benchStatus.includes('parses completed'), `${benchRoute}: the status line does not summarize the completed run: ${benchStatus}`)
-      check(benchStatus.includes('runs in your browser'), `${benchRoute}: the status line does not say where it ran: ${benchStatus}`)
-      notes.push(`bench live on ${benchRoute}: automatic median ${automatic[0]} ns; rerun median ${measured[0]} ns, ${measured[2]} parses/s, ${benchStatus}`)
     }
 
     // ---- retired routes land on their replacements ----

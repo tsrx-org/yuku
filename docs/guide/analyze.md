@@ -21,22 +21,19 @@ Focus `reset` and watch the explorer report that it has no symbol.
 
 <!-- symbol-explorer -->
 ```tsrx
-export function Cart({ items }) {
-  @{
-    const total = items.length;
-    const label = total === 1 ? "item" : "items";
-  }
-  return (
-    <ul class="cart">
-      @try {
-        @for (const item of items; index i; key item.id) {
-          <li>{item.label}</li>
-        }
-      } @catch (error, reset) {
-        <li><button onClick={reset}>{error.message}</button></li>
+export function Cart({ items }) @{
+  const total = items.length;
+  const label = total === 1 ? "item" : "items";
+
+  <ul class="cart">
+    @try {
+      @for (const item of items; index i; key item.id) {
+        <li>{item.label}</li>
       }
-    </ul>
-  );
+    } @catch (error, reset) {
+      <li><button onClick={reset}>{error.message}</button></li>
+    }
+  </ul>
 }
 ```
 
@@ -64,22 +61,19 @@ Switch to Symbols, then focus a token to read its scope and symbol.
 ```tsrx
 import { format } from "./format";
 
-export function Cart({ items }) {
-  @{
-    const total = items.length;
-    const label = total === 1 ? "item" : "items";
-  }
-  return (
-    <ul class="cart">
-      @try {
-        @for (const item of items; index i; key item.id) {
-          <li>{format(item.label)}</li>
-        }
-      } @catch (error, reset) {
-        <li><button onClick={reset}>{error.message}</button></li>
+export function Cart({ items }) @{
+  const total = items.length;
+  const label = total === 1 ? "item" : "items";
+
+  <ul class="cart">
+    @try {
+      @for (const item of items; index i; key item.id) {
+        <li>{format(item.label)}</li>
       }
-    </ul>
-  );
+    } @catch (error, reset) {
+      <li><button onClick={reset}>{error.message}</button></li>
+    }
+  </ul>
 }
 ```
 
@@ -95,15 +89,15 @@ The first two scopes are always `global` and `module`. Function and block scopes
 
 ## A missing declaration is `null`
 
-The second name in `@catch (error, reset)` is not declared today. The `reset` used by `onClick` therefore has `symbolId: null`; `window` and `console` do too when the file never declares them.
+The second name in `@catch (error, reset)` is not declared. The `reset` used by `onClick` therefore has `symbolId: null`; `window` and `console` do too when the file never declares them.
 
 That answer does not add a diagnostic. The same sample returns no diagnostics.
 
-## The filename still chooses the language
+## The filename chooses the language
 
 ```js
 analyze(source, "Cart.tsrx");                 // tsx, from the extension
-analyze(source, { lang: "tsx" });             // the 0.1.1 shape, still works
+analyze(source, { lang: "tsx" });             // the options form
 analyze(source, "Cart.tsrx", { lang: "js" }); // an explicit lang wins
 analyze(source);                              // js: the first "<" is a diagnostic
 ```
@@ -120,7 +114,7 @@ analyze("const a = 1; const a = 2; export { nope };", "x.tsrx").diagnostics;
 
 `analyze` always checks names and keeps both entries at `error`. By contrast, `parse` checks them only with `semanticErrors: true` and changes the repeated declaration to `warning`.
 
-## Use `walk` when you need a parent
+## Read nodes by index
 
 ```js
 const view = analyze(source, "Cart.tsrx");
@@ -130,7 +124,7 @@ view.semantic.nodeScope(12);    // scope id for node 12
 view.str(0, 6);                 // "import": a slice by offset and byte length
 ```
 
-In version 0.1.5, `parentIndex` throws when a program contains `@{}`, `@if`, `@for`, `@switch`, `@try`, or `<style>`. [Walk the tree](/guide/walk) and use the `parent` passed to your visitor instead.
+`parentIndex` returns `-1` for the program and the parent node's index for every other indexed node, including nodes inside `@{}`, `@if`, `@for`, `@switch`, `@try`, and `<style>`. [Walk the tree](/guide/walk) to receive each node and its parent in a visitor.
 
 Text inside `<style>` adds no names or references because it is CSS.
 

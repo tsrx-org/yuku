@@ -22,19 +22,17 @@ Pick a node type, then focus a match to see its source span.
 
 <!-- widget:visitor type="JSXIfExpression" -->
 ```tsrx
-export function Badge({ count, label }) {
-  return (
-    <span class="badge">
-      @if (count > 99) {
-        <b>99+</b>
-      } @else if (count > 0) {
-        <b>{count}</b>
-      }
-      @if (label) {
-        <small>{label}</small>
-      }
-    </span>
-  );
+export function Badge({ count, label }) @{
+  <span class="badge">
+    @if (count > 99) {
+      <b>99+</b>
+    } @else if (count > 0) {
+      <b>{count}</b>
+    }
+    @if (label) {
+      <small>{label}</small>
+    }
+  </span>
 }
 ```
 

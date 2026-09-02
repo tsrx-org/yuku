@@ -22,28 +22,45 @@ function equivalentCall(state) {
   return `generate(program, {${parts.length ? ` ${parts.join(', ')} ` : ''}})`
 }
 
-const labels = { format: 'Formatting', quotes: 'Quotes', comments: 'Comments' }
+const labels = { format: 'Format', quotes: 'Quotes', comments: 'Comments' }
+const valueLabels = { preserve: 'As written', pretty: 'Pretty', compact: 'Compact' }
 const chips = (name, values, selected, disabled = {}) =>
   `<div class="ex-chip-group" role="group" aria-label="${labels[name]}"><span class="ex-chip-label">${labels[name]}</span>${values
     .map(
       (value) =>
         `<button type="button" data-gd-option="${name}" data-gd-value="${value}" aria-pressed="${value === selected}"${
           disabled[value] ? ' disabled' : ''
-        } title="${escapeHtml(disabled[value] ?? `${name}=${value}`)}">${value[0].toUpperCase()}${value.slice(1)}</button>`,
+        } title="${escapeHtml(disabled[value] ?? `${name}=${value}`)}">${valueLabels[value] ?? value[0].toUpperCase() + value.slice(1)}</button>`,
     )
     .join('')}</div>`
 
-function controlsHtml(state, id) {
+function quickControlsHtml(state) {
+  const keepComments = state.comments !== 'none'
   return (
-    `<span class="ex-toolbar-label">Output ${id.toUpperCase()}</span>` +
+    `<button type="button" role="switch" title="strip" data-gd-flag="strip" aria-checked="${state.strip}">Strip types</button>` +
+    `<button type="button" role="switch" title="compact format and syntax minification" data-gd-flag="minify" aria-checked="${state.minify}">Minify</button>` +
+    `<div class="ex-chip-group" role="group" aria-label="Comments"><span class="ex-chip-label">Comments</span>` +
+    `<button type="button" data-gd-quick="comments" data-gd-value="keep" aria-pressed="${keepComments}">Keep</button>` +
+    `<button type="button" data-gd-quick="comments" data-gd-value="drop" aria-pressed="${!keepComments}">Drop</button></div>` +
+    `<div class="ex-chip-group" role="group" aria-label="Quotes"><span class="ex-chip-label">Quotes</span>` +
+    ['preserve', 'double', 'single']
+      .map(
+        (value) =>
+          `<button type="button" data-gd-quick="quotes" data-gd-value="${value}" aria-pressed="${state.quotes === value}">${valueLabels[value] ?? value[0].toUpperCase() + value.slice(1)}</button>`,
+      )
+      .join('') +
+    '</div>'
+  )
+}
+
+function advancedControlsHtml(state) {
+  return (
     chips('format', ['pretty', 'compact'], state.format) +
     `<div class="ex-chip-group"><span class="ex-chip-label">Indent</span><input title="indent" type="number" min="0" max="8" step="1" value="${state.indent}" data-gd-indent aria-label="Spaces per indentation level"${
       state.format === 'compact' ? ' disabled' : ''
     }></div>` +
     chips('quotes', ['preserve', 'double', 'single', 'shortest'], state.quotes, { shortest: SHORTEST_TITLE }) +
-    chips('comments', ['none', 'all', 'some', 'line', 'block'], state.comments) +
-    `<div class="ex-chip-group"><button type="button" role="switch" title="strip" data-gd-flag="strip" aria-checked="${state.strip}">Strip types</button>` +
-    `<button type="button" role="switch" title="minify" data-gd-flag="minify" aria-checked="${state.minify}">Minify syntax</button></div>`
+    chips('comments', ['none', 'all', 'some', 'line', 'block'], state.comments)
   )
 }
 
@@ -88,7 +105,7 @@ async function diffHtml(rows) {
 }
 
 export default function mount(root, { cleanup }) {
-  const { source: seed, landing } = JSON.parse(root.querySelector('[data-gd-seed]').textContent)
+  const { source: seed, landing, full } = JSON.parse(root.querySelector('[data-gd-seed]').textContent)
   let source = seed
   const state = { a: { ...DEFAULTS, ...landing.a }, b: { ...DEFAULTS, ...landing.b } }
   const outputs = { a: null, b: null }
@@ -103,9 +120,11 @@ export default function mount(root, { cleanup }) {
     call: root.querySelector(`[data-gd-call="${id}"]`),
   })
   const diffHost = root.querySelector('[data-gd-diff]')
+  const advanced = root.querySelector('[data-gd-advanced]')
 
-  const renderControls = (id) => {
-    side(id).controls.innerHTML = controlsHtml(state[id], id)
+  const renderControls = () => {
+    side('b').controls.innerHTML = quickControlsHtml(state.b)
+    if (full && advanced) advanced.innerHTML = advancedControlsHtml(state.b)
   }
 
   const renderDiff = async () => {
@@ -125,7 +144,7 @@ export default function mount(root, { cleanup }) {
     try {
       result = await generate(source, PARSE_OPTIONS, {
         strip: options.strip,
-        minify: options.minify,
+        minify: options.minify ? { syntax: true } : false,
         format: options.format,
         quotes: options.quotes,
         comments: options.comments,
@@ -169,28 +188,38 @@ export default function mount(root, { cleanup }) {
   root.addEventListener('click', (event) => {
     const chip = event.target.closest('[data-gd-option]')
     if (chip && !chip.disabled) {
-      const id = chip.closest('[data-gd-controls]').dataset.gdControls
-      state[id][chip.dataset.gdOption] = chip.dataset.gdValue
-      renderControls(id)
+      state.b[chip.dataset.gdOption] = chip.dataset.gdValue
+      renderControls()
+      runAll()
+      return
+    }
+    const quick = event.target.closest('[data-gd-quick]')
+    if (quick) {
+      state.b[quick.dataset.gdQuick] = quick.dataset.gdQuick === 'comments'
+        ? quick.dataset.gdValue === 'keep' ? 'all' : 'none'
+        : quick.dataset.gdValue
+      renderControls()
       runAll()
       return
     }
     const flag = event.target.closest('[data-gd-flag]')
     if (flag) {
-      const id = flag.closest('[data-gd-controls]').dataset.gdControls
-      state[id][flag.dataset.gdFlag] = flag.getAttribute('aria-checked') !== 'true'
-      renderControls(id)
+      const enabled = flag.getAttribute('aria-checked') !== 'true'
+      if (flag.dataset.gdFlag === 'minify') {
+        state.b.format = enabled ? 'compact' : 'pretty'
+        state.b.minify = enabled
+      } else {
+        state.b[flag.dataset.gdFlag] = enabled
+      }
+      renderControls()
       runAll()
     }
   })
   root.addEventListener('change', (event) => {
-    const box = event.target.closest('[data-gd-controls]')
-    if (!box) return
-    const id = box.dataset.gdControls
     if (event.target.matches('[data-gd-indent]')) {
       const value = Number(event.target.value)
-      state[id].indent = Number.isFinite(value) ? Math.min(Math.max(Math.round(value), 0), 8) : 2
-      event.target.value = String(state[id].indent)
+      state.b.indent = Number.isFinite(value) ? Math.min(Math.max(Math.round(value), 0), 8) : 2
+      event.target.value = String(state.b.indent)
     } else {
       return
     }
@@ -206,8 +235,7 @@ export default function mount(root, { cleanup }) {
 
   ready()
     .then(() => {
-      renderControls('a')
-      renderControls('b')
+      renderControls()
       editor = createLayeredEditor({
         host: root.querySelector('[data-gd-source]'),
         source,
