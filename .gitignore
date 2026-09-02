@@ -13,3 +13,8 @@ docs/goals/*/.goalbuddy-board/
 
 docs/dist/
 .vercel/
+
+# working notes and worker logs never ship
+docs/goals/
+goals/
+.fable-codex/
