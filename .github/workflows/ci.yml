@@ -5,10 +5,10 @@ on:
     branches:
       - m3/provenance
       - main
-      - "docs/**"
+      - "yuku-website/**"
   pull_request:
     paths:
-      - docs/**
+      - yuku-website/**
       - tools/build-wasm.mjs
       - tools/wasm-smoke.mjs
       - tools/wasm-stamp.mjs
@@ -70,7 +70,7 @@ jobs:
 
       - name: Verify the interactive surfaces in Chromium
         if: steps.wasm.outputs.present == 'true'
-        run: node docs/verify-playground.mjs
+        run: node yuku-website/verify-playground.mjs
 
   verify:
     name: Verify M0-M3 provenance

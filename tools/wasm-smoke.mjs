@@ -2,7 +2,7 @@
 // Proves zig-out/wasm/yuku-tsrx.wasm is the same dialect the native addon is:
 // it instantiates the module in Node and runs parse/analyze/generate through
 // the checked-in generated decoders, which is the only way the browser host in
-// docs/assets can be trusted before a page ever loads it.
+// yuku-website/assets can be trusted before a page ever loads it.
 //
 //   node tools/wasm-smoke.mjs            hero snippet, fixtures, invalid fixture
 //   node tools/wasm-smoke.mjs --fences   every playground-eligible tsrx fence
@@ -17,8 +17,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const wasmPath =
   process.env.YUKU_TSRX_WASM ?? path.join(repoRoot, "zig-out", "wasm", "yuku-tsrx.wasm");
 const fixtureDir = path.join(repoRoot, "test", "parser", "misc", "tsrx");
-const docsDir = path.join(repoRoot, "docs");
-// docs/goals is planning material and docs/dist is generated output; neither is
+const docsDir = path.join(repoRoot, "yuku-website");
+// yuku-website/goals is planning material and yuku-website/dist is generated output; neither is
 // a source page a reader can click "Try in playground" from.
 const docsSkip = new Set(["goals", "dist", "node_modules"]);
 
@@ -52,7 +52,7 @@ function packFlags(options = {}) {
   return flags >>> 0;
 }
 
-// Same refusals as docs/assets/yuku-wasm.js and npm/yuku-tsrx/index.js.
+// Same refusals as yuku-website/assets/yuku-wasm.js and npm/yuku-tsrx/index.js.
 const QUOTES_SHORTEST_UNSUPPORTED =
   'yuku-tsrx generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself';
 const SOURCE_MAPS_UNSUPPORTED =

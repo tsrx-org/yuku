@@ -11,7 +11,7 @@
 # can do for itself: each of the three names must already exist on the registry
 # (scripts/publish-placeholders.mjs), and each must have a trusted publisher
 # pointing at this repository and at the file name `publish.yml` exactly
-# (scripts/trust-publishers.sh). docs/releasing/launch-runbook.md is the order.
+# (scripts/trust-publishers.sh). .github/releasing/launch-runbook.md is the order.
 #
 # The bytes published are the ones release-candidate.yml built on this run from
 # this exact revision, checksummed, and never touched by a human.

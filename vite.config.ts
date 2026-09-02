@@ -17,7 +17,7 @@ const config = {
 			"benchmarks/m6-baseline.json",
 			"benchmarks/m7-public-attribution.json",
 			"README.md",
-			"docs/**",
+			"yuku-website/**",
 			"goal.md",
 			"test/parser/misc/**",
 			"npm/yuku/decode.js",

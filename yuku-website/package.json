@@ -2,7 +2,7 @@
   "name": "yuku-website",
   "private": true,
   "scripts": {
-    "build": "node ../scripts/fetch-docs-wasm.mjs && cd .. && SITE_ORIGIN=https://yuku.tsrx.dev SITE_BASE=/ node docs/build.mjs && rm -rf yuku-website/dist && cp -R docs/dist yuku-website/dist"
+    "build": "node ../scripts/fetch-docs-wasm.mjs && cd .. && SITE_ORIGIN=https://yuku.tsrx.dev SITE_BASE=/ node yuku-website/build.mjs"
   },
   "engines": {
     "node": "24.x"

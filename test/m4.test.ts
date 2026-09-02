@@ -260,7 +260,7 @@ test("generate refuses shortest quotes outside minify with one message on both h
 		'yuku-tsrx generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself';
 	expect(() => generate(program, { quotes: "shortest" })).toThrow(new TypeError(message));
 	expect(() => generate(program, { minify: { quotes: true } })).toThrow(new TypeError(message));
-	const browser = await import("../docs/assets/yuku-wasm.js");
+	const browser = await import("../yuku-website/assets/yuku-wasm.js");
 	expect(() => browser.packGenerateOptions({ quotes: "shortest" })).toThrow(new TypeError(message));
 	expect(browser.packGenerateOptions({ quotes: "shortest", minify: true })).toBe(
 		browser.packGenerateOptions({ minify: true }),

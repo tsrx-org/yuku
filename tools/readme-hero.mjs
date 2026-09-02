@@ -1,6 +1,6 @@
 // The README hero: .github/assets/readme-hero.png, 1200x400. The wordmark and
-// the one-line tagline from docs/site.config.mjs, so it cannot drift from the
-// site's own hero. Same recipe as docs/generate-social-card.mjs: rendered at 2x
+// the one-line tagline from yuku-website/site.config.mjs, so it cannot drift from the
+// site's own hero. Same recipe as yuku-website/generate-social-card.mjs: rendered at 2x
 // in system Chrome, downscaled, corners rounded into the alpha channel because
 // GitHub strips `style` from README HTML.
 // Run: node tools/readme-hero.mjs
@@ -10,11 +10,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { chromium } from "playwright-core";
-import config from "../docs/site.config.mjs";
+import config from "../yuku-website/site.config.mjs";
 
 const run = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const assetsDir = path.join(repoRoot, "docs", "assets");
+const assetsDir = path.join(repoRoot, "yuku-website", "assets");
 const WIDTH = 1200;
 const HEIGHT = 400;
 

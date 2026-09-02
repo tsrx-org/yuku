@@ -5,16 +5,16 @@ zig-cache/
 zig-out/
 zig-pkg/
 coverage/
-docs/goals/**/.goalbuddy-board/
+yuku-website/goals/**/.goalbuddy-board/
 
 # harness state and generated goal boards
 .fable-opus/
-docs/goals/*/.goalbuddy-board/
+yuku-website/goals/*/.goalbuddy-board/
 
-docs/dist/
+yuku-website/dist/
 .vercel/
 
 # working notes and worker logs never ship
-docs/goals/
+yuku-website/goals/
 goals/
 .fable-codex/
