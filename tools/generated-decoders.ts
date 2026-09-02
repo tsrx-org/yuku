@@ -102,10 +102,7 @@ function runGeneration(root: string): void {
 	const generated = spawnSync("zig", ["build", ...generationSteps], {
 		cwd: root,
 		encoding: "utf8",
-		env: {
-			...process.env,
-			ZIG_GLOBAL_CACHE_DIR: join(tmpdir(), "yuku-tsrx-generated-zig-cache"),
-		},
+		env: process.env,
 	});
 	if (generated.status !== 0) {
 		throw new Error(`generation failed:\n${generated.stdout}${generated.stderr}`);
