@@ -667,13 +667,16 @@ function decode(buffer, source) {
       return r;
     } finally { _dialectActive.delete(ri); }
   }
-  function applyDialectOverlay(i, r) {
-    if (!_hasDialectRecords || r == null || typeof r !== "object") return r;
+  function dialectOverlayRecord(i) {
     let lo = 0, hi = _dialectOverlayCount;
     const base = _dialectOverlaysOff >> 2;
     while (lo < hi) { const m = (lo + hi) >>> 1; if (_u32[base + m * 2] < i) lo = m + 1; else hi = m; }
-    if (lo < _dialectOverlayCount && _u32[base + lo * 2] === i)
-      Object.assign(r, dialectRecord(_u32[base + lo * 2 + 1], r.start, r.end, true));
+    return lo < _dialectOverlayCount && _u32[base + lo * 2] === i ? _u32[base + lo * 2 + 1] : NULL;
+  }
+  function applyDialectOverlay(i, r) {
+    if (!_hasDialectRecords || r == null || typeof r !== "object") return r;
+    const ri = dialectOverlayRecord(i);
+    if (ri !== NULL) Object.assign(r, dialectRecord(ri, r.start, r.end, true));
     return r;
   }
   function _validNodeIndex(v) { return Number.isInteger(v) && v >= 0 && v < nodeCount; }

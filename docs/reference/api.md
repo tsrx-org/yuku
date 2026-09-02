@@ -168,12 +168,31 @@ export interface GenerateOptions {
 	indent?: number;
 	quotes?: "preserve" | "double" | "single" | "shortest";
 	comments?: boolean | "all" | "some" | "none" | "line" | "block";
+	sourceMaps?: SourceMapOptions;
+}
+
+export interface SourceMapOptions {
+	source: string;
+	file?: string;
+	sourceFileName?: string;
+	sourceRoot?: string;
+	sourcesContent?: boolean;
+}
+
+export interface SourceMap {
+	version: 3;
+	file: string | null;
+	sourceRoot: string | null;
+	sources: string[];
+	sourcesContent: Array<string | null> | null;
+	names: string[];
+	mappings: string;
 }
 
 export interface GenerateResult {
 	code: string;
 	errors: Array<{ message: string; start: number; end: number }>;
-	map: unknown | null;
+	map: SourceMap | null;
 }
 ```
 

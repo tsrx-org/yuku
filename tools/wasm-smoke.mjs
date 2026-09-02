@@ -52,15 +52,27 @@ function packFlags(options = {}) {
   return flags >>> 0;
 }
 
+// Same refusals as docs/assets/yuku-wasm.js and npm/yuku-tsrx/index.js.
+const QUOTES_SHORTEST_UNSUPPORTED =
+  'yuku-tsrx generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself';
+const SOURCE_MAPS_UNSUPPORTED =
+  "yuku-tsrx generate: sourceMaps is not supported here; the wasm build carries no source maps";
+
 function packGenerateOptions(options = {}) {
   const {
     strip = false,
     minify = false,
     format = "pretty",
-    quotes = "preserve",
     comments = "some",
     indent = 2,
+    sourceMaps,
   } = options;
+  let { quotes = "preserve" } = options;
+  if (sourceMaps) throw new TypeError(SOURCE_MAPS_UNSUPPORTED);
+  if (quotes === "shortest") {
+    if (!minify) throw new TypeError(QUOTES_SHORTEST_UNSUPPORTED);
+    quotes = "preserve";
+  }
   const quoteIndex = QUOTES.indexOf(quotes);
   const commentIndex = COMMENT_MODES.indexOf(comments);
   if (quoteIndex < 0) throw new Error(`unknown quotes ${quotes}`);

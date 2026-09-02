@@ -441,19 +441,51 @@ export interface DecodeAnalyzerResult extends ParseResult, AnalyzerNodeAccess {
 	readonly semantic: SemanticView | null;
 }
 
+export interface SourceMapOptions {
+	/** Source text the program was parsed from; mappings are computed against it. */
+	source: string;
+	/** Output filename, embedded as the map's `file`. */
+	file?: string;
+	/** Source filename, embedded as the single entry of `sources`. */
+	sourceFileName?: string;
+	/** Prefix embedded as `sourceRoot`. */
+	sourceRoot?: string;
+	/** Embed `source` as the single entry of `sourcesContent`. */
+	sourcesContent?: boolean;
+}
+
 export interface GenerateOptions {
+	/** Emit without the TypeScript-only syntax. Takes precedence over `minify.syntax`. */
 	strip?: boolean;
 	minify?: boolean | { whitespace?: boolean; syntax?: boolean; quotes?: boolean };
 	format?: "pretty" | "compact";
 	indent?: number;
+	/**
+	 * `"shortest"` is only available through `minify` (`true` or `syntax`),
+	 * which always picks the quote needing fewer escapes; asked for on its own
+	 * it throws a `TypeError`.
+	 */
 	quotes?: "preserve" | "double" | "single" | "shortest";
 	comments?: boolean | "all" | "some" | "none" | "line" | "block";
+	/** Emit a Source Map V3 as `GenerateResult.map`. */
+	sourceMaps?: SourceMapOptions;
+}
+
+/** Source Map V3, as `GenerateResult.map` when `sourceMaps` was requested. */
+export interface SourceMap {
+	version: 3;
+	file: string | null;
+	sourceRoot: string | null;
+	sources: string[];
+	sourcesContent: Array<string | null> | null;
+	names: string[];
+	mappings: string;
 }
 
 export interface GenerateResult {
 	code: string;
 	errors: Array<{ message: string; start: number; end: number }>;
-	map: unknown | null;
+	map: SourceMap | null;
 }
 
 export type WalkVisitor = (

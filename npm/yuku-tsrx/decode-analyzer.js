@@ -1057,13 +1057,16 @@ function decode(buffer, source) {
       return r;
     } finally { _dialectActive.delete(ri); }
   }
-  function applyDialectOverlay(i, r) {
-    if (!_hasDialectRecords || r == null || typeof r !== "object") return r;
+  function dialectOverlayRecord(i) {
     let lo = 0, hi = _dialectOverlayCount;
     const base = _dialectOverlaysOff >> 2;
     while (lo < hi) { const m = (lo + hi) >>> 1; if (_u32[base + m * 2] < i) lo = m + 1; else hi = m; }
-    if (lo < _dialectOverlayCount && _u32[base + lo * 2] === i)
-      Object.assign(r, dialectRecord(_u32[base + lo * 2 + 1], r.start, r.end, true));
+    return lo < _dialectOverlayCount && _u32[base + lo * 2] === i ? _u32[base + lo * 2 + 1] : NULL;
+  }
+  function applyDialectOverlay(i, r) {
+    if (!_hasDialectRecords || r == null || typeof r !== "object") return r;
+    const ri = dialectOverlayRecord(i);
+    if (ri !== NULL) Object.assign(r, dialectRecord(ri, r.start, r.end, true));
     return r;
   }
   function _validNodeIndex(v) { return Number.isInteger(v) && v >= 0 && v < nodeCount; }
@@ -1220,12 +1223,25 @@ function decode(buffer, source) {
   function _parents() {
     if (_parentArr !== undefined) return _parentArr;
     const p = new Int32Array(nodeCount).fill(-1);
-    (function visit(i, parent) {
+    function visitRecord(ri, parent) {
+      const b = (_dialectRecordsOff >> 2) + ri * (44 >> 2);
+      const schema = DIALECT_RECORDS[(_u32[b] & 255) - DIALECT_RECORDS[0].tag];
+      for (const field of schema.fields) {
+        const v = _u32[b + field.slot];
+        if (field.role === "node" || (field.role === "optionalNode" && v !== NULL)) visit(v, parent);
+        else if (field.role === "nodeList") {
+          const len = _u32[b + field.slot + 1];
+          for (let j = 0; j < len; j++) visit(_u32[_extraBase + v + j], parent);
+        }
+      }
+    }
+    function visit(i, parent) {
       const o = _nodesOff + i * 44;
       const tag = _u8[o];
+      const b = o >> 2;
+      if (tag === 171) { p[i] = parent; visitRecord(_u32[b + 2], i); return; }
       if (IS_NODE[tag]) { p[i] = parent; parent = i; }
       const ops = CHILD_SLOTS[tag];
-      const b = o >> 2;
       for (let q = 0; q < ops.length; q += 2) {
         const slot = ops[q + 1];
         if (ops[q] === 0) {
@@ -1244,7 +1260,10 @@ function decode(buffer, source) {
           }
         }
       }
-    })(progIdx, -1);
+      const ri = dialectOverlayRecord(i);
+      if (ri !== NULL) visitRecord(ri, parent);
+    }
+    visit(progIdx, -1);
     return (_parentArr = p);
   }
   let _semView;

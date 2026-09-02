@@ -56,14 +56,13 @@ export interface GenerateOptions {
 | `quotes` | `preserve` keeps each literal's original quote style, `double` and `single` force one, `shortest` picks the one that needs fewer escapes. |
 | `comments` | Which comments survive. |
 
-One current limitation: `quotes: "shortest"` and `minify: true` are declared in
-`npm/yuku-tsrx/index.d.ts` but fail at the native boundary today, because the
-`Quotes` enum in `src/dialect/codegen.zig` has only `preserve`, `double`, and
-`single`, so the addon rejects the request with
-`invalid enum value for codegen.Quotes: 'shortest'`. `minify: true` hits the
-same wall because its `quotes` mode sets `shortest`. Until the enum gains the
-value, use `preserve`, `double`, or `single`, and ask for
-`minify: { whitespace: true, syntax: true }` instead of `minify: true`.
+One current limitation: `quotes: "shortest"` only exists inside `minify`. The
+`Quotes` enum in `src/dialect/codegen.zig` has `preserve`, `double`, and
+`single`; the minifying printer ignores it and always picks the quote that needs
+fewer escapes, which is what `minify: true` and `minify: { syntax: true }` give
+you. Asking for `quotes: "shortest"` (or `minify: { quotes: true }`) without the
+`syntax` mode throws a `TypeError` that says so, in Node and in the browser
+alike. When `strip` and `minify` are both set, `strip` wins.
 
 Every option in the table is a control below, and the output is what the
 generator in your browser returns for the settings you pick.
@@ -106,14 +105,24 @@ actually controls:
 
 | Mode | Effect |
 | --- | --- |
-| `syntax` | Turns on the print-time size-reducing substitutions. |
+| `syntax` | Turns on the print-time size-reducing substitutions, which include picking the shortest quote. |
 | `whitespace` | Sets `format` to `compact`. |
-| `quotes` | Sets `quotes` to `shortest`. |
+| `quotes` | Sets `quotes` to `shortest`, which only the `syntax` printer can honour. |
 
 So `{ minify: { whitespace: true } }` gives you compact output with ordinary
 syntax and ordinary quotes, and `{ minify: true }` gives you all three. Setting
 `format` or `quotes` yourself alongside a `minify` mode that also sets them
 means the mode wins.
+
+### `sourceMaps`
+
+`sourceMaps: { source, file?, sourceFileName?, sourceRoot?, sourcesContent? }`
+puts a Source Map V3 object on `GenerateResult.map`. `source` is the text the
+program was parsed from: node positions index into it, so the generator needs
+it to turn them into lines and columns. `file` becomes the map's `file`,
+`sourceFileName` its single `sources` entry, and `sourcesContent: true` embeds
+`source`. Without the option, `map` is `null`. The browser build has no source
+maps and throws the same kind of `TypeError` when asked.
 
 ## `GenerateResult`
 
