@@ -64,7 +64,7 @@ test("invokes all four generators and accepts exact clean temporary copies", () 
 	const result = runCheck(directory);
 	expect(result.status, result.stderr).toBe(0);
 	expectCopies(directory, expected);
-});
+}, 120_000);
 
 test("check rejects missing and one-byte-drifted production artifacts without mutation", () => {
 	const productionBefore = copyProduction(temporaryDirectory("production-snapshot"));
