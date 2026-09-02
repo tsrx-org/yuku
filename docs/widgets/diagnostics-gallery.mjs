@@ -13,7 +13,7 @@ const CASES = [
   { id: 'try-alone', label: '@try without fallback', source: '@try { <b/> }', expect: "TSRX try directive requires '@pending' or '@catch'" },
   { id: 'dynamic-call', label: 'dynamic tag call', source: '<{getTag()} />', expect: 'TSRX dynamic tag expression must resolve to an element name' },
   { id: 'style-open', label: 'unclosed <style>', source: '<s><style>.a{}</s>', expect: 'Unclosed TSRX style element' },
-  { id: 'bare-at', label: 'bare @ in text', source: '<p>mail @ home</p>', expect: "Expected '</' to close the JSX element, but found '@'" },
+  { id: 'for-tail', label: 'repeated loop index', source: 'const view = @for (const k in obj; index a; index b) { <b/> };', expect: "Expected unique 'index' then 'key' clauses in for-of expression" },
   { id: 'unclosed-element', label: 'mismatched closing tag', source: '<a><b>text</a>', expect: "Expected closing tag for '<b>' but found '</a>'", loose: true },
   { id: 'fragment-open', label: 'unclosed fragment', source: '<>@if (x) { <b/> }', expect: "Expected '/' in JSX closing fragment, but found 'if'" },
   { id: 'redeclared', label: 'redeclared name', source: 'const a = 1; const a = 2;', semanticErrors: true, expect: "Identifier 'a' has already been declared", severity: 'warning' },

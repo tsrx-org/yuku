@@ -12,7 +12,7 @@ const CASES = [
   ['try-alone', '@try without fallback', '@try { <b/> }', 'error'],
   ['dynamic-call', 'dynamic tag call', '<{getTag()} />', 'error'],
   ['style-open', 'unclosed <style>', '<s><style>.a{}</s>', 'error'],
-  ['bare-at', 'bare @ in text', '<p>mail @ home</p>', 'error'],
+  ['for-tail', 'repeated loop index', 'const view = @for (const k in obj; index a; index b) { <b/> };', 'error'],
   ['unclosed-element', 'mismatched closing tag', '<a><b>text</a>', 'error'],
   ['fragment-open', 'unclosed fragment', '<>@if (x) { <b/> }', 'error'],
   ['redeclared', 'redeclared name', 'const a = 1; const a = 2;', 'warning'],

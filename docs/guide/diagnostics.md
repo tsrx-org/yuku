@@ -32,7 +32,7 @@ Pick a case; the underline and the message follow.
 
 <!-- widget:diagnostics-gallery -->
 
-The first group covers malformed directives and blocks. The next group covers markup problems. The final two appear when name checking is on.
+The gallery covers malformed directives, loop clauses, blocks, and markup. The final two appear when name checking is on.
 
 Some errors leave a node in the tree. A forbidden `break` inside `@case`, for example, reports the error and keeps the `JSXSwitchExpression`; stop before using a tree whenever it carries an error.
 
@@ -65,6 +65,6 @@ const after = 2;
 
 The underline covers `<li>{item}</li>`, with `Expected '{' after TSRX control-flow directive`. `parse` returns an error and `parseModule` throws.
 
-A malformed for-of tail, a bare statement inside `@switch`, an unclosed dynamic tag, and a lazy marker without a pattern report at the place parsing stopped too. Treat any error as a rejected module; recovery exists to place the underline, not to make the tree safe to compile.
+A malformed for-in tail, a bare statement inside `@switch`, an unclosed dynamic tag, and a lazy marker without a pattern report at the place parsing stopped too. Treat any error as a rejected module; recovery exists to place the underline, not to make the tree safe to compile.
 
 Next, connect each name to its declaration on [Analyze](/guide/analyze).

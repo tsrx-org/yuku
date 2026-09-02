@@ -1,22 +1,26 @@
 ---
-title: Limitations
-description: Known failures to design around before shipping.
+title: Three browser build limits
+description: Plan around three browser limits and two parser rules.
 ---
 
-# Limitations
+# Three browser build limits
 
-These are the failures you need to design around before shipping.
+Know the three browser limits and two syntax rules.
 
-**`@for` does not support `for...in`.** The parser reports the whole loop binding as an error. Iterate over `Object.entries(value)` with `for...of` instead.
+## What the browser build leaves out
 
-**A catch annotation is one type name.** Destructured and lazy `@catch` bindings work, but a type annotation such as `ErrorInfo` must be a single identifier.
+The browser build exposes only `parse`, `analyze`, and `generate`; call `parse` with an explicit `lang` instead of relying on `parseModule` filename inference.
 
-**A lazy pattern cannot initialize a C-style loop.** `for (&{ bit }; test; update)` reports `A lazy pattern needs 'of' or 'in' after it`. Use the pattern in a `for...of` or `for...in` binding.
+The browser build returns diagnostics instead of throwing the first error; check them before using the program.
 
-**A bare `@` in JSX text is a syntax error.** `<p>mail @ home</p>` fails because `@` begins a [TSRX](https://tsrx.dev) construct. Put that text in an expression instead.
+The browser build generates code without source maps; use the npm package when a map is required.
 
-**A dynamic tag accepts only an identifier, member expression, or string literal.** Calls, template literals, conditionals, and logical expressions are rejected. Assign the result to a variable first, then use `<{tag}>`.
+## TSRX rules this parser enforces
 
-**The browser build exposes only `parse`, `analyze`, and `generate`.** It has no `parseModule` filename inference, first-error throwing, diagnostic-span rewriting, or source maps. Create Source Map V3 output through the npm package.
+- A lazy pattern cannot start a C-style `for` loop; use it in a `for...of` or `for...in` binding.
 
-See [Diagnostics and recovery](/guide/diagnostics) for safe parsing patterns and [Generate](/guide/generate) for supported printer options.
+- A call expression cannot be a dynamic tag name; assign its result to a variable first.
+
+All 17 constructs in the [TSRX](https://tsrx.dev) parity table parse.
+
+See [Diagnostics and recovery](/guide/diagnostics).
