@@ -3,8 +3,9 @@
 // silently coexisting on another interface.
 //
 // It serves docs/dist exactly as the deploy does: extensionless routes resolve
-// to their .html files (Vercel cleanUrls), directories resolve to index.html.
-import { createReadStream, existsSync, statSync } from 'node:fs'
+// to their .html files (Vercel cleanUrls), directories resolve to index.html,
+// and the redirects the build wrote into dist/vercel.json are honoured.
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,6 +20,13 @@ if (!Number.isInteger(requestedPort) || requestedPort < 0 || requestedPort > 65_
 // '' when the site is served at the root, '/some/prefix' otherwise.
 const baseSegments = config.base.split('/').filter(Boolean)
 const basePath = baseSegments.length > 0 ? `/${baseSegments.join('/')}` : ''
+const redirects = new Map()
+const vercelJson = path.join(distDir, 'vercel.json')
+if (existsSync(vercelJson)) {
+  for (const rule of JSON.parse(readFileSync(vercelJson, 'utf8')).redirects ?? []) {
+    redirects.set(rule.source, rule)
+  }
+}
 let boundPort = requestedPort
 const allowedHosts = () => new Set([`127.0.0.1:${boundPort}`, `localhost:${boundPort}`])
 
@@ -71,6 +79,13 @@ const server = http.createServer((request, response) => {
     publicPath = decodeURIComponent(url.pathname || '/')
   } catch {
     reject(response, 400, 'malformed path encoding')
+    return
+  }
+  const redirect = redirects.get(publicPath.replace(/(.)\/$/, '$1'))
+  if (redirect) {
+    response
+      .writeHead(redirect.permanent ? 308 : 307, { Location: redirect.destination, 'Cache-Control': 'no-store' })
+      .end()
     return
   }
   let filePath = path.join(distDir, path.normalize(publicPath))

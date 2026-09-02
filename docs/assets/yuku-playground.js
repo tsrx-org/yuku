@@ -13,9 +13,8 @@ import {
   flagNames,
   formatMs,
   plural,
-  quickCode,
-  quickTokens,
 } from './yuku-shared.js'
+import { highlightedHtml } from './widgets/_shared.js'
 
 // ---- URL-hash sharing ----
 const b64uEncode = (text) => {
@@ -200,38 +199,13 @@ export async function initDemo(panel) {
     hideTooltip()
   })
 
-  // ---- highlighted mirror: only the lines that changed are re-tokenised ----
-  let mirrorLineHtml = [...codeEl.querySelectorAll(':scope > .line')].map((el) => el.outerHTML)
-  let mirrorLines = original.split('\n')
-
-  const syncMirror = (text) => {
-    const newLines = text.split('\n')
-    let start = 0
-    while (
-      start < newLines.length &&
-      start < mirrorLines.length &&
-      newLines[start] === mirrorLines[start]
-    ) {
-      start++
-    }
-    let endNew = newLines.length - 1
-    let endOld = mirrorLines.length - 1
-    while (endNew >= start && endOld >= start && newLines[endNew] === mirrorLines[endOld]) {
-      endNew--
-      endOld--
-    }
-    const html = newLines.map((line, index) => {
-      if (index < start) return mirrorLineHtml[index]
-      if (index > endNew) return mirrorLineHtml[endOld + (index - endNew)]
-      return `<span class="line">${quickTokens(line)}</span>`
-    })
-    codeEl.innerHTML = html.join('\n')
-    mirrorLines = newLines
-    mirrorLineHtml = html
-  }
-
-  const renderEditor = (text) => {
-    syncMirror(text)
+  let mirrorTicket = 0
+  const renderEditor = async (text) => {
+    const ticket = ++mirrorTicket
+    const rendered = document.createElement('div')
+    rendered.innerHTML = await highlightedHtml(text, '', 'tsrx')
+    if (ticket !== mirrorTicket || disposed) return
+    codeEl.innerHTML = rendered.querySelector('code').innerHTML
     syncSize()
   }
 
@@ -315,7 +289,7 @@ export async function initDemo(panel) {
   let generatedFor = null
   let semanticFor = null
 
-  const renderAst = () => {
+  const renderAst = async () => {
     const node = target('pg-ast')
     if (!node || !current) return
     let json
@@ -327,7 +301,7 @@ export async function initDemo(panel) {
     }
     const truncated = json.length > AST_LIMIT
     node.innerHTML =
-      `<pre class="pg-plain"><code>${escapeHtml(truncated ? json.slice(0, AST_LIMIT) : json)}</code></pre>` +
+      (await highlightedHtml(truncated ? json.slice(0, AST_LIMIT) : json, 'pg-plain', 'json')) +
       (truncated
         ? `<p class="pg-note">truncated at ${Math.round(AST_LIMIT / 1024)} KB of ${Math.round(json.length / 1024)} KB</p>`
         : '')
@@ -377,7 +351,7 @@ export async function initDemo(panel) {
           })
           .join('')}</ul>`
       : ''
-    node.innerHTML = `${errors}<pre class="pg-plain"><code>${quickCode(result.code)}</code></pre>`
+    node.innerHTML = `${errors}${await highlightedHtml(result.code, 'pg-plain', 'tsx')}`
   }
 
   const SEMANTIC_ROWS = 200
@@ -480,7 +454,7 @@ export async function initDemo(panel) {
       )} · runs in your browser`,
       errors > 0 ? 'error' : result.diagnostics.length > 0 ? 'warning' : 'ok',
     )
-    renderAst()
+    void renderAst()
     renderDiagnosticsPanel()
     if (outputStatus) outputStatus.textContent = 'output follows the editor as you type'
     renderTab(visibleTab())

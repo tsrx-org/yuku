@@ -1,0 +1,20 @@
+.widget-link-rewrite .lr-source,
+.widget-link-rewrite .lr-out {
+  min-height: 300px;
+}
+.widget-link-rewrite .lr-source .ex-editor-layer {
+  height: 300px;
+}
+.widget-link-rewrite .lr-output {
+  min-height: 300px;
+  white-space: pre;
+  overflow: auto;
+}
+.widget-link-rewrite .lr-change {
+  color: inherit;
+  background: color-mix(in srgb, var(--c-brand) 22%, transparent);
+  border-radius: 3px;
+}
+.widget-link-rewrite [data-lr-diagnostics] {
+  padding: 4px 0 14px;
+}

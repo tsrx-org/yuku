@@ -20,7 +20,7 @@
 //
 //   - version 0.0.0, so 0.1.0 is unambiguously newer.
 //   - `--tag bootstrap`, so `latest` is never pointed at a placeholder and
-//     `npm install yuku-tsrx` cannot resolve one.
+//     `npm install @tsrx/yuku` cannot resolve one.
 //   - `"provenance": false`, because a laptop cannot produce a provenance
 //     attestation and `provenance: true` makes the publish fail outright.
 //   - a README whose only line says what the package is, so anyone who does
@@ -35,19 +35,21 @@
 //   node scripts/publish-placeholders.mjs --publish    # the real one-time run
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const REPOSITORY = "compiled-run/yuku-tsrx";
-const SCOPE = "yuku-tsrx";
+const REPOSITORY = "tsrx-org/yuku";
+const SCOPE = "tsrx";
 const WORKFLOW_FILE = "publish.yml";
-const TARGET_VERSION = "0.1.1";
+const TARGET_VERSION = JSON.parse(
+  readFileSync(new URL("../npm/yuku/package.json", import.meta.url), "utf8"),
+).version;
 const BOOTSTRAP_TAG = "bootstrap";
 
 // Same order the real publish uses, for no reason other than habit: nothing
 // resolves anything at 0.0.0, so order genuinely does not matter here.
-const NAMES = ["@yuku-tsrx/binding-darwin-arm64", "@yuku-tsrx/binding-linux-x64-gnu", "yuku-tsrx"];
+const NAMES = ["@tsrx/yuku-darwin-arm64", "@tsrx/yuku-linux-x64-gnu", "@tsrx/yuku"];
 
 const publishing = process.argv.includes("--publish");
 
@@ -96,7 +98,7 @@ console.log(
     : "\nMODE: rehearsal (default). Nothing will be written to the registry. Pass --publish for the real run.",
 );
 
-const workDir = mkdtempSync(join(tmpdir(), "yuku-tsrx-placeholder-"));
+const workDir = mkdtempSync(join(tmpdir(), "yuku-placeholder-"));
 const published = [];
 const skipped = [];
 
@@ -120,7 +122,7 @@ for (const name of NAMES) {
         version: "0.0.0",
         private: false,
         description: `Name reservation for trusted-publishing setup. The real release is ${TARGET_VERSION}. Do not install this version.`,
-        license: "UNLICENSED",
+        license: "MIT",
         repository: { type: "git", url: `git+https://github.com/${REPOSITORY}.git` },
         // provenance must be false: a laptop publish cannot attest, and
         // asking it to fails the publish rather than skipping the
@@ -152,17 +154,13 @@ Next: configure a trusted publisher on each package. Only the owner can do this,
 and it is the step that makes .github/workflows/${WORKFLOW_FILE} able to
 authenticate without any NPM_TOKEN.
 
-STEP 1 -- create the organization (once, before the scoped names can exist).
+STEP 1 -- the organization.
 
-  The two binding packages are scoped @${SCOPE}/..., so an npm organization
-  named exactly "${SCOPE}" has to own that scope.
+  All three packages are scoped @${SCOPE}/..., so the account that publishes
+  must be a member of the "${SCOPE}" npm organization (the one that already
+  owns @tsrx/oxc and @tsrx/core) with publish rights.
 
-    1. Sign in at https://www.npmjs.com/
-    2. Go to https://www.npmjs.com/org/create
-    3. Organization name: ${SCOPE}
-    4. Pick the free plan (it allows unlimited public packages).
-
-  If the scoped publishes above failed with E404 or E402, this is why: create
+  If the publishes above failed with E404 or E403, this is why: get added to
   the org, then re-run this script.
 
 STEP 2 -- per package, on npmjs.com.
@@ -191,12 +189,15 @@ ${configurable.map((name) => `    - ${name}`).join("\n")}
   five-minute window:
 
 ${configurable.map((name) => `    npm trust github "${name}" --repo ${REPOSITORY} --file ${WORKFLOW_FILE} --allow-publish --yes`).join("\n")}
-    npm trust list yuku-tsrx    # confirm it saved
+    npm trust list @tsrx/yuku    # confirm it saved
+
+  Or run scripts/trust-publishers.sh, which does exactly that for every name.
 
 STEP 3 -- publish ${TARGET_VERSION} from CI.
 
-  GitHub -> Actions -> "Publish to npm" -> Run workflow.
-  Rehearse with mode=dry-run first. See docs/releasing/publish-runbook.md.
+  Rehearse first: GitHub -> Actions -> "Publish to npm" -> Run workflow with
+  mode=dry-run. Then push the tag v${TARGET_VERSION}; the push publishes.
+  See docs/releasing/launch-runbook.md.
 
 STEP 4 -- clean up, but only AFTER ${TARGET_VERSION} is on the registry.
 

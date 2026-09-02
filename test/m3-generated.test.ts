@@ -29,7 +29,7 @@ const temporaryDirectory = (name: string): string => {
 const copyProduction = (directory: string): Map<string, Buffer> => {
 	const copies = new Map<string, Buffer>();
 	for (const artifact of artifacts) {
-		const bytes = readFileSync(`npm/yuku-tsrx/${artifact}`);
+		const bytes = readFileSync(`npm/yuku/${artifact}`);
 		copies.set(artifact, bytes);
 		writeFileSync(join(directory, artifact), bytes);
 	}
@@ -94,7 +94,7 @@ test("check rejects missing and one-byte-drifted production artifacts without mu
 	expect(drifted.status).not.toBe(0);
 	expectCopies(driftDirectory, driftExpected);
 	for (const artifact of artifacts) {
-		expect(readFileSync(`npm/yuku-tsrx/${artifact}`)).toEqual(productionBefore.get(artifact));
+		expect(readFileSync(`npm/yuku/${artifact}`)).toEqual(productionBefore.get(artifact));
 	}
 });
 

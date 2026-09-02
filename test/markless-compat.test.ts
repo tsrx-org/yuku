@@ -11,7 +11,7 @@ import {
 	type JSXIfExpression,
 	type MemberExpression,
 	type TSRXJSXElement,
-} from "yuku-tsrx";
+} from "@tsrx/yuku";
 
 test("collects structured parser diagnostics without weakening strict mode", () => {
 	const source = "const = ;";

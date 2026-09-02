@@ -4,20 +4,84 @@ on:
   push:
     branches:
       - m3/provenance
+      - main
+      - "docs/**"
+  pull_request:
+    paths:
+      - docs/**
+      - tools/build-wasm.mjs
+      - tools/wasm-smoke.mjs
+      - tools/wasm-stamp.mjs
+      - .github/workflows/ci.yml
 
 permissions:
   contents: read
 
 jobs:
+  docs:
+    name: Docs site (skips when zig-out/wasm is absent)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm 10.33.2
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 10.33.2
+
+      - name: Set up Node 24.15.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # zig-out/ is gitignored and the wasm needs zig plus the Yuku seam
+      # checkout, so a plain checkout has no binary. Build it in an earlier
+      # step with `node tools/build-wasm.mjs` (which also stamps it) to turn
+      # the rest of this job on.
+      - name: Check for the wasm build
+        id: wasm
+        run: |
+          if [ -f zig-out/wasm/yuku-tsrx.wasm ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=docs job skipped::zig-out/wasm/yuku-tsrx.wasm is not in this checkout; the docs build and the browser verification did not run"
+          fi
+
+      - name: Install headless Chromium
+        if: steps.wasm.outputs.present == 'true'
+        run: pnpm exec playwright-core install --with-deps chromium
+
+      - name: Build the docs
+        if: steps.wasm.outputs.present == 'true'
+        run: pnpm run docs:build
+
+      - name: Check every playground fence parses
+        if: steps.wasm.outputs.present == 'true'
+        run: node tools/wasm-smoke.mjs --fences
+
+      - name: Verify the interactive surfaces in Chromium
+        if: steps.wasm.outputs.present == 'true'
+        run: node docs/verify-playground.mjs
+
   verify:
     name: Verify M0-M3 provenance
+    if: github.ref == 'refs/heads/m3/provenance'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Check out yuku-tsrx event commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          repository: compiled-run/yuku-tsrx
+          repository: tsrx-org/yuku
           ref: ${{ github.sha }}
           path: yuku-tsrx
           fetch-depth: 1

@@ -1,0 +1,45 @@
+.widget-visitor .vi-controls {
+  border-top: 0;
+  border-bottom: 1px solid var(--c-divider);
+}
+.widget-visitor .vi-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.widget-visitor .vi-pick select {
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--c-divider);
+  border-radius: 6px;
+  color: var(--c-text-1);
+  background: var(--c-bg-elv);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.widget-visitor .vi-code {
+  border-bottom: 1px solid var(--c-divider);
+}
+.widget-visitor .vi-hits {
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+}
+.widget-visitor .vi-hits button {
+  display: block;
+  width: 100%;
+  padding: 3px 16px;
+  border: 0;
+  color: var(--c-text-2);
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.widget-visitor .vi-hits button:hover,
+.widget-visitor .vi-hits button:focus-visible {
+  background: var(--c-brand-soft);
+}

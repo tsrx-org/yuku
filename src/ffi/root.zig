@@ -56,16 +56,37 @@ pub fn analyze(env: napi.Env, source: []const u8, options: AnalyzeOptions) !napi
     return buffer.val;
 }
 
+const codegen_defaults: parser.codegen.Options = .{};
+
+const GenerateOptions = struct {
+    strip: bool = false,
+    minify: bool = false,
+    format: parser.codegen.Format = codegen_defaults.format,
+    indent: u8 = codegen_defaults.indent,
+    quotes: parser.codegen.Quotes = codegen_defaults.quotes,
+    comments: parser.codegen.Comments = codegen_defaults.comments,
+    source_maps: ?parser.codegen.SourceMapOptions = codegen_defaults.source_maps,
+};
+
 pub fn generate(
     env: napi.Env,
     buffer: napi.Val,
-    options: parser.codegen.Options,
+    options: GenerateOptions,
 ) !parser.codegen.Result {
     const allocator = env.allocator();
     const bytes = try buffer.getArrayBufferData(env);
     var tree = transfer.deserializeFromBuf(allocator, bytes, "") catch return error.DecodeFailed;
     defer tree.deinit();
-    return parser.codegen.generate(allocator, &tree, options);
+    return parser.codegen.emit(allocator, &tree, .{
+        .strip_ts = options.strip,
+        .minify = options.minify,
+    }, .{
+        .format = options.format,
+        .indent = options.indent,
+        .quotes = options.quotes,
+        .comments = options.comments,
+        .source_maps = options.source_maps,
+    });
 }
 
 comptime {

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { analyze, authoredDiagnosticSpan, parseModule, type Diagnostic } from "yuku-tsrx";
+import { analyze, authoredDiagnosticSpan, parseModule, type Diagnostic } from "@tsrx/yuku";
 
 // The seam that assigns these spans (yuku-minimal-seam
 // src/parser/syntax/jsx/root.zig:282) points a malformed-markup diagnostic at

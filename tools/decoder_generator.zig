@@ -1678,13 +1678,16 @@ fn writeDecodeBody(w: *Writer, mode: Mode) !void {
         \\      return r;
         \\    }} finally {{ _dialectActive.delete(ri); }}
         \\  }}
-        \\  function applyDialectOverlay(i, r) {{
-        \\    if (!_hasDialectRecords || r == null || typeof r !== "object") return r;
+        \\  function dialectOverlayRecord(i) {{
         \\    let lo = 0, hi = _dialectOverlayCount;
         \\    const base = _dialectOverlaysOff >> 2;
         \\    while (lo < hi) {{ const m = (lo + hi) >>> 1; if (_u32[base + m * 2] < i) lo = m + 1; else hi = m; }}
-        \\    if (lo < _dialectOverlayCount && _u32[base + lo * 2] === i)
-        \\      Object.assign(r, dialectRecord(_u32[base + lo * 2 + 1], r.start, r.end, true));
+        \\    return lo < _dialectOverlayCount && _u32[base + lo * 2] === i ? _u32[base + lo * 2 + 1] : NULL;
+        \\  }}
+        \\  function applyDialectOverlay(i, r) {{
+        \\    if (!_hasDialectRecords || r == null || typeof r !== "object") return r;
+        \\    const ri = dialectOverlayRecord(i);
+        \\    if (ri !== NULL) Object.assign(r, dialectRecord(ri, r.start, r.end, true));
         \\    return r;
         \\  }}
         \\
@@ -1911,12 +1914,39 @@ fn writeParentBody(w: *Writer) !void {
         \\  function _parents() {{
         \\    if (_parentArr !== undefined) return _parentArr;
         \\    const p = new Int32Array(nodeCount).fill(-1);
-        \\    (function visit(i, parent) {{
+        \\
+    , .{});
+    // A dialect node's children live in its record, and an overlay hangs extra
+    // children off a host node; CHILD_SLOTS knows neither.
+    if (comptime dialect_enabled) try w.print(
+        \\    function visitRecord(ri, parent) {{
+        \\      const b = (_dialectRecordsOff >> 2) + ri * ({[size]d} >> 2);
+        \\      const schema = DIALECT_RECORDS[(_u32[b] & 255) - DIALECT_RECORDS[0].tag];
+        \\      for (const field of schema.fields) {{
+        \\        const v = _u32[b + field.slot];
+        \\        if (field.role === "node" || (field.role === "optionalNode" && v !== NULL)) visit(v, parent);
+        \\        else if (field.role === "nodeList") {{
+        \\          const len = _u32[b + field.slot + 1];
+        \\          for (let j = 0; j < len; j++) visit(_u32[_extraBase + v + j], parent);
+        \\        }}
+        \\      }}
+        \\    }}
+        \\
+    , .{ .size = rt.NODE_SIZE });
+    try w.print(
+        \\    function visit(i, parent) {{
         \\      const o = _nodesOff + i * {[size]d};
         \\      const tag = _u8[o];
+        \\      const b = o >> 2;
+        \\
+    , .{ .size = rt.NODE_SIZE });
+    if (comptime dialect_enabled) try w.print(
+        \\      if (tag === {[dialect_tag]d}) {{ p[i] = parent; visitRecord(_u32[b + {[data_start]d}], i); return; }}
+        \\
+    , .{ .dialect_tag = rt.dialectNodeTag(), .data_start = rt.NODE_HEADER_U32S });
+    try w.print(
         \\      if (IS_NODE[tag]) {{ p[i] = parent; parent = i; }}
         \\      const ops = CHILD_SLOTS[tag];
-        \\      const b = o >> 2;
         \\      for (let q = 0; q < ops.length; q += 2) {{
         \\        const slot = ops[q + 1];
         \\        if (ops[q] === 0) {{
@@ -1935,17 +1965,25 @@ fn writeParentBody(w: *Writer) !void {
         \\          }}
         \\        }}
         \\      }}
-        \\    }})(progIdx, -1);
-        \\    return (_parentArr = p);
-        \\  }}
         \\
     , .{
-        .size = rt.NODE_SIZE,
         .f0 = rt.NODE_FIELD0_OFFSET,
         .f01 = rt.NODE_FIELD0_OFFSET + 1,
         .f0b = rt.NODE_FIELD0B_OFFSET,
         .f0b1 = rt.NODE_FIELD0B_OFFSET + 1,
     });
+    if (comptime dialect_enabled) try w.writeAll(
+        \\      const ri = dialectOverlayRecord(i);
+        \\      if (ri !== NULL) visitRecord(ri, parent);
+        \\
+    );
+    try w.writeAll(
+        \\    }
+        \\    visit(progIdx, -1);
+        \\    return (_parentArr = p);
+        \\  }
+        \\
+    );
 }
 
 fn writeSemanticBody(w: *Writer) !void {

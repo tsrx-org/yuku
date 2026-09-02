@@ -7,7 +7,7 @@ import {
 	type Diagnostic,
 	type JSXStyleElement,
 	type StyleSheet,
-} from "yuku-tsrx";
+} from "@tsrx/yuku";
 
 const SCOPE = "mk-x";
 

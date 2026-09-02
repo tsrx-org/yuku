@@ -1,0 +1,28 @@
+.widget-platforms-table {
+  margin: 20px 0;
+}
+.pt-table {
+  margin: 0;
+}
+.pt-table td,
+.pt-table th {
+  white-space: nowrap;
+}
+.pt-none {
+  color: var(--c-text-3);
+}
+.pt-table tr.pt-match > td {
+  background: var(--c-brand-soft);
+}
+.pt-table tr.pt-match > td:first-child {
+  box-shadow: inset 3px 0 0 var(--c-brand);
+}
+.pt-meta {
+  margin: 10px 0 6px;
+  color: var(--c-text-2);
+  font-size: 13.5px;
+}
+.widget-platforms-table .ex-status {
+  border: 1px solid var(--c-divider);
+  border-radius: 6px;
+}

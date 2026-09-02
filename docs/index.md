@@ -1,5 +1,5 @@
 ---
 title: yuku-tsrx
-description: A parser, analyzer, and code generator for .tsrx, written in Zig as a compile-time dialect on the Yuku toolchain. Not a fork.
+description: Parse, analyze and print TSRX with the Yuku parser. Type in the editor and watch the tree.
 layout: home
 ---

@@ -1,0 +1,275 @@
+# Cut a release from CI: bump the version everywhere, commit, tag, and publish
+# a GitHub Release whose notes cover the whole history since the last tag.
+#
+# THIS WORKFLOW DOES NOT PUBLISH TO NPM. publish.yml does, when the tag lands.
+# A tag pushed with the default GITHUB_TOKEN does not trigger other workflows,
+# so with no RELEASE_PUSH_TOKEN secret the owner either dispatches publish.yml
+# by hand for the tagged commit or cuts the release from a laptop instead
+# (`pnpm release`, then `git push --follow-tags`), which triggers it directly.
+# docs/releasing/launch-runbook.md has both paths.
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Version bump type."
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - prerelease
+      preid:
+        description: "Prerelease id, for example rc. Only used with release_type: prerelease."
+        required: false
+        default: ""
+        type: string
+      mode:
+        description: "dry-run rehearses the whole cut and pushes nothing. release pushes the commit, the tag and the GitHub Release."
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - release
+
+# No id-token: write anywhere in this file: this workflow must never be able
+# to publish to npm.
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-release
+  cancel-in-progress: false
+
+env:
+  npm_config_audit: "false"
+  npm_config_fund: "false"
+
+jobs:
+  release:
+    name: ${{ inputs.mode }} ${{ inputs.release_type }}
+    if: github.repository == 'tsrx-org/yuku'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      # Full history, because the notes are generated from it. The optional
+      # RELEASE_PUSH_TOKEN (a fine-grained PAT with contents: write) makes the
+      # tag push trigger publish.yml; the default token cannot.
+      - name: Check out the full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
+
+      - name: Refuse to cut a release from anywhere but the default branch
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF_NAME" != "$DEFAULT_BRANCH" ]]; then
+            echo "dispatched from $REF_NAME, but a release is only cut from $DEFAULT_BRANCH" >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "the checkout is dirty before anything has run:" >&2
+            git status --porcelain >&2
+            exit 1
+          fi
+
+      - name: Set up pnpm 10.33.2
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 10.33.2
+
+      - name: Set up Node 24.15.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Captured before the tag exists; afterwards `git describe` would answer
+      # with the tag this run is about to write and the notes would cover
+      # nothing. `--match "v[0-9]*"` keeps any non-release tag out of it.
+      - name: Find the previous release tag
+        id: previous
+        shell: bash
+        run: |
+          set -euo pipefail
+          if PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match "v[0-9]*" HEAD 2>/dev/null); then
+            echo "previous release tag: $PREVIOUS_TAG"
+          else
+            PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD | tail -1)
+            echo "no release tag yet; the notes start at the first commit $PREVIOUS_TAG"
+          fi
+          echo "tag=$PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Configure the committer
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # bumpp rewrites the root manifest only and is told not to commit, tag or
+      # push; scripts/sync-version.ts carries the version to every other
+      # manifest and the commit is made below once the tree is whole.
+      - name: Bump the root version
+        id: bump
+        shell: bash
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          PREID: ${{ inputs.preid }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$PREID" ]]; then
+            pnpm exec bumpp package.json --release "$RELEASE_TYPE" --preid "$PREID" \
+              --yes --no-commit --no-tag --no-push
+          else
+            pnpm exec bumpp package.json --release "$RELEASE_TYPE" \
+              --yes --no-commit --no-tag --no-push
+          fi
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "new version: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Propagate the version across the rest of the surface
+        run: |
+          node scripts/sync-version.ts
+          node scripts/sync-version.ts --check
+
+      - name: Regenerate the lockfile
+        run: pnpm install --lockfile-only
+
+      - name: Prove the cut is internally consistent
+        run: |
+          node scripts/sync-version.ts --check
+          pnpm run check
+
+      - name: Show the version lockstep
+        shell: bash
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          for manifest in package.json npm/yuku/package.json \
+            "npm/yuku/@tsrx/yuku-darwin-arm64/package.json" \
+            "npm/yuku/@tsrx/yuku-linux-x64-gnu/package.json"; do
+            FOUND=$(node -p "require('./$manifest').version")
+            NAME=$(node -p "require('./$manifest').name")
+            if [[ "$FOUND" != "$VERSION" ]]; then
+              echo "$manifest ($NAME) is $FOUND, expected $VERSION" >&2
+              exit 1
+            fi
+            echo "ok  $NAME  $FOUND"
+          done
+
+      - name: Commit and tag the cut
+        shell: bash
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          git add -A
+          git commit -m "chore: release v$VERSION"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "files were left uncommitted by the cut:" >&2
+            git status --porcelain >&2
+            exit 1
+          fi
+          git --no-pager show --stat --oneline HEAD | head -40
+
+      # The range ends at the commit before the release commit, resolved to a
+      # SHA: changelogen puts `--to` verbatim into the compare link and GitHub
+      # cannot resolve `HEAD~1`.
+      - name: Generate the release notes
+        shell: bash
+        env:
+          PREVIOUS_TAG: ${{ steps.previous.outputs.tag }}
+        run: |
+          set -euo pipefail
+          NOTES_TO=$(git rev-parse --verify "HEAD~1")
+          node scripts/release-notes.ts \
+            --from "$PREVIOUS_TAG" \
+            --to "$NOTES_TO" \
+            --out "${RUNNER_TEMP}/release-notes.md"
+          {
+            echo "## Release notes"
+            echo
+            cat "${RUNNER_TEMP}/release-notes.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "generating the notes left files behind:" >&2
+            git status --porcelain >&2
+            exit 1
+          fi
+
+      - name: Retain the cut for review
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-cut-${{ steps.bump.outputs.version }}-${{ inputs.mode }}
+          path: ${{ runner.temp }}/release-notes.md
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Report what a dry run would have done
+        if: inputs.mode == 'dry-run'
+        shell: bash
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          echo "mode=dry-run: nothing was pushed."
+          echo "The cut for v$VERSION was built, gated and tagged on the runner, then discarded."
+
+      - name: Push the commit and the tag
+        if: inputs.mode == 'release'
+        shell: bash
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:$BRANCH"
+          git push origin "refs/tags/v$VERSION"
+
+      - name: Create the GitHub Release
+        if: inputs.mode == 'release'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          tag_name: v${{ steps.bump.outputs.version }}
+          name: v${{ steps.bump.outputs.version }}
+          body_path: ${{ runner.temp }}/release-notes.md
+          draft: false
+          prerelease: ${{ inputs.release_type == 'prerelease' }}
+          make_latest: ${{ inputs.release_type != 'prerelease' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Say what has not happened yet
+        if: inputs.mode == 'release'
+        shell: bash
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+          PUSHED_WITH_PAT: ${{ secrets.RELEASE_PUSH_TOKEN != '' }}
+        run: |
+          {
+            echo "### npm"
+            echo
+            if [[ "$PUSHED_WITH_PAT" == "true" ]]; then
+              echo "v$VERSION is tagged. The tag push triggers **Publish to npm**; watch that run."
+            else
+              echo "v$VERSION is tagged, but a tag pushed with the default token does not trigger"
+              echo "**Publish to npm**. Dispatch it by hand for this commit with mode=publish and"
+              echo "confirm=\`PUBLISH $VERSION\`, or set the RELEASE_PUSH_TOKEN secret for next time."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

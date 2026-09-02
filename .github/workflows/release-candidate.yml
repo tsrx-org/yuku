@@ -1,0 +1,274 @@
+# Build the release candidate: both native addons on their own runners, the
+# three npm tarballs, a check of what is inside each one, and SHA256SUMS. It
+# publishes nothing and has read-only permissions.
+#
+# Dispatched by hand to review a candidate for any ref, and called by
+# publish.yml so that what gets published is exactly what this produced.
+name: Build release candidate
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      artifact:
+        description: "Name of the uploaded candidate artifact"
+        value: ${{ jobs.assemble.outputs.artifact }}
+
+permissions:
+  contents: read
+
+env:
+  npm_config_audit: "false"
+  npm_config_fund: "false"
+  # The Yuku seam this package builds against: yuku-toolchain/yuku#164 as a
+  # branch on the thejackshelton/yuku fork, pinned to a SHA because a release
+  # must ship the seam it was proven against and a branch moves.
+  SEAM_REPOSITORY: thejackshelton/yuku
+  SEAM_REF: 8a95bfbfc132e3df77bd142943fede6a36f90a7b
+
+jobs:
+  build:
+    name: build ${{ matrix.binding }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # The linux job carries the meta package (its host target is
+          # linux-x64-gnu) and excludes the darwin binding directory, which
+          # `zig build` stages a manifest into on every platform but can only
+          # fill in on macOS. cpu pins a portable floor: without one zig
+          # compiles for the runner's own CPU, and 0.1.2's linux addon died
+          # with SIGILL on consumers for exactly that reason.
+          - runner: ubuntu-24.04
+            binding: linux-x64-gnu
+            cpu: x86_64_v2
+            upload: |
+              yuku/zig-out/npm/yuku
+              !yuku/zig-out/npm/yuku/@tsrx/yuku-darwin-arm64
+          - runner: macos-14
+            binding: darwin-arm64
+            cpu: apple_m1
+            upload: yuku/zig-out/npm/yuku/@tsrx/yuku-darwin-arm64
+    steps:
+      - name: Check out the exact source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          path: yuku
+          persist-credentials: false
+
+      # build.zig.zon resolves `.yuku` through the relative path
+      # ../yuku-minimal-seam, so the seam must be a sibling with that name.
+      - name: Check out the pinned Yuku seam
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          repository: ${{ env.SEAM_REPOSITORY }}
+          ref: ${{ env.SEAM_REF }}
+          path: yuku-minimal-seam
+          persist-credentials: false
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.16.0
+
+      - name: Verify the pinned toolchain and seam
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(zig version)" = 0.16.0
+          test "$(git -C yuku-minimal-seam rev-parse HEAD)" = "$SEAM_REF"
+          test -z "$(git -C yuku-minimal-seam status --porcelain=v1 --untracked-files=all)"
+
+      # Debug on both platforms, deliberately: the shipped addon is the one the
+      # test suite has been running all along.
+      - name: Build the addon
+        working-directory: yuku
+        shell: bash
+        run: zig build -Dcpu=${{ matrix.cpu }}
+
+      # A Debug ELF carries about 58MB of DWARF no consumer can use.
+      # --strip-debug only, never --strip-all: the dynamic symbol table is how
+      # Node finds napi_register_module_v1.
+      - name: Strip debug info from the linux addon
+        if: matrix.binding == 'linux-x64-gnu'
+        working-directory: yuku
+        shell: bash
+        run: |
+          set -euo pipefail
+          addon=zig-out/npm/yuku/@tsrx/yuku-linux-x64-gnu/yuku-tsrx.node
+          before=$(stat -c %s "$addon")
+          strip_tool=$(command -v llvm-objcopy || command -v objcopy)
+          "$strip_tool" --strip-debug "$addon"
+          echo "stripped with $strip_tool: $before -> $(stat -c %s "$addon") bytes"
+
+      # A staged tree that does not contain the addon it advertises is the
+      # package that installs and then throws on first import.
+      - name: Check the staged tree
+        working-directory: yuku
+        shell: bash
+        env:
+          BINDING: ${{ matrix.binding }}
+        run: |
+          set -euo pipefail
+          stage="zig-out/npm/yuku"
+          test -f "$stage/@tsrx/yuku-$BINDING/yuku-tsrx.node"
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { readFile } from "node:fs/promises";
+          const binding = process.env.BINDING;
+          const stage = "zig-out/npm/yuku";
+          const meta = JSON.parse(await readFile(`${stage}/package.json`, "utf8"));
+          const manifest = JSON.parse(
+            await readFile(`${stage}/@tsrx/yuku-${binding}/package.json`, "utf8"),
+          );
+          assert.equal(meta.name, "@tsrx/yuku");
+          assert.equal(manifest.name, `@tsrx/yuku-${binding}`);
+          assert.equal(manifest.version, meta.version, `yuku-${binding} is not ${meta.version}`);
+          console.log(`@tsrx/yuku-${binding} staged at ${meta.version}`);
+          NODE
+
+      - name: Upload the staged tree
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stage-${{ matrix.binding }}
+          path: ${{ matrix.upload }}
+          if-no-files-found: error
+          retention-days: 14
+
+  assemble:
+    name: Pack, verify, checksum
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      artifact: release-candidate-${{ github.sha }}
+    steps:
+      - name: Check out the exact source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js 24.15.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+
+      # Two downloads with different roots; nothing overlaps because the linux
+      # artifact excluded the darwin binding directory.
+      - name: Download the staged tree built on linux
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: stage-linux-x64-gnu
+          path: zig-out/npm/yuku
+
+      - name: Download the darwin binding built on macOS
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: stage-darwin-arm64
+          path: zig-out/npm/yuku/@tsrx/yuku-darwin-arm64
+
+      # The same file a laptop rehearsal runs: every manifest's version, access,
+      # provenance, os/cpu/libc and repository; every `files` entry present;
+      # each addon's magic bytes match its os/cpu; optionalDependencies exactly
+      # the two bindings at this exact version; then npm publish --dry-run.
+      - name: Gate the staged tree
+        shell: bash
+        env:
+          NPM_CONFIG_PROVENANCE: "false"
+        run: |
+          set -euo pipefail
+          find zig-out/npm/yuku -type f | sort
+          node scripts/release-local.mjs --dry-run --json release-gate-report.json
+          version=$(node -p "require('./zig-out/npm/yuku/package.json').version")
+          node scripts/sync-version.ts --check --version "$version"
+
+      - name: Pack the three tarballs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          stage="$PWD/zig-out/npm/yuku"
+          # Bindings first, meta last: the same order publish.yml uses.
+          for target in \
+            "$stage/@tsrx/yuku-darwin-arm64" \
+            "$stage/@tsrx/yuku-linux-x64-gnu" \
+            "$stage"
+          do
+            npm pack "$target" --pack-destination release
+          done
+          ls -l release
+
+      # npm pack flattens a scoped name: @tsrx/yuku packs as
+      # tsrx-yuku-<version>.tgz and @tsrx/yuku-<suffix> as
+      # tsrx-yuku-<suffix>-<version>.tgz. Each tarball has to hold exactly the
+      # files its manifest promises, and nothing else.
+      - name: Verify the tarball contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { execFileSync } from "node:child_process";
+          import { readdir, readFile } from "node:fs/promises";
+
+          const version = JSON.parse(await readFile("zig-out/npm/yuku/package.json", "utf8")).version;
+          const expected = {
+            [`tsrx-yuku-darwin-arm64-${version}.tgz`]: {
+              name: "@tsrx/yuku-darwin-arm64",
+              files: ["package/package.json", "package/yuku-tsrx.node"],
+            },
+            [`tsrx-yuku-linux-x64-gnu-${version}.tgz`]: {
+              name: "@tsrx/yuku-linux-x64-gnu",
+              files: ["package/package.json", "package/yuku-tsrx.node"],
+            },
+            [`tsrx-yuku-${version}.tgz`]: {
+              name: "@tsrx/yuku",
+              files: [
+                "package/binding.js",
+                "package/decode-analyzer.js",
+                "package/decode.js",
+                "package/diagnostic-spans.js",
+                "package/encode.js",
+                "package/index.d.ts",
+                "package/index.js",
+                "package/package.json",
+                "package/walk.js",
+              ],
+            },
+          };
+          const files = (await readdir("release")).sort();
+          assert.deepEqual(files, Object.keys(expected).sort(), "unexpected tarball set");
+          for (const [file, { name, files: wanted }] of Object.entries(expected)) {
+            const listed = execFileSync("tar", ["-tzf", `release/${file}`], { encoding: "utf8" })
+              .trim()
+              .split("\n")
+              .sort();
+            assert.deepEqual(listed, wanted, `${file}: unexpected contents`);
+            const manifest = JSON.parse(
+              execFileSync("tar", ["-xzOf", `release/${file}`, "package/package.json"], { encoding: "utf8" }),
+            );
+            assert.equal(manifest.name, name, `${file}: wrong package name`);
+            assert.equal(manifest.version, version, `${file}: wrong version`);
+            console.log(`${file}: ${name}@${version}, ${listed.length} files`);
+          }
+          NODE
+
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp release-gate-report.json release/
+          cd release
+          find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+          sha256sum --check SHA256SUMS
+
+      - name: Upload the release candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-candidate-${{ github.sha }}
+          path: release
+          if-no-files-found: error
+          retention-days: 14

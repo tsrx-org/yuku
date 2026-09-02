@@ -126,7 +126,7 @@ function parseArguments(argumentsList: string[]): { mode: GeneratedMode; outputD
 	if (sync === check) throw new Error("select exactly one of --sync or --check");
 	return {
 		mode: sync ? "sync" : "check",
-		outputDirectory: outputIndex === -1 ? "npm/yuku-tsrx" : argumentsList[outputIndex + 1],
+		outputDirectory: outputIndex === -1 ? "npm/yuku" : argumentsList[outputIndex + 1],
 	};
 }
 

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { analyze, parse } from "yuku-tsrx";
+import { analyze, parse } from "@tsrx/yuku";
 
 // `decode.js` and `decode-analyzer.js` are both emitted by `generate()` in
 // `tools/decoder_generator.zig`; `tools/gen_parser_decoder.zig` and
@@ -22,7 +22,7 @@ import { analyze, parse } from "yuku-tsrx";
 const REGENERATE = "regenerate both decoders from tools/decoder_generator.zig with `pnpm gen:npm`";
 
 const readDecoder = (name: string): string[] =>
-	readFileSync(`npm/yuku-tsrx/${name}`, "utf8").split("\n");
+	readFileSync(`npm/yuku/${name}`, "utf8").split("\n");
 
 /**
  * The per-node `case N: { ... }` blocks of a generated decoder, keyed by tag.

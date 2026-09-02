@@ -6,9 +6,12 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Marked } from 'marked'
+import { build as rolldownBuild } from 'rolldown'
 import { getDocsHighlighter, highlightWith } from './highlight.mjs'
 import config from './site.config.mjs'
 import { heroCode } from './demo-sources.mjs'
+import { createNodeEngine } from './wasm-node.mjs'
+import { readStamp, srcTree, stampPathFor } from '../tools/wasm-stamp.mjs'
 
 const docsDir = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(docsDir, '..')
@@ -29,6 +32,32 @@ const withBase = (href) => {
   if (!href.startsWith('/')) return href
   if (href === '/') return trimmedBase || '/'
   return trimmedBase + href
+}
+
+// A retired route in a page link lands on its replacement directly rather than
+// on a redirect hop; the map is the same one vercel.json is written from.
+const REDIRECTS = config.redirects ?? {}
+
+// A build for a legacy location (config.redirectTo set) sends its base path and
+// everything under it, permanently, to the same path on the canonical origin.
+// Only the base path is claimed. `--redirect-only` writes nothing but that: the
+// artifact for a Vercel project whose only remaining job is to redirect.
+const redirectOnly = process.argv.includes('--redirect-only')
+if (redirectOnly && !config.redirectTo) {
+  throw new Error('--redirect-only needs a legacy SITE_ORIGIN; the canonical build redirects nothing')
+}
+const legacyRedirects = () =>
+  config.redirectTo
+    ? [
+        { source: trimmedBase || '/', destination: `${config.redirectTo}/`, permanent: true },
+        { source: `${trimmedBase}/:path*`, destination: `${config.redirectTo}/:path*`, permanent: true },
+      ]
+    : []
+function followRedirect(href) {
+  const hash = href.indexOf('#')
+  const route = hash === -1 ? href : href.slice(0, hash)
+  const destination = REDIRECTS[route]
+  return destination ? destination + (hash === -1 ? '' : href.slice(hash)) : href
 }
 
 const escapeHtml = (text) =>
@@ -170,11 +199,18 @@ const highlightHtml = (code, lang) => highlightWith(highlighter, code, lang)
 // Content hash of the shared chrome assets, appended as ?v= to their URLs so
 // deployed pages never pair fresh HTML with a stale cached stylesheet.
 const styleSource = await readFile(path.join(docsDir, 'assets', 'style.css'), 'utf8')
-const assetVersion = createHash('sha256')
-  .update(styleSource)
-  .update(await readFile(path.join(docsDir, 'assets', 'app.js')))
-  .digest('hex')
-  .slice(0, 10)
+const assetVersionHash = createHash('sha256').update(styleSource)
+const scriptAssets = (await readdir(path.join(docsDir, 'assets'), { recursive: true }))
+  .filter((entry) => entry.endsWith('.js') || entry.endsWith('.mjs'))
+  .map((entry) => entry.split(path.sep).join('/'))
+  .sort()
+for (const entry of scriptAssets) {
+  assetVersionHash.update(entry).update(await readFile(path.join(docsDir, 'assets', entry)))
+}
+assetVersionHash
+  .update('demo-highlighter-entry.mjs')
+  .update(await readFile(path.join(docsDir, 'demo-highlighter-entry.mjs')))
+const assetVersion = assetVersionHash.digest('hex').slice(0, 10)
 
 // The three page shells this site renders. Each one gets its own stylesheet.
 const CSS_SHELLS = ['doc', 'home', 'playground']
@@ -355,7 +391,7 @@ function createMarked(slugger, headings, nodeChips = null) {
         // A source link may name the file (`./yuku-dialect.md#…`) the way it
         // reads in an editor. The site serves routes, not files, so drop the
         // extension rather than shipping a link that lands on nothing.
-        return `<a href="${withBase(href.replace(/\.md(?=$|#)/, ''))}">${text}</a>`
+        return `<a href="${withBase(followRedirect(href.replace(/\.md(?=$|#)/, '')))}">${text}</a>`
       },
     },
   })
@@ -448,6 +484,8 @@ function annotateReadingTime(articleHtml, headings) {
       // counts thousands of axis numbers otherwise, and tells a reader it is a
       // twenty-minute page when the prose is three.
       .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+      // A closed disclosure is not on screen at rest either.
+      .replace(/<details(?![^>]*\bopen\b)[^>]*>[\s\S]*?<\/details>/gi, ' ')
       .replace(/<[^>]*>/g, ' ')
       .replace(/&[a-z]+;|&#\d+;/gi, ' ')
       .split(/\s+/)
@@ -652,6 +690,7 @@ const GUIDE_FIGURES = {
     idleNote: 'The parser runs when this figure scrolls into view.',
     idleStatus:
       'the parser runs in your browser when this figure scrolls into view; with JavaScript off this stays the listing above',
+    readout: 'Focus or hover a node or source token to read its span.',
     twin: 'On the site this is an interactive figure: the parser runs in your browser and hovering a node highlights the source it came from.',
   },
   'symbol-explorer': {
@@ -661,6 +700,7 @@ const GUIDE_FIGURES = {
     idleNote: 'The analyzer runs when this figure scrolls into view.',
     idleStatus:
       'the analyzer runs in your browser when this figure scrolls into view; with JavaScript off this stays the listing above',
+    readout: 'Focus or hover a name to read its symbol and scope.',
     twin: 'On the site this is an interactive figure: the analyzer runs in your browser and clicking a symbol lights its declaration and every reference to it.',
   },
   'codegen-walkthrough': {
@@ -670,6 +710,7 @@ const GUIDE_FIGURES = {
     idleNote: 'The generator runs when this figure scrolls into view.',
     idleStatus:
       'the generator runs in your browser when this figure scrolls into view; with JavaScript off this stays the listing above',
+    readout: 'Edit the source or change an option to regenerate the output.',
     twin: 'On the site this is an interactive figure: every option below is a control, and the output is what the generator running in your browser returns for it.',
   },
 }
@@ -726,9 +767,10 @@ function guideFigureHtml(kind, source, blockHtml) {
     <div class="projection-map-pane">
       <h3>${spec.panes[1]}</h3>
       <div class="ex-out" data-ex-out><p class="ex-note">${spec.idleNote}</p></div>
+      <p class="ex-readout" data-ex-readout aria-live="polite">${spec.readout}</p>
     </div>
   </div>
-  <div class="ex-controls" data-ex-controls></div>
+  <div class="ex-controls ex-toolbar" data-ex-controls></div>
   <figcaption class="ex-status" data-ex-status aria-live="polite">${spec.idleStatus}</figcaption>
 </figure>
 `
@@ -829,7 +871,7 @@ function transcriptOutputHtml(output) {
     .join('')
 }
 
-function terminalDemoHtml(demo) {
+function terminalDemoHtml(demo, name) {
   const transcript = demo.transcript
     .map((entry) => {
       const parts = []
@@ -852,13 +894,12 @@ function terminalDemoHtml(demo) {
     })
     .join('\n\n')
   const regionLabel = `Recorded output of ${demo.transcript[0].command}`
-  return `<figure class="gs-terminal" data-terminal-demo>
+  return `<figure class="gs-terminal" data-terminal-demo="${name}">
   <div class="gs-terminal-titlebar">
     <span class="gs-terminal-title">See it run</span>
     <button type="button" data-terminal-play aria-label="Play terminal walkthrough">Play</button>
   </div>
   <pre class="gs-terminal-transcript" role="region" aria-label="${escapeHtml(regionLabel)}" tabindex="0">${transcript}</pre>
-  <figcaption>${escapeHtml(demo.caption)}</figcaption>
 </figure>
 `
 }
@@ -877,7 +918,7 @@ function terminalDemoMarkdown(demo) {
     ])
     .join('\n')
     .replace(/\n+$/, '')
-  return [demo.caption, '', '```text', body, '```'].join('\n')
+  return ['```text', body, '```'].join('\n')
 }
 
 // ---------- chooser (a decision a reader makes about their own project) ----------
@@ -1041,9 +1082,9 @@ const TSRX_NODE_TYPES = [
 async function howItWorksSteps() {
   const { names, groups } = await readHooks()
   const nodeTypesHref = withBase(
-    '/guide/parser#the-tsrx-node-types-and-why-the-names-are-exact',
+    '/guide/parse#the-tsrx-node-types-and-why-the-names-are-exact',
   )
-  const wireHref = withBase('/guide/parser#the-wire-format-underneath')
+  const wireHref = withBase('/guide/parse#the-wire-format-underneath')
   return [
     {
       id: 'source',
@@ -1083,11 +1124,11 @@ async function howItWorksSteps() {
       label: 'parse, analyze, generate',
       text: 'Three calls on the JavaScript side, each with its own guide.',
       panel: `<ul class="hiw-api">
-        <li><a href="${withBase('/guide/parser')}"><code>parse</code> and <code>parseModule</code></a>: source in, a TSRX tree and its diagnostics out.</li>
-        <li><a href="${withBase('/guide/analyzer')}"><code>analyze</code></a>: scopes, symbols and references over that tree.</li>
-        <li><a href="${withBase('/guide/codegen')}"><code>generate</code></a>: a tree back to source.</li>
+        <li><a href="${withBase('/guide/parse')}"><code>parse</code> and <code>parseModule</code></a>: source in, a TSRX tree and its diagnostics out.</li>
+        <li><a href="${withBase('/guide/analyze')}"><code>analyze</code></a>: scopes, symbols and references over that tree.</li>
+        <li><a href="${withBase('/guide/generate')}"><code>generate</code></a>: a tree back to source.</li>
       </ul>
-      <p>The same module compiled to WebAssembly is what runs in the <a href="${withBase('/playground')}">playground</a> and in the figures on the guide pages.</p>`,
+      <p>The same module compiled to WebAssembly is what runs in the <a href="${withBase(PLAYGROUND_ROUTE)}">playground</a> and in the figures on the guide pages.</p>`,
     },
   ]
 }
@@ -1128,7 +1169,7 @@ async function howItWorksMarkdown() {
 // produced for that example, so this build instantiates the same WebAssembly
 // module the site ships and asks it. It is the instantiation in
 // tools/wasm-smoke.mjs: same flag packing, same length-prefixed result, the same
-// generated decoder out of npm/yuku-tsrx. There is no fallback list and no
+// generated decoder out of npm/yuku. There is no fallback list and no
 // hand-written chip anywhere in this file: a build that cannot start the engine
 // has nothing truthful to print, so it fails instead.
 const BUILD_SOURCE_TYPES = ['script', 'module', 'commonjs']
@@ -1172,7 +1213,7 @@ async function bootWasmForBuild() {
     if (!(name in instance.exports)) throw new Error(`${relative}: missing export \`${name}\``)
   }
   const { decode } = await import(
-    pathToFileURL(path.join(repoRoot, 'npm', 'yuku-tsrx', 'decode.js')).href
+    pathToFileURL(path.join(repoRoot, 'npm', 'yuku', 'decode.js')).href
   )
   buildEngine = { exports: instance.exports, decode }
   return buildEngine
@@ -1466,17 +1507,10 @@ const hookMatrixTwin =
   'On the site this table is filterable by area, and the build adds a column naming the file in `src/dialect/` each hook hands the work to, read out of `src/dialect/parser_extension.zig`.'
 
 // ---------- measure in this tab (reference/benchmarks) ----------
-// A figure that parses a sample in the reader's own tab, N times, and prints
-// what it measured. It is deliberately its own section, under its own heading,
-// with the caveat above the numbers rather than under them: this is the
-// WebAssembly build on one small sample in a browser, and the table further up
-// this page is the native addon on a 224-file corpus in a fresh child process
-// per sample. Putting the two side by side would invite a comparison the data
-// does not support, so this figure never repeats a number from the report.
 const BENCH_ITERATIONS = [100, 500, 2000]
 const BENCH_DEFAULT_ITERATIONS = 500
 const BENCH_CAVEAT =
-  'This runs the WebAssembly build of yuku-tsrx (ReleaseSmall) on one small sample in your browser. What it times is <code>parse()</code>, which includes decoding the result into JavaScript objects, and it times batches of them because a browser clock is deliberately too coarse to resolve a single parse. The report above measured the native Node addon on a 224-file corpus, in a fresh child process per sample, timing the parse loop alone. The two are not comparable: this figure exists so you can watch the parser work, not to reproduce the report.'
+  'This times <code>parse()</code> on one small sample in this tab, in batches because a browser clock is too coarse for one parse. It is not the native-addon report above.'
 
 function benchLiveHtml(fixtures) {
   const samples = { hero: { label: 'Hero snippet', source: heroCode } }
@@ -1503,20 +1537,20 @@ function benchLiveHtml(fixtures) {
   const json = JSON.stringify(samples).replaceAll('<', '\\u003c')
   return `<figure class="explorer ex-figure bench-live" data-bench-live>
   <p class="bench-live-caveat">${BENCH_CAVEAT}</p>
-  <div class="ex-controls">
+  <div class="ex-out" data-ex-out><p class="ex-note">The parser runs when this figure scrolls into view.</p></div>
+  <div class="ex-controls ex-toolbar">
     <div class="ex-chip-group" role="group" aria-label="Sample to parse">
       <span class="ex-chip-label">Sample</span>
       ${sampleChips}
     </div>
     <div class="ex-chip-group" role="group" aria-label="Parses per run">
-      <span class="ex-chip-label">Iterations</span>
+      <span class="ex-chip-label">Parses per run</span>
       ${iterationChips}
     </div>
     <div class="ex-chip-group">
-      <button type="button" class="bench-run" data-bench-run disabled>Run</button>
+      <button type="button" class="bench-run" data-bench-run disabled>Run benchmark</button>
     </div>
   </div>
-  <div class="ex-out" data-ex-out><p class="ex-note">Nothing has been measured yet. The parser loads when this figure scrolls into view, and runs when you press Run.</p></div>
   <figcaption class="ex-status" data-ex-status aria-live="polite">the parser runs in your browser; with JavaScript off this figure measures nothing and says so</figcaption>
   <script type="application/json" data-bench-samples>${json}</script>
 </figure>
@@ -1524,7 +1558,176 @@ function benchLiveHtml(fixtures) {
 }
 
 const benchLiveTwin =
-  'On the site this is an interactive figure: it parses one of these samples in your browser as many times as you ask and prints the median, the p95, parses per second and MB per second it measured. Those numbers are not comparable with the table above, which measured the native addon on a 224-file corpus.'
+  'On the site this interactive figure times `parse()` on one small sample in your tab, in batches because a browser clock is too coarse for one parse. It is not the native-addon report above.'
+
+// ---------- widget registry ----------
+// `<!-- widget:NAME key=value flag -->`, optionally followed by a fence that
+// becomes the widget's seed, is rendered by docs/widgets/NAME.mjs at build time
+// and driven by docs/assets/widgets/NAME.js in the reader's tab. Both files must
+// exist: a marker with no module is a build failure, never an empty box.
+const WIDGET_MARKER = /<!-- widget:([a-z][a-z0-9-]*)((?:\s+[a-z][a-z0-9-]*(?:="[^"]*"|=[^\s>]+)?)*)\s*-->/g
+const WIDGET_FENCE = /\n+```([^\n]*)\n([\s\S]*?)\n```/y
+const widgetsDir = path.join(docsDir, 'widgets')
+const widgetRuntimeDir = path.join(docsDir, 'assets', 'widgets')
+const widgetModules = new Map()
+
+function parseWidgetAttrs(raw) {
+  const attrs = {}
+  for (const [, key, quoted, bare] of raw.matchAll(/([a-z][a-z0-9-]*)(?:="([^"]*)"|=([^\s>]+))?/g)) {
+    attrs[key] = quoted ?? bare ?? 'true'
+  }
+  return attrs
+}
+
+async function loadWidgetModule(name, sourcePath) {
+  if (widgetModules.has(name)) return widgetModules.get(name)
+  const buildFile = path.join(widgetsDir, `${name}.mjs`)
+  const runtimeFile = path.join(widgetRuntimeDir, `${name}.js`)
+  for (const [file, side] of [
+    [buildFile, 'build'],
+    [runtimeFile, 'runtime'],
+  ]) {
+    try {
+      await lstat(file)
+    } catch {
+      throw new Error(
+        `${sourcePath}: <!-- widget:${name} --> has no ${side} module; expected ${path.relative(repoRoot, file)}`,
+      )
+    }
+  }
+  const module = await import(pathToFileURL(buildFile).href)
+  if (typeof module.default !== 'function') {
+    throw new Error(`${path.relative(repoRoot, buildFile)} must default-export render({ attrs, fence, page, ctx })`)
+  }
+  widgetModules.set(name, module)
+  return module
+}
+
+let nodeEngine = null
+const widgetEngine = async () => {
+  nodeEngine ??= await createNodeEngine({
+    wasmPath,
+    decodersDir: path.join(repoRoot, 'npm', 'yuku'),
+  })
+  return nodeEngine
+}
+
+// What every widget's render() gets: the highlighter, the engine in Node, the
+// committed fixtures, and the site's path helpers.
+const widgetContext = {
+  base,
+  withBase,
+  escapeHtml,
+  repoRoot,
+  highlight: (code, lang) =>
+    lang === 'tsrx' ? addTsrxHovers(highlightHtml(code, lang)) : highlightHtml(code, lang),
+  parse: async (source, options) => (await widgetEngine()).parse(source, options),
+  analyze: async (source, options) => (await widgetEngine()).analyze(source, options),
+  generate: async (source, options, generateOptions) =>
+    (await widgetEngine()).generate(source, options, generateOptions),
+  readFixture: async (file) => {
+    const fixture = path.join(repoRoot, 'test', 'parser', 'misc', 'tsrx', file)
+    try {
+      return await readFile(fixture, 'utf8')
+    } catch {
+      throw new Error(`missing fixture ${path.relative(repoRoot, fixture)}`)
+    }
+  },
+  tsrxRecordTypes: TSRX_NODE_TYPES,
+}
+
+// The fence is taken from the Markdown, so the seed a widget ships is byte for
+// byte the one `node tools/wasm-smoke.mjs --fences` checked.
+function collectWidgets(body, sourcePath) {
+  const widgets = []
+  WIDGET_MARKER.lastIndex = 0
+  let match
+  while ((match = WIDGET_MARKER.exec(body)) !== null) {
+    const name = match[1]
+    const attrs = parseWidgetAttrs(match[2])
+    WIDGET_FENCE.lastIndex = WIDGET_MARKER.lastIndex
+    const fenceMatch = WIDGET_FENCE.exec(body)
+    let fence = null
+    if (fenceMatch) {
+      const [lang, ...flags] = (fenceMatch[1].trim() || 'text').split(/\s+/)
+      fence = { lang, flags, code: fenceMatch[2] }
+      WIDGET_MARKER.lastIndex = WIDGET_FENCE.lastIndex
+    }
+    widgets.push({ name, attrs, fence, marker: match[0], sourcePath })
+  }
+  return widgets
+}
+
+async function renderWidgets(article, widgets, page) {
+  let out = ''
+  let cursor = 0
+  for (const widget of widgets) {
+    const at = article.indexOf(widget.marker, cursor)
+    if (at === -1) {
+      throw new Error(`${widget.sourcePath}: the ${widget.marker} marker did not survive rendering`)
+    }
+    let end = at + widget.marker.length
+    let fence = widget.fence
+    if (fence) {
+      const blockStart = article.indexOf('<div class="code-block"', end)
+      const blockEnd = blockStart === -1 ? -1 : codeBlockEnd(article, blockStart)
+      if (blockEnd === -1) {
+        throw new Error(`${widget.sourcePath}: the ${widget.marker} marker has no rendered fence after it`)
+      }
+      fence = { ...fence, html: article.slice(blockStart, blockEnd) }
+      end = blockEnd
+    }
+    const module = await loadWidgetModule(widget.name, widget.sourcePath)
+    const html = await module.default({ attrs: widget.attrs, fence, page, ctx: widgetContext })
+    if (typeof html !== 'string' || html.trim() === '') {
+      throw new Error(`${widget.sourcePath}: widget ${widget.name} rendered nothing`)
+    }
+    const className = typeof module.className === 'string' ? ` ${module.className}` : ''
+    out += article.slice(cursor, at)
+    out += `<figure class="widget widget-${widget.name}${className}" data-widget="${widget.name}">\n${html}\n</figure>\n`
+    cursor = end
+  }
+  return out + article.slice(cursor)
+}
+
+// The Markdown twin keeps the fence and says what the site does with it; a
+// widget may export markdown({ attrs, fence, page }) to say it in its own words.
+async function widgetsMarkdown(body, widgets, page) {
+  let out = body
+  for (const widget of widgets) {
+    const module = await loadWidgetModule(widget.name, widget.sourcePath)
+    const twin =
+      typeof module.markdown === 'function'
+        ? await module.markdown({ attrs: widget.attrs, fence: widget.fence, page })
+        : `On the site this is an interactive ${widget.name} widget.`
+    out = out.replace(widget.marker, twin)
+  }
+  return out
+}
+
+const PM_INSTALL_VARIANTS = [
+  {
+    npm: 'npm install --save-dev',
+    pnpm: 'pnpm add -D',
+    yarn: 'yarn add -D',
+    bun: 'bun add -d',
+  },
+  {
+    npm: 'npm install',
+    pnpm: 'pnpm add',
+    yarn: 'yarn add',
+    bun: 'bun add',
+  },
+]
+
+const PM_EXEC_PREFIXES = {
+  npm: 'npx',
+  pnpm: 'pnpm exec',
+  yarn: 'yarn',
+  bun: 'bunx',
+}
+
+const PM_TABS_PATTERN = /<!-- pm-(?:install|exec) -->\r?\n```sh\r?\n([\s\S]*?)\r?\n```/g
 
 // Each project's own mark, as the single-path glyphs published by Simple Icons
 // (CC0; the marks themselves stay their owners' trademarks and are used here to
@@ -1590,6 +1793,37 @@ function dedupeBrandIcons(html) {
     .map((name) => `<symbol id="brand-icon-${name}" viewBox="0 0 24 24"><path d="${BRAND_ICONS[name]}"/></symbol>`)
     .join('')
   return deduped.replace('</body>', `<svg hidden aria-hidden="true">${symbols}</svg></body>`)
+}
+
+function translateShellLine(line, pm) {
+  const variant = PM_INSTALL_VARIANTS.find((entry) => line.startsWith(entry.npm))
+  if (variant) return `${variant[pm]}${line.slice(variant.npm.length)}`
+  if (line.startsWith('npx ')) return `${PM_EXEC_PREFIXES[pm]}${line.slice('npx'.length)}`
+  return line
+}
+
+function pmInstallTabsHtml(npmCommand, groupId) {
+  const lines = npmCommand.split('\n')
+  if (!lines.some((line) => translateShellLine(line, 'pnpm') !== line)) {
+    throw new Error(
+      `pm tabs block needs a line starting with "npm install --save-dev", "npm install", or "npx", got: ${lines[0]}`,
+    )
+  }
+  const managers = Object.keys(PM_EXEC_PREFIXES)
+  const buttons = managers
+    .map(
+      (pm, index) =>
+        `<button type="button" role="tab" id="pm-tab-${groupId}-${pm}" aria-controls="pm-panel-${groupId}-${pm}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}" data-pm="${pm}">${brandIconHtml(pm)}${pm}</button>`,
+    )
+    .join('')
+  const panels = managers
+    .map((pm, index) => {
+      const command =
+        pm === 'npm' ? npmCommand : lines.map((line) => translateShellLine(line, pm)).join('\n')
+      return `<div role="tabpanel" id="pm-panel-${groupId}-${pm}" aria-labelledby="pm-tab-${groupId}-${pm}" data-pm="${pm}"${index === 0 ? '' : ' hidden'}><div class="code-block" data-lang="sh">${highlightHtml(command, 'sh')}</div></div>`
+    })
+    .join('')
+  return `<div class="pm-tabs" data-pm-tabs><div class="pm-tabs-bar" role="tablist" aria-label="Package manager">${buttons}</div>${panels}</div>\n`
 }
 
 function pageMenuHtml(link) {
@@ -1785,6 +2019,32 @@ const wasmPath = process.env.YUKU_TSRX_WASM
   ? path.resolve(process.env.YUKU_TSRX_WASM)
   : path.join(repoRoot, 'zig-out', 'wasm', 'yuku-tsrx.wasm')
 
+// The module is a zig artifact this build cannot produce, so it is only shipped
+// when the stamp tools/build-wasm.mjs wrote beside it names the src/ tree at
+// HEAD. A stale binary would run the playground on code the docs no longer
+// describe, silently.
+async function requireFreshWasm() {
+  const stamp = await readStamp(wasmPath)
+  const relative = path.relative(repoRoot, stampPathFor(wasmPath))
+  const current = srcTree()
+  if (!stamp) {
+    throw new Error(`missing ${relative}: run \`pnpm run docs:wasm\` to build and stamp the wasm module`)
+  }
+  if (stamp.tree !== current.tree) {
+    throw new Error(
+      `${path.relative(repoRoot, wasmPath)} was built from src/ tree ${stamp.tree.slice(0, 12)}, but HEAD:src is ${current.tree.slice(0, 12)}: run \`pnpm run docs:wasm\``,
+    )
+  }
+  const dirty = [
+    ...(stamp.dirty ? [`${path.relative(repoRoot, wasmPath)} was built from an uncommitted src/`] : []),
+    ...(current.dirty ? ['src/ has uncommitted changes'] : []),
+  ]
+  if (dirty.length > 0 && !process.argv.includes('--allow-dirty')) {
+    throw new Error(`${dirty.join('; ')}: pass \`--allow-dirty\` to build anyway`)
+  }
+  return stamp
+}
+
 async function copyWasmAssets() {
   const outWasmDir = path.join(siteDir, 'assets', 'wasm')
   await mkdir(outWasmDir, { recursive: true })
@@ -1798,7 +2058,7 @@ async function copyWasmAssets() {
   }
   await writeFile(path.join(outWasmDir, 'yuku-tsrx.wasm'), wasm)
   for (const name of ['decode.js', 'decode-analyzer.js']) {
-    await cp(path.join(repoRoot, 'npm', 'yuku-tsrx', name), path.join(outWasmDir, name))
+    await cp(path.join(repoRoot, 'npm', 'yuku', name), path.join(outWasmDir, name))
   }
   return wasm.length
 }
@@ -1838,6 +2098,8 @@ async function readFixtures() {
   }
   return entries
 }
+
+const PLAYGROUND_ROUTE = config.playground ?? '/playground'
 
 const PLAYGROUND_IDLE_NOTE =
   'Pick a committed parser fixture, or type your own TSRX. Everything below is produced in this tab.'
@@ -1927,7 +2189,7 @@ function renderPlaygroundPage(fixtures) {
     title: 'Playground',
     description:
       'Edit TSRX and watch the real yuku-tsrx parser, analyzer and code generator answer in your browser, compiled to WebAssembly.',
-    pathname: '/playground',
+    pathname: PLAYGROUND_ROUTE,
     shell: 'playground',
     bodyClass: 'home-page',
     header: headerHtml(),
@@ -1998,15 +2260,9 @@ async function renderHomePage({ description }) {
         .join('\n')}
     </ul>
   </section>
-  <section class="home-upstream" aria-label="Relationship to Yuku">
-    <h2>Built on the Yuku seam in PR #164</h2>
-    <p>yuku-tsrx is a dialect adapter that plugs into the extension points Yuku exposes. It is an independent project and nothing here is a fork of Yuku.</p>
-    <p class="home-upstream-link"><a href="${withBase('/architecture/upstreaming-to-yuku')}">Read how the seam is used</a></p>
-  </section>
   <footer class="home-footer">
     <p class="footer-links"><a href="${config.repository}" target="_blank" rel="noreferrer">GitHub<span class="visually-hidden"> (opens in new tab)</span></a></p>
-${config.footer.copyright ? `    <p class="footer-badge">${escapeHtml(config.footer.copyright)}</p>\n` : ''}    <p class="footer-disclaimer">${config.footer.disclaimer}</p>
-  </footer>
+${config.footer.copyright ? `    <p class="footer-badge">${escapeHtml(config.footer.copyright)}</p>\n` : ''}  </footer>
 </main>`
   return pageShell({
     title: config.title,
@@ -2019,8 +2275,28 @@ ${config.footer.copyright ? `    <p class="footer-badge">${escapeHtml(config.foo
   })
 }
 
-async function build() {
+async function buildRedirectOnly() {
   await validateOutputDirectory()
+  await rm(outDir, { recursive: true, force: true })
+  await mkdir(outDir, { recursive: true })
+  const redirects = legacyRedirects()
+  await writeFile(
+    path.join(outDir, 'vercel.json'),
+    `${JSON.stringify({ cleanUrls: true, trailingSlash: false, redirects, rewrites: [], headers: [] })}\n`,
+  )
+  // Only reached by a path the redirects do not cover, so it points the way.
+  await writeFile(
+    path.join(outDir, 'index.html'),
+    `<!doctype html>\n<meta charset="utf-8">\n<meta http-equiv="refresh" content="0; url=${config.redirectTo}/">\n<title>${escapeHtml(config.title)}</title>\n<p>Moved to <a href="${config.redirectTo}/">${config.redirectTo}</a>.</p>\n`,
+  )
+  await writeFile(path.join(outDir, 'robots.txt'), 'User-agent: *\nDisallow: /\n')
+  console.log(`wrote a redirect-only site: ${trimmedBase || '/'} -> ${config.redirectTo}/ (${redirects.length} rules) -> ${outDir}`)
+}
+
+async function build() {
+  if (redirectOnly) return buildRedirectOnly()
+  await validateOutputDirectory()
+  const wasmStamp = await requireFreshWasm()
   await rm(outDir, { recursive: true, force: true })
   await mkdir(siteDir, { recursive: true })
 
@@ -2028,14 +2304,35 @@ async function build() {
     group.items.map((item) => ({ ...item, group: group.text })),
   )
   const pages = [...flat]
+  const claimed = new Set(
+    pages.map((page) => path.join(docsDir, `${page.link.replace(/^\//, '')}.md`)),
+  )
+  const sectionDirs = new Set(pages.map((page) => page.link.split('/')[1]))
+  const unlisted = []
+  for (const section of sectionDirs) {
+    for (const file of await readdir(path.join(docsDir, section), { recursive: true })) {
+      const sourcePath = path.join(docsDir, section, file)
+      if (!file.endsWith('.md') || claimed.has(sourcePath)) continue
+      const { data } = parseFrontmatter(await readFile(sourcePath, 'utf8'))
+      if (data.unlisted !== 'true') unlisted.push(path.relative(docsDir, sourcePath))
+    }
+  }
+  if (unlisted.length > 0) {
+    throw new Error(`markdown pages missing from the sidebar: ${unlisted.sort().join(', ')}`)
+  }
   const searchDocs = []
 
   const markdownPages = []
   for (const [pageIndex, item] of pages.entries()) {
     const sourcePath = path.join(docsDir, `${item.link.replace(/^\//, '')}.md`)
     const source = await readFile(sourcePath, 'utf8')
-    const { data, body } = parseFrontmatter(source)
-    let exportedBody = body
+    const { data, body: sourceBody } = parseFrontmatter(source)
+    const pmInstallBlocks = []
+    const body = sourceBody.replace(PM_TABS_PATTERN, (_match, command) => {
+      pmInstallBlocks.push(command)
+      return `<!-- pm-tabs:${pmInstallBlocks.length - 1} -->`
+    })
+    let exportedBody = sourceBody.replace(/<!-- pm-(?:install|exec) -->\r?\n/g, '')
     const page = {
       link: item.link,
       group: item.group,
@@ -2074,7 +2371,7 @@ async function build() {
     TERMINAL_DEMO_MARKER.lastIndex = 0
     for (const match of [...article.matchAll(TERMINAL_DEMO_MARKER)]) {
       const demo = await loadTranscript(match[1])
-      article = article.replace(match[0], terminalDemoHtml(demo))
+      article = article.replace(match[0], terminalDemoHtml(demo, match[1]))
       exportedBody = exportedBody.replace(match[0], terminalDemoMarkdown(demo))
     }
     if (article.includes('<!-- chooser -->')) {
@@ -2092,6 +2389,14 @@ async function build() {
     if (article.includes('<!-- bench-live -->')) {
       article = article.replace('<!-- bench-live -->', benchLiveHtml(await readFixtures()))
       exportedBody = exportedBody.replace('<!-- bench-live -->', benchLiveTwin)
+    }
+    const widgets = collectWidgets(body, sourcePath)
+    if (widgets.length > 0) {
+      article = await renderWidgets(article, widgets, page)
+      exportedBody = await widgetsMarkdown(exportedBody, widgets, page)
+    }
+    for (const [index, command] of pmInstallBlocks.entries()) {
+      article = article.replace(`<!-- pm-tabs:${index} -->`, pmInstallTabsHtml(command, index))
     }
     article = addGlossary(article)
     searchDocs.push(...extractSections(new Marked(), exportedBody, page))
@@ -2144,11 +2449,20 @@ async function build() {
     dedupeBrandIcons(await renderHomePage({ description: home.data.description })),
   )
   await writeFile(
-    path.join(siteDir, 'playground.html'),
+    path.join(siteDir, `${PLAYGROUND_ROUTE.replace(/^\//, '')}.html`),
     dedupeBrandIcons(renderPlaygroundPage(await readFixtures())),
   )
 
   await cp(path.join(docsDir, 'assets'), path.join(siteDir, 'assets'), { recursive: true })
+  await rolldownBuild({
+    input: path.join(docsDir, 'demo-highlighter-entry.mjs'),
+    platform: 'browser',
+    output: {
+      format: 'esm',
+      file: path.join(siteDir, 'assets', 'demo-highlighter.js'),
+      minify: true,
+    },
+  })
   // fuel.js is fetched by app.js only when the home comparison chart scrolls
   // up, so nothing here links it and nothing would fail loudly if the copy
   // above ever stopped reaching it. Copy it by name and let a missing file
@@ -2170,10 +2484,16 @@ async function build() {
     path.join(siteDir, 'assets', 'style.css'),
     styleSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\n{3,}/g, '\n\n'),
   )
+  // A widget's own rules live beside its runtime half as docs/assets/widgets/NAME.css
+  // and travel with every shell, so a page writer never edits style.css.
+  const widgetCssFiles = (await readdir(widgetRuntimeDir)).filter((f) => f.endsWith('.css')).sort()
+  const widgetCss = (
+    await Promise.all(widgetCssFiles.map((f) => readFile(path.join(widgetRuntimeDir, f), 'utf8')))
+  ).join('\n')
   for (const [shell, lines] of styleBundles) {
     await writeFile(
       path.join(siteDir, 'assets', `style-${shell}.css`),
-      lines
+      [...lines, widgetCss]
         .join('\n')
         .replace(/\/\*[\s\S]*?\*\//g, '')
         .replace(/\n{3,}/g, '\n\n'),
@@ -2185,23 +2505,43 @@ async function build() {
     { recursive: true },
   )
   await writeFile(path.join(siteDir, 'search-index.json'), JSON.stringify(searchDocs))
-  // Site navigation links are extensionless (/guide/introduction); Vercel needs
+  // Site navigation links are extensionless (/guide/parse); Vercel needs
   // cleanUrls to resolve them to the .html files. The deploy root itself is not
-  // part of the site, so it redirects into the base path.
+  // part of the site, so it redirects into the base path. Every retired route
+  // in config.redirects, and its .md twin, redirects permanently to a route
+  // this build wrote.
+  const publicPaths = ['/', PLAYGROUND_ROUTE, ...pages.map(({ link }) => link)]
+  const retired = Object.entries(REDIRECTS).flatMap(([from, to]) => {
+    if (!publicPaths.includes(to)) {
+      throw new Error(`site.config.mjs redirects ${from} to ${to}, which this build did not write`)
+    }
+    if (publicPaths.includes(from)) {
+      throw new Error(`site.config.mjs redirects ${from}, which is still a page`)
+    }
+    const twin = pages.some(({ link }) => link === to) ? [[`${from}.md`, `${to}.md`]] : []
+    return [[from, to], ...twin].map(([source, destination]) => ({
+      source: withBase(source),
+      destination: withBase(destination),
+      permanent: true,
+    }))
+  })
   await writeFile(
     path.join(outDir, 'vercel.json'),
     `${JSON.stringify({
       cleanUrls: true,
       trailingSlash: false,
-      redirects: trimmedBase
-        ? [{ source: '/', destination: trimmedBase, permanent: false }]
-        : [],
+      // Vercel applies redirects before the filesystem, so on a legacy build
+      // the pages still written under the base stop being reachable there.
+      redirects: [
+        ...(trimmedBase ? [{ source: '/', destination: trimmedBase, permanent: false }] : []),
+        ...legacyRedirects(),
+        ...retired,
+      ],
       rewrites: [],
       headers: [],
     })}\n`,
   )
 
-  const publicPaths = ['/', '/playground', ...pages.map(({ link }) => link)]
   await writeFile(
     path.join(outDir, 'robots.txt'),
     `User-agent: *\nAllow: ${base}\nSitemap: ${canonicalUrl('/sitemap.xml')}\n`,
@@ -2215,7 +2555,7 @@ async function build() {
 
   console.log(
     `built ${publicPaths.length} pages, ${searchDocs.length} search sections, ` +
-      `${(wasmBytes / 1024).toFixed(0)} KiB of wasm -> ${outDir}`,
+      `${(wasmBytes / 1024).toFixed(0)} KiB of wasm (built ${wasmStamp.built_at}) -> ${outDir}`,
   )
 }
 

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { analyze, type SourceLang } from "yuku-tsrx";
+import { analyze, type SourceLang } from "@tsrx/yuku";
 
 // Three probes whose acceptance differs per dialect. Read as a table:
 //

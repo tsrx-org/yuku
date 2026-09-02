@@ -1,0 +1,28 @@
+{
+	"name": "@tsrx/yuku-darwin-arm64",
+	"version": "0.2.0",
+	"description": "darwin-arm64 native addon for @tsrx/yuku. Installed automatically as an optional dependency of @tsrx/yuku; do not depend on it directly.",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tsrx-org/yuku.git",
+		"directory": "npm/yuku/@tsrx/yuku-darwin-arm64"
+	},
+	"files": [
+		"yuku-tsrx.node"
+	],
+	"os": [
+		"darwin"
+	],
+	"cpu": [
+		"arm64"
+	],
+	"main": "yuku-tsrx.node",
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	},
+	"engines": {
+		"node": ">=22"
+	}
+}

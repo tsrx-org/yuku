@@ -8,7 +8,7 @@
     "node": "v24.15.0",
     "zig": "0.16.0"
   },
-  "caption": "Captured on 2026-08-17 by tools/capture-transcripts.mjs on Darwin 25.5.0 arm64 (Apple M5 Pro), Node v24.15.0, Zig 0.16.0. Every line is what the command printed; long output is trimmed where marked.",
+  "caption": "",
   "dropped": [],
   "transcript": [
     {

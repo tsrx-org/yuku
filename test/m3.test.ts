@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { decode, encode, parse, parseModule, parseWire, walk } from "yuku-tsrx";
-import type { ExpressionStatement, VariableDeclaration } from "yuku-tsrx";
+import { decode, encode, parse, parseModule, parseWire, walk } from "@tsrx/yuku";
+import type { ExpressionStatement, VariableDeclaration } from "@tsrx/yuku";
 
 const fixture = (name: string): string => readFileSync(`test/parser/misc/tsrx/${name}`, "utf8");
 
@@ -95,7 +95,7 @@ test("generated encode and decode preserve production program and dialect fields
 	expect(restored.program).toEqual(program);
 
 	const packageSources = ["index.js", "binding.js", "walk.js"].map((name) =>
-		readFileSync(`npm/yuku-tsrx/${name}`, "utf8"),
+		readFileSync(`npm/yuku/${name}`, "utf8"),
 	);
 	for (const sourceText of packageSources) {
 		expect(sourceText).not.toMatch(/JSON\.(parse|stringify)/);
@@ -130,7 +130,7 @@ test("generated encode and decode preserve the distinct TSRXExpression record", 
 });
 
 test("publishes the complete TSRX type-name surface without retagging", () => {
-	const declarations = readFileSync("npm/yuku-tsrx/index.d.ts", "utf8");
+	const declarations = readFileSync("npm/yuku/index.d.ts", "utf8");
 	for (const name of [
 		"JSXCodeBlock",
 		"JSXStyleElement",

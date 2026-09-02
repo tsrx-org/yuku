@@ -32,8 +32,7 @@ type SourceFile = Readonly<{
 
 const coreEntry =
 	"file:///Users/jacksm5pro/dev/open-source/markless-yuku-tsrx-migration/node_modules/.pnpm/@tsrx+core@0.1.32/node_modules/@tsrx/core/src/index.js";
-const yukuEntry =
-	"file:///Users/jacksm5pro/dev/open-source/yuku-tsrx/zig-out/npm/yuku-tsrx/index.js";
+const yukuEntry = "file:///Users/jacksm5pro/dev/open-source/yuku-tsrx/zig-out/npm/yuku/index.js";
 const options: ParseOptions = Object.freeze({ collect: false, loose: false });
 const expectedPairIds = [
 	"function-code-block",

@@ -5,7 +5,7 @@ import {
 	type AnalyzeResult,
 	type GenerateResult,
 	type Program,
-} from "yuku-tsrx";
+} from "@tsrx/yuku";
 
 test("analyze and generate are typed on the unified package", () => {
 	expectTypeOf(analyze).returns.toEqualTypeOf<AnalyzeResult>();

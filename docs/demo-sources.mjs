@@ -1,19 +1,14 @@
-// The TSRX snippet the home page hero panel shows. It is the same file the
-// README uses, so the two cannot drift apart, and it is only ever highlighted:
-// nothing on this site executes it.
+// The TSRX snippet the home page hero panel shows and parses live in the tab.
+// tools/wasm-smoke.mjs and the how-it-works stepper read the same export.
 export const heroCode = `export function Cart({ items }): unknown @{
-  const total = items.length;
-
-  <section className="cart">
-    @if (total > 0) {
-      @for (const item of items; index i; key item.id) {
-        <span>{i}:{item.id}</span>
-      } @empty {
-        <span>empty</span>
-      }
-    } @else {
-      <span>no cart</span>
+  const count = items.length;
+  <ul class="cart">
+    @for (const item of items; key item.id) {
+      <li>{item.label}</li>
+    } @empty {
+      <li>Your cart is empty</li>
     }
-    <style>.cart { display: grid; }</style>
-  </section>
+    @if (count > 0) { <li>{count} in the cart</li> }
+    <style>.cart { display: grid; gap: 4px; }</style>
+  </ul>
 }`
