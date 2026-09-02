@@ -89,7 +89,7 @@ export default {
     name: 'yuku-tsrx',
     text: 'Parse, analyze and print TSRX with the Yuku parser',
     tagline:
-      'Parse, analyze and print <a href="https://tsrx.dev">TSRX</a> with the Yuku parser. Type below and watch the tree follow.',
+      'Type below and watch the tree follow.',
     actions: [
       { theme: 'brand', text: 'Quick start', link: '/guide/quick-start' },
       { theme: 'alt', text: 'Open the playground', link: '/playground' },
