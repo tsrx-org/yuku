@@ -564,7 +564,10 @@ const themeInit = `(() => {
 })()`
 
 const favicon = withBase('/assets/logo.svg')
-const socialImage = `${config.origin}${withBase('/assets/social-card.png')}`
+const socialImageVersion = createHash('sha256')
+  .update(await readFile(path.join(docsDir, 'assets', 'social-card.png')))
+  .digest('hex').slice(0, 10)
+const socialImage = `${config.origin}${withBase('/assets/social-card.png')}?v=${socialImageVersion}`
 
 function canonicalUrl(pathname) {
   if (pathname === '/') return `${config.origin}${trimmedBase || '/'}`
