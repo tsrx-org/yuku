@@ -21,7 +21,7 @@ const normalizeBase = (value) => {
 const base = normalizeBase(process.env.SITE_BASE ?? '/')
 
 export default {
-  title: '@tsrx/yuku',
+  title: 'Yuku for TSRX',
   description:
     'The fastest TypeScript parser, semantic analysis, and codegen toolchain—with TSRX support.',
   origin,
