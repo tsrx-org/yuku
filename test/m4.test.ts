@@ -257,7 +257,7 @@ test("generate honours strip and minify through the npm host", () => {
 test("generate refuses shortest quotes outside minify with one message on both hosts", async () => {
 	const program = parse("const s = 'x';", { lang: "ts" }).program;
 	const message =
-		'yuku-tsrx generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself';
+		'@tsrx/yuku generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself';
 	expect(() => generate(program, { quotes: "shortest" })).toThrow(new TypeError(message));
 	expect(() => generate(program, { minify: { quotes: true } })).toThrow(new TypeError(message));
 	const browser = await import("../yuku-website/assets/yuku-wasm.js");
@@ -267,7 +267,7 @@ test("generate refuses shortest quotes outside minify with one message on both h
 	);
 	expect(() => browser.packGenerateOptions({ sourceMaps: { source: "const s = 'x';" } })).toThrow(
 		new TypeError(
-			"yuku-tsrx generate: sourceMaps is not supported here; the wasm build carries no source maps",
+			"@tsrx/yuku generate: sourceMaps is not supported here; the wasm build carries no source maps",
 		),
 	);
 });

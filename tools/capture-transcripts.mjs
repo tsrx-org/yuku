@@ -5,7 +5,8 @@
 //   pnpm run docs:transcripts
 //
 // It runs each demo's commands from the repository root with colour disabled,
-// strips any escape sequence that survived that, trims long output to a head
+// strips any escape sequence that survived that and normalizes the local
+// checkout path to <repo>. It trims long output to a head
 // and a tail with a labelled marker, and writes one JSON file per demo into
 // yuku-website/transcripts/. yuku-website/build.mjs reads those files and never runs a command
 // itself.
@@ -71,7 +72,7 @@ const DEMOS = [
         argv: ["zig", "build", "test", "--summary", "all"],
       },
       {
-        comment: "the JavaScript test suite",
+        comment: "the JavaScript test suite; the checkout path is shown as <repo>",
         argv: ["pnpm", "test"],
       },
     ],
@@ -143,7 +144,10 @@ function runCommand(argv, cwd = repoRoot) {
   }
   return {
     exitCode: result.status ?? -1,
-    output: stripAnsi(`${result.stdout ?? ""}${result.stderr ?? ""}`),
+    output: stripAnsi(`${result.stdout ?? ""}${result.stderr ?? ""}`).replaceAll(
+      repoRoot,
+      "<repo>",
+    ),
     durationMs: Date.now() - started,
   };
 }

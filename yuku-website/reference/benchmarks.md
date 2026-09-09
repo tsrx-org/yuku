@@ -26,13 +26,14 @@ Choose a source size and run the browser parser. This shows scaling on your mach
 
 ## Run the native benchmark
 
-Follow [Build from source](/guide/build-from-source) first. The runner also needs the corpus files listed in `benchmarks/m5-corpus.json`; its paths are relative to a Markless checkout. The default is `../markless-yuku-tsrx-migration`; pass `--markless-root /path/to/checkout` to use another location. A fresh clone of this repository alone doesn't provide those files.
+Follow [Build from source](/guide/build-from-source) first. The runner also needs the corpus files listed in `benchmarks/m5-corpus.json`; its paths are relative to a Markless checkout. Pass that checkout with `--markless-root /path/to/checkout`. A fresh clone of this repository alone doesn't provide those files.
 
 From the repository root:
 
 ```sh
 zig build -Doptimize=ReleaseFast --prefix zig-out/perf-baseline
 LC_ALL=C node benchmarks/m6-performance.ts --phase baseline \
+  --markless-root /path/to/checkout \
   --package-baseline zig-out/perf-baseline/npm/yuku \
   --corpus benchmarks/m5-corpus.json \
   --output zig-out/m6-local.json \

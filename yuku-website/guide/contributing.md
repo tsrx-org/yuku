@@ -12,8 +12,8 @@ A clearer example, a smaller bug reproduction, or a fixed link is a useful contr
 You need Git, Node.js 24, and pnpm 10.33.2. You can use the prebuilt browser parser without installing Zig.
 
 ```sh
-git clone https://github.com/tsrx-org/yuku.git yuku-tsrx
-cd yuku-tsrx
+git clone https://github.com/tsrx-org/yuku.git yuku
+cd yuku
 pnpm install --frozen-lockfile --ignore-scripts
 node scripts/fetch-docs-wasm.mjs
 pnpm run docs:build

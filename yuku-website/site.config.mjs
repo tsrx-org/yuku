@@ -21,7 +21,7 @@ const normalizeBase = (value) => {
 const base = normalizeBase(process.env.SITE_BASE ?? '/')
 
 export default {
-  title: 'yuku-tsrx',
+  title: '@tsrx/yuku',
   description:
     'Compiler infrastructure for TSRX: parsing, semantic analysis, AST transforms, and code generation.',
   origin,
@@ -93,7 +93,7 @@ export default {
     '/reference/platform-support': '/reference/platforms',
   },
   hero: {
-    name: 'yuku-tsrx',
+    name: '@tsrx/yuku',
     text: 'Parse, analyze and print TSRX with the Yuku parser',
     tagline:
       'Build compilers, lints, and codemods with a TSRX AST, native semantic analysis, and code generation.',

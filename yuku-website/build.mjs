@@ -1135,7 +1135,7 @@ async function howItWorksSteps() {
     {
       id: 'hooks',
       label: 'Yuku parses, the dialect answers',
-      text: `Yuku owns the JavaScript and TypeScript grammar. yuku-tsrx owns only the ${names.length} answers below, declared in <code>src/dialect/parser_extension.zig</code> and resolved at compile time.`,
+      text: `Yuku owns the JavaScript and TypeScript grammar. @tsrx/yuku owns only the ${names.length} answers below, declared in <code>src/dialect/parser_extension.zig</code> and resolved at compile time.`,
       panel: `<div class="hiw-hooks">${groups
         .map(
           (group) =>
@@ -1148,7 +1148,7 @@ async function howItWorksSteps() {
     {
       id: 'tree',
       label: 'A tree that preserves TSRX',
-      text: 'Yuku owns the ordinary nodes. yuku-tsrx owns these records, declared in <code>src/dialect/schema.zig</code>, and the parser produces those exact names rather than lowering TSRX to TSX.',
+      text: 'Yuku owns the ordinary nodes. @tsrx/yuku owns these records, declared in <code>src/dialect/schema.zig</code>, and the parser produces those exact names rather than lowering TSRX to TSX.',
       panel: `<p class="hiw-nodes">${TSRX_NODE_TYPES.map(
         (type) => `<a href="${nodeTypesHref}"><code>${type}</code></a>`,
       ).join(' ')}</p>`,
@@ -1267,12 +1267,12 @@ async function parseForBuild(source) {
   const bytes = buildEncoder.encode(source)
   const len = Math.max(bytes.length, 1)
   const ptr = engine.exports.alloc(len)
-  if (ptr === 0) throw new Error('yuku-tsrx wasm: alloc returned 0')
+  if (ptr === 0) throw new Error('@tsrx/yuku wasm: alloc returned 0')
   new Uint8Array(engine.exports.memory.buffer, ptr, bytes.length).set(bytes)
   let payload
   try {
     const result = engine.exports.parse(ptr, bytes.length, packBuildFlags())
-    if (result === 0) throw new Error('yuku-tsrx wasm: parse returned a null pointer')
+    if (result === 0) throw new Error('@tsrx/yuku wasm: parse returned a null pointer')
     const length = new DataView(engine.exports.memory.buffer).getUint32(result, true)
     payload = engine.exports.memory.buffer.slice(result + 4, result + 4 + length)
     engine.exports.free(result, 4 + length)
@@ -1443,7 +1443,7 @@ function nodeChipsSentence(entry) {
 }
 
 const NODE_CHIPS_NOTE =
-  'The chips under each example are the node types the parser produced for it. They are not written by hand: this page is built by handing every example below to the WebAssembly build of yuku-tsrx and reading the tree that comes back.'
+  'The chips under each example are the node types the parser produced for it. They are not written by hand: this page is built by handing every example below to the WebAssembly build of @tsrx/yuku and reading the tree that comes back.'
 
 function nodeChipsMarkdown(body, entries) {
   return body
@@ -1745,7 +1745,7 @@ const BRAND_ICONS = {
 // carrying a `<linearGradient id>` collide the moment they share a page.
 const BRAND_IMAGES = {
   tsrx: 'brands/tsrx.svg',
-  'yuku-tsrx': 'logo.svg',
+  '@tsrx/yuku': 'logo.svg',
 }
 
 function brandIconHtml(name) {
@@ -1971,7 +1971,7 @@ function homeCompChart() {
   const lanes = [
     {
       key: 'yukuTsrx',
-      name: 'yuku-tsrx',
+      name: '@tsrx/yuku',
       ns: nsYuku,
       ours: true,
       note: `The dialect parser in this repository, parsing the whole ${benchNumber(baseline.input.file_count)}-file corpus ${baseline.protocol.iterations} times per sample.`,
@@ -2145,7 +2145,7 @@ function renderPlaygroundPage(fixtures) {
   <section class="pg" aria-label="Playground">
     <header class="pg-topbar">
       <h1 class="pg-title">TSRX Playground</h1>
-      <p class="pg-tagline">Real yuku-tsrx, compiled to WebAssembly, running in this tab: parse, analyze, generate.</p>
+      <p class="pg-tagline">Real @tsrx/yuku, compiled to WebAssembly, running in this tab: parse, analyze, generate.</p>
     </header>
     <div class="pg-toolbar pg-examples-bar" id="pg-side">
       <div class="pg-examples" role="group" aria-label="Committed parser fixtures">
@@ -2181,7 +2181,7 @@ function renderPlaygroundPage(fixtures) {
   return pageShell({
     title: 'Playground',
     description:
-      'Edit TSRX and watch the real yuku-tsrx parser, analyzer and code generator answer in your browser, compiled to WebAssembly.',
+      'Edit TSRX and watch the real @tsrx/yuku parser, analyzer and code generator answer in your browser, compiled to WebAssembly.',
     pathname: PLAYGROUND_ROUTE,
     shell: 'playground',
     bodyClass: 'home-page',

@@ -52,11 +52,11 @@ function packFlags(options = {}) {
   return flags >>> 0;
 }
 
-// Same refusals as yuku-website/assets/yuku-wasm.js and npm/yuku-tsrx/index.js.
+// Same refusals as yuku-website/assets/yuku-wasm.js and npm/yuku/index.js.
 const QUOTES_SHORTEST_UNSUPPORTED =
-  'yuku-tsrx generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself';
+  '@tsrx/yuku generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself';
 const SOURCE_MAPS_UNSUPPORTED =
-  "yuku-tsrx generate: sourceMaps is not supported here; the wasm build carries no source maps";
+  "@tsrx/yuku generate: sourceMaps is not supported here; the wasm build carries no source maps";
 
 function packGenerateOptions(options = {}) {
   const {
@@ -106,7 +106,7 @@ function writeSource(source) {
   const bytes = encoder.encode(source);
   const len = Math.max(bytes.length, 1);
   const ptr = wasm.exports.alloc(len);
-  if (ptr === 0) throw new Error("yuku-tsrx wasm: alloc returned 0");
+  if (ptr === 0) throw new Error("@tsrx/yuku wasm: alloc returned 0");
   new Uint8Array(wasm.exports.memory.buffer, ptr, bytes.length).set(bytes);
   return { ptr, len, byteLength: bytes.length };
 }
@@ -126,7 +126,7 @@ function call(name, source, flags, opts) {
       opts === undefined
         ? wasm.exports[name](input.ptr, input.byteLength, flags)
         : wasm.exports[name](input.ptr, input.byteLength, flags, opts);
-    if (ptr === 0) throw new Error(`yuku-tsrx wasm: ${name} returned a null pointer`);
+    if (ptr === 0) throw new Error(`@tsrx/yuku wasm: ${name} returned a null pointer`);
     return takePrefixed(ptr);
   } finally {
     wasm.exports.free(input.ptr, input.len);
@@ -406,7 +406,7 @@ async function runSmoke() {
   const size = await stat(wasmPath);
   console.log(
     [
-      `wasm: ${path.relative(repoRoot, wasmPath)} ${(size.size / 1024).toFixed(0)} KiB`,
+      `wasm: @tsrx/yuku ${(size.size / 1024).toFixed(0)} KiB`,
       `imports: ${wasm.imports.length === 0 ? "none" : wasm.imports.map((i) => `${i.module}.${i.name}`).join(", ")}`,
       `hero: ${hero.nodeCount} nodes in ${hero.ms.toFixed(2)} ms, ${hero.tree.diagnostics.length} diagnostics`,
       `semantic: ${semantic.scope.count} scopes, ${semantic.symbol.count} symbols, ${semantic.reference.count} references`,

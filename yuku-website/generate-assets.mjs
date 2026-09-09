@@ -79,7 +79,7 @@ const AT_PATH = `<g fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap=
 
 const SQUARE = '<rect width="64" height="64" rx="15" fill="url(#g)"/>'
 
-const logo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="yuku-tsrx logo">
+const logo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="@tsrx/yuku logo">
   <defs>${GRAD}</defs>
   ${SQUARE}
   ${AT_PATH}

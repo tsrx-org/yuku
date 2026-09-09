@@ -42,11 +42,11 @@ export function packFlags(options = {}) {
   return flags >>> 0
 }
 
-// Same text as npm/yuku-tsrx/index.js, so both hosts refuse the same way.
+// Same text as npm/yuku/index.js, so both hosts refuse the same way.
 const QUOTES_SHORTEST_UNSUPPORTED =
-  'yuku-tsrx generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself'
+  '@tsrx/yuku generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself'
 const SOURCE_MAPS_UNSUPPORTED =
-  'yuku-tsrx generate: sourceMaps is not supported here; the wasm build carries no source maps'
+  '@tsrx/yuku generate: sourceMaps is not supported here; the wasm build carries no source maps'
 
 // bit 0 strip, 1 minify, 2 compact, 3-4 quotes, 5-7 comments, 8-15 indent.
 export function packGenerateOptions(options = {}) {
@@ -86,7 +86,7 @@ let bootPromise = null
 async function boot() {
   const response = await fetch(wasmUrl)
   if (!response.ok) {
-    throw new Error(`yuku-tsrx wasm: HTTP ${response.status} for ${wasmUrl.pathname}`)
+    throw new Error(`@tsrx/yuku wasm: HTTP ${response.status} for ${wasmUrl.pathname}`)
   }
   const contentType = response.headers.get('content-type') ?? ''
   let instance
@@ -98,7 +98,7 @@ async function boot() {
     ;({ instance } = await WebAssembly.instantiate(await response.arrayBuffer(), {}))
   }
   for (const name of ['memory', 'alloc', 'free', 'parse', 'analyze', 'generate']) {
-    if (!(name in instance.exports)) throw new Error(`yuku-tsrx wasm: missing export ${name}`)
+    if (!(name in instance.exports)) throw new Error(`@tsrx/yuku wasm: missing export ${name}`)
   }
   const [{ decode }, analyzer] = await Promise.all([
     import(decodeUrl.href),
@@ -134,7 +134,7 @@ function writeSource(source) {
   const bytes = encoder.encode(source)
   const len = Math.max(bytes.length, 1)
   const ptr = engine.exports.alloc(len)
-  if (ptr === 0) throw new Error('yuku-tsrx wasm: alloc returned 0')
+  if (ptr === 0) throw new Error('@tsrx/yuku wasm: alloc returned 0')
   new Uint8Array(engine.exports.memory.buffer, ptr, bytes.length).set(bytes)
   return { ptr, len, byteLength: bytes.length }
 }
@@ -154,7 +154,7 @@ function call(name, source, flags, opts) {
       opts === undefined
         ? engine.exports[name](input.ptr, input.byteLength, flags)
         : engine.exports[name](input.ptr, input.byteLength, flags, opts)
-    if (ptr === 0) throw new Error(`yuku-tsrx wasm: ${name} failed`)
+    if (ptr === 0) throw new Error(`@tsrx/yuku wasm: ${name} failed`)
     return takePrefixed(ptr)
   } finally {
     engine.exports.free(input.ptr, input.len)
@@ -220,7 +220,7 @@ export async function generate(source, options = {}, generateOptions = {}) {
     offset += messageLength
   }
   if (offset !== payload.byteLength) {
-    throw new Error(`yuku-tsrx wasm: generate payload is ${payload.byteLength} bytes but decoded ${offset}`)
+    throw new Error(`@tsrx/yuku wasm: generate payload is ${payload.byteLength} bytes but decoded ${offset}`)
   }
   return { code, errors, ms: performance.now() - started }
 }

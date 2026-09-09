@@ -14,10 +14,10 @@ Use Node.js 24, pnpm 10.33.2, Git, and Zig 0.16.0 to match this repository's CI.
 Clone this repository and its Yuku dependency side by side:
 
 ```sh
-git clone https://github.com/tsrx-org/yuku.git yuku-tsrx
+git clone https://github.com/tsrx-org/yuku.git yuku
 git clone https://github.com/thejackshelton/yuku.git yuku-minimal-seam
 git -C yuku-minimal-seam checkout 0aac786cdda22d06e8669abe198d6d1d6bd72183
-cd yuku-tsrx
+cd yuku
 pnpm install --frozen-lockfile --ignore-scripts
 ```
 
@@ -29,7 +29,7 @@ The commit above is the `SEAM_REF` in [the checks workflow](https://github.com/t
 
 ## Build and check the addon
 
-From the `yuku-tsrx` root:
+From the repository root:
 
 ```sh
 zig build
@@ -48,12 +48,12 @@ The tested prebuilt targets are macOS arm64 and Linux x64 with glibc. A local bu
 
 ## Use the build in another project
 
-If your application is a sibling of `yuku-tsrx`, use this dependency and run your package manager's install command:
+If your application is a sibling of the `yuku` checkout, use this dependency and run your package manager's install command:
 
 ```json
 {
   "dependencies": {
-    "@tsrx/yuku": "link:../yuku-tsrx/zig-out/npm/yuku"
+    "@tsrx/yuku": "link:../yuku/zig-out/npm/yuku"
   }
 }
 ```

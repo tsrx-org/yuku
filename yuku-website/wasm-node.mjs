@@ -84,14 +84,14 @@ export async function createNodeEngine({ wasmPath, decodersDir }) {
     const input = encoder.encode(source)
     const len = Math.max(input.length, 1)
     const ptr = exports.alloc(len)
-    if (ptr === 0) throw new Error('yuku-tsrx wasm: alloc returned 0')
+    if (ptr === 0) throw new Error('@tsrx/yuku wasm: alloc returned 0')
     new Uint8Array(exports.memory.buffer, ptr, input.length).set(input)
     try {
       const result =
         opts === undefined
           ? exports[name](ptr, input.length, flags)
           : exports[name](ptr, input.length, flags, opts)
-      if (result === 0) throw new Error(`yuku-tsrx wasm: ${name} returned a null pointer`)
+      if (result === 0) throw new Error(`@tsrx/yuku wasm: ${name} returned a null pointer`)
       const length = new DataView(exports.memory.buffer).getUint32(result, true)
       const payload = exports.memory.buffer.slice(result + 4, result + 4 + length)
       exports.free(result, 4 + length)

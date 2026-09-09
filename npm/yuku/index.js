@@ -64,7 +64,7 @@ export function analyze(source, filename, options) {
 }
 
 const QUOTES_SHORTEST_UNSUPPORTED =
-  'yuku-tsrx generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself';
+  '@tsrx/yuku generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself';
 
 function normalizeGenerateOptions(options) {
   const { minify, sourceMaps, ...next } = options ?? {};
@@ -84,7 +84,7 @@ function normalizeGenerateOptions(options) {
 function sourceMapOptions(sourceMaps) {
   if (typeof sourceMaps !== "object" || typeof sourceMaps.source !== "string") {
     throw new TypeError(
-      "yuku-tsrx generate: sourceMaps.source must be the source text the program was parsed from",
+      "@tsrx/yuku generate: sourceMaps.source must be the source text the program was parsed from",
     );
   }
   const { source, file, sourceFileName, sourceRoot, sourcesContent } = sourceMaps;

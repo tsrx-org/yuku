@@ -33,7 +33,7 @@ const fontFace = (family, data) => `
     font-display: block;
   }`
 
-const name = 'yuku-tsrx'
+const name = config.hero.name
 // The sentence under the wordmark comes from the site config, so the card
 // cannot drift from the home page hero.
 // `.tsrx` is the one word the tagline emphasises, same as on the hero.
