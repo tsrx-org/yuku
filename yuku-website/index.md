@@ -1,5 +1,5 @@
 ---
 title: "@tsrx/yuku"
-description: Compiler infrastructure for TSRX. Parse, analyze scopes and bindings, transform an AST, and generate source.
+description: The fastest TypeScript parser, semantic analysis, and codegen toolchain—with TSRX support.
 layout: home
 ---

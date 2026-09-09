@@ -23,7 +23,7 @@ const base = normalizeBase(process.env.SITE_BASE ?? '/')
 export default {
   title: '@tsrx/yuku',
   description:
-    'Compiler infrastructure for TSRX: parsing, semantic analysis, AST transforms, and code generation.',
+    'The fastest TypeScript parser, semantic analysis, and codegen toolchain—with TSRX support.',
   origin,
   base,
   // Canonical origin every page under `base` should permanently redirect to,
