@@ -475,34 +475,6 @@ async function main() {
       notes.push(`try button on ${tryRoute} loaded ${loaded.split('\n').length} lines into the playground`)
     }
 
-    const quickStartRoutes = await pagesWith('data-widget="keyed-loops"')
-    const quickStartRoute = quickStartRoutes.find((route) => route === '/guide/quick-start')
-    if (check(Boolean(quickStartRoute), '/guide/quick-start has no keyed-loops widget')) {
-      const quickStart = await open(quickStartRoute, 'quick-start keyed loops')
-      const widget = quickStart.locator('[data-widget="keyed-loops"]').first()
-      await widget.scrollIntoViewIfNeeded()
-      const textarea = widget.locator('.ex-editor')
-      await textarea.waitFor({ state: 'visible', timeout: 30_000 })
-      await textarea.press('End')
-      await textarea.type(' ')
-      await quickStart.waitForFunction(
-        () =>
-          document.querySelector('[data-widget="keyed-loops"] .ex-editor-layer .ex-source')
-            ?.textContent === document.querySelector('[data-widget="keyed-loops"] .ex-editor')?.value &&
-          Boolean(
-            document.querySelector(
-              '[data-widget="keyed-loops"] .ex-editor-layer .ex-source span[style*="--shiki-light"]',
-            ),
-          ),
-        null,
-        { timeout: 15_000 },
-      )
-      check(
-        (await widget.locator('.ex-editor-layer .ex-source span[style*="--shiki-light"]').count()) > 0,
-        '/guide/quick-start: typing left the keyed-loops code layer without real Shiki token spans',
-      )
-    }
-
     // ---- the engine-backed guide figures ----
     const figureStatus = (page, selector) =>
       page.evaluate(
@@ -572,7 +544,7 @@ async function main() {
       )
       const symbolRow = await analyzerPage.evaluate(() => {
         const rows = [...document.querySelectorAll('[data-symbol-explorer] tr[data-ex-symbol]')]
-        const wanted = rows.find((row) => row.querySelector('td')?.textContent?.trim() === 'item')
+        const wanted = rows.find((row) => row.querySelector('td')?.textContent?.trim() === 'count')
         return Number((wanted ?? rows[0])?.dataset.exSymbol ?? -1)
       })
       check(symbolRow >= 0, `${symbolRoute}: the symbol table has no rows`)
@@ -622,8 +594,8 @@ async function main() {
       const generated = codegenPage.locator('[data-codegen-walkthrough] [data-ex-generated]')
       const prettyOutput = await generated.textContent()
       check(
-        prettyOutput.includes('\n  ') && prettyOutput.includes('total === 0'),
-        `${codegenRoute}: the default output is not indented, so pretty is not the default`,
+        prettyOutput.includes('const count: number = 2;'),
+        `${codegenRoute}: the default output did not preserve the type annotation and readable spacing`,
       )
       await codegenPage.click('[data-codegen-walkthrough] [data-ex-value="compact"]')
       await codegenPage.waitForFunction(
@@ -637,7 +609,7 @@ async function main() {
       // Compact keeps the markup's own line breaks (JSX text is significant)
       // and drops the discretionary whitespace, which is what these two read.
       check(
-        compactOutput.includes('total===0') && !compactOutput.includes('total === 0'),
+        compactOutput.includes('count:number=2') && !compactOutput.includes('count: number = 2'),
         `${codegenRoute}: the compact output still spaces its operators`,
       )
       check(
@@ -659,12 +631,27 @@ async function main() {
         (await codegenPage.getAttribute('[data-codegen-walkthrough] [data-ex-flag="strip"]', 'aria-checked')) === 'true',
         `${codegenRoute}: Strip types switch did not announce its state`,
       )
-      check(
-        await codegenPage
-          .locator('[data-codegen-walkthrough] [data-ex-value="shortest"]')
-          .isDisabled(),
-        `${codegenRoute}: the shortest quotes chip is not disabled`,
+      check(!strippedOutput.includes(':number'), `${codegenRoute}: strip left the type annotation in output`)
+      const workspace = codegenPage.locator('[data-codegen-walkthrough]')
+      const sourceEditor = workspace.locator('.ex-editor')
+      const sourceBeforeEdit = await sourceEditor.inputValue()
+      await sourceEditor.fill('const count: number = 7;')
+      await codegenPage.waitForFunction(
+        () => document.querySelector('[data-codegen-walkthrough] [data-ex-generated]')?.textContent.includes('count=7'),
       )
+      check(await workspace.locator('[data-ex-reset]').isEnabled(), `${codegenRoute}: reset stayed disabled after editing`)
+      await workspace.locator('[data-ex-reset]').click()
+      check((await sourceEditor.inputValue()) === sourceBeforeEdit, `${codegenRoute}: reset did not restore source`)
+      check((await workspace.locator('.workspace-result textarea, .workspace-result [contenteditable="true"]').count()) === 0, `${codegenRoute}: the result exposes an editor`)
+      await codegenPage.setViewportSize({ width: 390, height: 844 })
+      const workspaceTabs = workspace.locator('[data-workspace-tabs]')
+      await workspaceTabs.waitFor({ state: 'visible' })
+      check(await sourceEditor.isVisible(), `${codegenRoute}: mobile source tab did not show the editor`)
+      await workspaceTabs.getByRole('tab', { name: 'View generated code' }).click()
+      check(!(await sourceEditor.isVisible()), `${codegenRoute}: mobile result tab still shows the editor`)
+      check(await generated.isVisible(), `${codegenRoute}: mobile result tab hides the output`)
+      await workspaceTabs.getByRole('tab', { name: 'Edit source' }).click()
+      check((await sourceEditor.inputValue()) === sourceBeforeEdit, `${codegenRoute}: switching tabs lost source`)
       const call = await codegenPage.textContent('[data-codegen-walkthrough] .ex-call')
       check(
         call.includes('format: "compact"'),

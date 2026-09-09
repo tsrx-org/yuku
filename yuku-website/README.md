@@ -1,188 +1,145 @@
-# yuku-website/
+# Work on the Yuku docs
 
-The yuku-tsrx documentation site. Static HTML generated from the markdown in
-this directory by a small vanilla-JavaScript toolchain, no framework.
+This folder contains the Markdown pages and static-site generator for
+[yuku.tsrx.dev](https://yuku.tsrx.dev). Start here to edit a page or change an
+interactive example. For parser work, follow the [contribution guide](guide/contributing.md).
 
-This folder is the Vercel project root for <https://yuku.tsrx.dev>.
-Vercel installs the workspace, fetches the pinned prebuilt WASM release asset, and runs `yuku-website/build.mjs` with the canonical origin and root base.
-The main-branch site workflow refreshes `wasm-pin.json` after it builds and verifies a WASM module from a new `src/` tree.
+## Preview a change
 
-## Files
-
-- `site.config.mjs`: title, origin, base path, nav, sidebar order, redirects
-  from retired routes, home hero and features. Changing the sidebar changes
-  which pages get built; the search index, `llms.txt`, the sitemap and the
-  pager all follow it.
-- `build.mjs`: the generator. Reads `site.config.mjs`, renders every sidebar
-  page from `<link>.md`, and writes `dist/`.
-- `widgets/`: build-side widget modules, one per `<!-- widget:NAME -->` marker
-  (see below). `assets/widgets/` holds their runtime halves.
-- `wasm-node.mjs`: the dialect's WebAssembly build instantiated in Node, so the
-  build and the widgets can parse, analyze and generate at build time.
-- `highlight.mjs`: shared shiki setup.
-- `tsrx.tmLanguage.json`: the TSRX TextMate grammar, vendored so `tsrx` fences
-  highlight as TSRX rather than as plain text.
-- `demo-sources.mjs`: the one TSRX snippet the home page hero panel shows.
-- `assets/style.css`, `assets/app.js`: theme toggle, search dialog, mobile
-  drawer, outline scroll spy, copy buttons, client-side routing, widget boot.
-- `assets/yuku-wasm.js`, `assets/yuku-shared.js`: the browser host for the
-  wasm module and the helpers every engine-backed figure shares.
-- `assets/fonts/`: self-hosted Space Grotesk (display) and Inter (body).
-- `assets/logo.svg`, `assets/hero-rays.svg`: generated art.
-- `generate-assets.mjs`: writes those two SVGs. The logo is an at-mark on the
-  teal brand gradient; the hero band is 88 light streaks radiating from a fixed
-  point, placed by a seeded PRNG so every run produces the same file.
-- `generate-social-card.mjs`: writes `assets/social-card.png` (1200x630, the
-  `og:image`). The README hero (`../.github/assets/readme-hero.png`, 1200x400)
-  is `tools/readme-hero.mjs`, the same recipe at a banner size. It lays
-  the card out in HTML, screenshots it at 2x with system Chrome through
-  `playwright-core`, then downscales with ImageMagick so the type stays crisp.
-  The sentence under the wordmark is read from `site.config.mjs`, so the card
-  cannot drift from the home page hero.
-- `serve.mjs`: minimal static server for the built site, with the same
-  extensionless-route and redirect behaviour the deploy has.
-- `verify-playground.mjs`: drives the built site in a real Chromium and fails
-  on any console error (see "Verifying in a browser").
-
-`goals/` is internal project state and is not part of the site. The build never
-globs this directory: a page exists on the site only if `site.config.mjs` lists
-it.
-
-## Commands
+Use Node.js 24 and pnpm 10.33.2. From the repository root:
 
 ```sh
-pnpm run docs:wasm          # zig build wasm, smoke test, write the stamp
-pnpm run docs:build         # write yuku-website/dist/ (refuses without a fresh stamp)
-pnpm run docs:serve         # serve yuku-website/dist/ at http://127.0.0.1:4519/yuku-tsrx/
-pnpm run docs:verify-playground   # open the built site in Chromium and check every widget
-pnpm run docs:assets        # regenerate assets/logo.svg and assets/hero-rays.svg
-pnpm run docs:social-card   # regenerate the OG card
-pnpm run docs:readme-hero   # regenerate the README hero
+pnpm install --frozen-lockfile --ignore-scripts
+node scripts/fetch-docs-wasm.mjs
+pnpm run docs:build
+pnpm run docs:serve
 ```
 
-`docs:assets` is deterministic and safe to re-run. `docs:social-card` needs
-Google Chrome and ImageMagick (`magick`) installed locally, and it reads the
-logo, so run `docs:assets` first if the mark changed.
+Open **http://127.0.0.1:4519/**. Edit a page, run `pnpm run docs:build` again,
+and refresh. The server doesn't watch or rebuild files.
 
-## The wasm stamp
+The download supplies the browser parser used by the examples. It verifies
+both the artifact's hash and its source revision. If it reports a stale pin,
+follow [Build from source](guide/build-from-source.md) and run `pnpm run docs:wasm`.
 
-The playground and every engine-backed figure run `zig-out/wasm/yuku-tsrx.wasm`,
-a zig artifact the docs build never produces. `pnpm run docs:wasm`
-(`tools/build-wasm.mjs`) builds it, runs `tools/wasm-smoke.mjs` against it, and
-writes `zig-out/wasm/yuku-tsrx.wasm.stamp`: the git tree hash of `src/` at
-`HEAD` plus a `dirty` flag from `git status --porcelain src`.
+## Find the right file
 
-`docs:build` reads the stamp first and refuses when it is missing or names a
-different `HEAD:src` than the checkout, so a binary built before the last
-change to `src/` cannot ship. It also refuses a dirty stamp or checkout; pass
-`--allow-dirty` to build that state deliberately. If the binary is known to
-match the tree but was built by hand,
-`node tools/build-wasm.mjs --stamp-only` smoke-tests and stamps it without
-running zig.
+| I want to change… | Edit… |
+| --- | --- |
+| A guide or reference page | `guide/*.md`, `architecture/*.md`, or `reference/*.md` |
+| Navigation, page order, or home feature text | `site.config.mjs` |
+| Home metadata | `index.md` |
+| The home editor example | `demo-sources.mjs` |
+| Page layout or generated home sections | `build.mjs` |
+| Site appearance and navigation behavior | `assets/style.css` and `assets/app.js` |
+| An interactive example | `widgets/NAME.mjs` and `assets/widgets/NAME.js` |
 
-## Adding a widget
+The build writes `dist/`. Edit the sources above; generated files are gitignored.
 
-A widget is an interactive block a page writer places with one marker and no
-edit to `build.mjs`:
+## Add or rewrite a page
 
-~~~md
-<!-- widget:construct-toggle variants="if,switch,key,empty" key="item.id" -->
-```tsrx
-const view = @if (items.length > 0) {
-  @for (const item of items) {
-    <li>{item.id}</li>
-  } @empty {
-    <li>none</li>
-  }
-} @else {
-  <li>no list</li>
-};
+Create a Markdown file with a title, description, and one top-level heading:
+
+```md
+---
+title: Your page title
+description: What the reader will learn or do.
+---
+
+# Your page title
+
+Start with the problem this page helps solve.
 ```
-~~~
 
-`node tools/wasm-smoke.mjs --fences` scans every `.md` under `yuku-website/`, this
-file included, so the seed above parses.
+Add its route to the sidebar in `site.config.mjs`. For example,
+`/guide/example` builds `guide/example.md`. The sidebar also drives the pager,
+search index, sitemap, and `llms.txt`. If you move a page, add its old route to
+`redirects` so existing links keep working.
 
-Three steps:
+Use root-relative site links such as `/guide/parse`. The build applies the
+configured base path. Each page also gets a `.md` copy for the copy-page action.
 
-1. **Write the build half**, `yuku-website/widgets/NAME.mjs`. It default-exports
-   `async function render({ attrs, fence, page, ctx })` and returns the HTML
-   that goes inside the widget's `<figure data-widget="NAME">`. `attrs` is the
-   marker's `key=value` pairs (a bare word is `"true"`). `fence` is the fenced
-   block right after the marker, or `null`: `{ lang, flags, code, html }`, where
-   `html` is the shiki-rendered block (use it as the no-JavaScript fallback).
-   `ctx` gives `highlight(code, lang)`, the engine in Node as
-   `parse / analyze / generate(source, options)`, `readFixture(file)` for
-   `test/parser/misc/tsrx/`, `withBase`, `escapeHtml`, `base`, `repoRoot` and
-   `tsrxRecordTypes`. Optional exports: `className` (extra classes on the
-   figure; `'explorer ex-figure'` gives the engine-figure chrome) and
-   `markdown({ attrs, fence, page })` for the page's `.md` twin.
-2. **Write the runtime half**, `yuku-website/assets/widgets/NAME.js`. It default-exports
-   `mount(root, { cleanup })`; `root` is the figure, `cleanup` is an array to
-   push teardown functions onto (timers, observers) so an SPA navigation can
-   dispose the widget. Import `parse / analyze / generate / ready` from
-   `../yuku-wasm.js` and the helpers from `../yuku-shared.js`. `app.js` fetches
-   the module only on a page that carries the figure, and only once it is near
-   the viewport, so call `ready()` inside `mount` rather than at module load.
-   Report progress in a `[data-widget-status]` element and set
-   `root.dataset.widgetState` to `ready`, `error` or `unavailable`.
-3. **Add a check to `verify-playground.mjs`** that clicks the widget and reads
-   what changed. A marker whose build or runtime module is missing fails the
-   build; a widget nobody has clicked in a real browser is not done.
+Write for someone who knows JavaScript but may be new to parsers:
 
-`construct-toggle` is the reference: its build half rewrites the seed once per
-variant (`@if` to `@switch`, add `; key`, drop `@empty`), parses every variant
-so a chip can never show a snippet the engine refuses, and ships them as JSON;
-its runtime half swaps the editor text on a chip click and recomputes the node
-chips and the AST pane with the wasm in the tab.
+- Start with a concrete task and the smallest useful example.
+- Define a term when the reader first needs it. Explain what the result means.
+- Include imports, input, a command to run, and expected output for a runnable example.
+- Link to the API reference for exhaustive signatures and advanced options.
+- Explain which behavior belongs to the parser and which is a rule in a demo.
 
-## Verifying in a browser
+Use `tsrx` fences for templates. They get highlighting and a **Try in playground**
+action. Mark intentionally invalid input as `tsrx no-playground`; the fence check
+then knows it isn't supposed to parse successfully.
 
-`node yuku-website/verify-playground.mjs` serves `yuku-website/dist` itself (or takes
-`--url <origin>` for a deployment) and drives every interactive surface in
-headless Chromium: the hero editor, the playground tabs and fixtures, the
-try-in-playground button, the engine figures, the construct-toggle widget, the
-redirects from retired routes, and an SPA round trip. It fails on any console
-error, page error or failed request.
+## Ground technical explanations
 
-Pages are located by what the build emitted, not by a list: a figure no page
-carries is reported as skipped. The home page, the playground and the
-construct-toggle widget must exist.
+Read the relevant page on [yuku.fyi](https://yuku.fyi/) before describing Yuku’s parser, AST, semantic model, traverser, analyzer, or codegen. Then verify the claim against this checkout: the pinned dependency, `npm/yuku/index.js`, `index.d.ts`, and the native or browser host. Current upstream docs are not a versioned API reference for `@tsrx/yuku`.
 
-The browser is resolved in this order: `PLAYWRIGHT_CHROME`, playwright's cached
-Chromium (`~/Library/Caches/ms-playwright` or `~/.cache/ms-playwright`), the
-macOS Google Chrome, then `google-chrome` / `chromium` on `PATH`. With none of
-them: `pnpm exec playwright-core install chromium`.
+Describe semantic analysis in terms of the compiler, lint, or refactoring task it enables. Keep the distinction between per-file semantic tables here and upstream’s project `Analyzer`, between early errors and type checking, and between printing or stripping and runtime lowering. Upstream [testing](https://yuku.fyi/testing/) and [security](https://yuku.fyi/security/) claims apply to upstream; only claim local coverage or release behavior supported by this repository.
 
-## CI
+## Check your work
 
-`.github/workflows/ci.yml` has a `docs` job (pushes to `main` and `yuku-website/**`,
-pull requests touching `yuku-website/`). It installs dependencies and headless Chromium,
-builds the docs, runs the fence check and the browser verification. Because
-`zig-out/` is gitignored and the wasm needs zig plus the Yuku seam checkout, the
-job prints a notice and skips when the binary is absent; add a step that runs
-`node tools/build-wasm.mjs` before it to turn the checks on.
+After rebuilding:
 
-## Output layout
+```sh
+node tools/wasm-smoke.mjs --fences
+pnpm run docs:verify-playground
+```
 
-The site is served under a base path, so pages land in
-`dist/yuku-tsrx/` and the deploy-root files (`vercel.json`, `robots.txt`) sit in
-`dist/`. `dist/` is gitignored.
+The fence check parses eligible TSRX examples. The browser check serves the
+built site and exercises the editor, playground, widgets, and navigation. It
+fails on browser errors and failed requests. JavaScript snippets in prose
+aren't run by the fence check: run those yourself, too.
 
-Alongside each page the build writes a `.md` twin (used by the copy-page
-button), plus `search-index.json`, `llms.txt`, `llms-full.txt` and
-`sitemap.xml`. `vercel.json` carries a permanent redirect for every route in
-`site.config.mjs` `redirects` (and its `.md` twin); in-page links to a retired
-route are rewritten to the destination at build time.
+The verifier looks for `PLAYWRIGHT_CHROME`, a cached Playwright Chromium, or
+system Chrome/Chromium. To install a browser:
 
-## Deploy
+```sh
+pnpm exec playwright-core install chromium
+```
 
-The canonical site at <https://yuku.tsrx.dev> is deployed by Vercel's Git
-integration from the `yuku-website` project root. Its build fetches the pinned,
-prebuilt WASM release artifact and then runs this generator, so Vercel needs no
-Zig or repository secrets; `.github/workflows/site-artifact.yml` builds and
-verifies new WASM bytes and refreshes the pin when `src/` changes on `main`.
+Also read your changed pages at desktop and mobile widths. Follow the links,
+try the examples, and check that the page makes sense before any interaction.
 
-See `../.github/releasing/site-yuku-tsrx-dev.md` for the one-time Vercel project setup.
+## Add an interactive example
 
-Two more optional files per widget: `yuku-website/assets/widgets/NAME.css` (appended to every shell's stylesheet at build, so a widget never edits `style.css`) and `yuku-website/widgets/NAME.verify.mjs` (default export `async ({ routes, open, pagesWith, pageCarrying, check, notes, skipped, waitForParse, statusText })`, run by `yuku-website/verify-playground.mjs` on every page that carries the widget).
+Place `<!-- widget:NAME -->` before its optional code fence. Start by reading a
+similar widget; `widgets/keyed-loops.mjs` is a working transform example.
+
+1. Create `widgets/NAME.mjs`. Its default export is
+   `async function render({ attrs, fence, page, ctx })`, returning the HTML inside
+   a `<figure data-widget="NAME">`. `fence` is `null` or
+   `{ lang, flags, code, html }`; keep readable output for visitors without JavaScript.
+   `ctx` provides `highlight`, `parse`, `analyze`, `generate`, `readFixture`,
+   `withBase`, and `escapeHtml`, plus repository paths.
+2. Create `assets/widgets/NAME.js`. Export `mount(root, { cleanup })` and push
+   teardown functions onto `cleanup`. The site loads widgets near the viewport;
+   call the WASM host's `ready()` inside `mount`, not at module load. Set
+   `root.dataset.widgetState` to `ready`, `error`, or `unavailable`, and show
+   progress in `[data-widget-status]`.
+3. Add `widgets/NAME.verify.mjs`, following a nearby verifier. Exercise the
+   interaction and check what changed. `verify-playground.mjs` discovers it
+   and runs it on the pages carrying the widget.
+
+Optional `assets/widgets/NAME.css` styles are included at build time. A build
+module can export `className` for the figure and `markdown({ attrs, fence, page })`
+for the page's Markdown copy. Include a useful explanation in that copy.
+
+## Parser builds and deployment
+
+After changing `src/`, run `pnpm run docs:wasm`. It builds and smoke-tests the
+WASM module and stamps it with the source tree. The site build rejects a missing
+or stale stamp. For a deliberate local preview of uncommitted parser changes,
+rebuild WASM, then run `pnpm run docs:build -- --allow-dirty`.
+
+[site-artifact.yml](../.github/workflows/site-artifact.yml) builds the parser and
+site, checks code fences, and runs browser verification in CI. On `main`, it
+also publishes and pins a new WASM artifact when the parser source changes.
+
+Vercel deploys from this folder using the Git integration. Its build downloads
+the pinned artifact and generates the site at the domain root. The
+[deployment notes](../.github/releasing/site-yuku-tsrx-dev.md) cover project setup.
+
+For generated artwork, use `docs:assets`, `docs:social-card`, and
+`docs:readme-hero` from the root package scripts. The last two need Chrome and
+ImageMagick; these aren't needed for a Markdown edit.

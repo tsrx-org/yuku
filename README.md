@@ -13,10 +13,10 @@
 Parse, analyze and print [TSRX](https://tsrx.dev) with the [Yuku](https://yuku.fyi) parser. One JavaScript API, three tools for `.tsrx` files:
 
 - a **parser**, which reads a file into a tree your own tools can work with
-- an **analyzer**, which links every scope, symbol and reference in that tree
+- an **analyzer**, which supplies scopes, binding identity, reference classifications, and module records for compiler passes and lint rules
 - a **code generator**, which turns a tree back into source text
 
-Yuku does all the JavaScript and TypeScript work; this package adds only the TSRX rules, as a dialect on top. Nothing is forked or patched.
+Yuku supplies the JavaScript and TypeScript parser and semantic infrastructure. This repository adds a TSRX dialect, adapters, and JavaScript and WebAssembly hosts against a pinned Yuku dependency. See [how the dialect works](https://yuku.tsrx.dev/architecture/dialect) for that boundary.
 
 [**Docs**](https://yuku.tsrx.dev) &nbsp;·&nbsp; [**Quick start**](https://yuku.tsrx.dev/guide/quick-start) &nbsp;·&nbsp; [**Playground**](https://yuku.tsrx.dev/playground)
 
@@ -61,17 +61,17 @@ walk(program, {
 });
 ```
 
-`parseModule` hands back a `Program` in the ESTree shape most JavaScript tools already read, with `start` and `end` offsets on every node. The TSRX parts keep their own names instead of being rewritten into something else: `JSXCodeBlock`, `JSXIfExpression`, `JSXForExpression`, `JSXSwitchExpression`, `JSXTryExpression`, `JSXStyleElement` and `TSRXExpression`. It takes the same arguments as `parseModule` from `@tsrx/core`, so it drops into code written for that. A file it cannot read throws a `SyntaxError` naming the line; `parse` returns the diagnostics instead of throwing. [Parse](https://yuku.tsrx.dev/guide/parse) has the full shape.
+`parseModule` hands back a `Program` in the ESTree shape most JavaScript tools already read, with `start` and `end` offsets on every node. The TSRX parts keep their own names instead of being rewritten into something else: `JSXCodeBlock`, `JSXIfExpression`, `JSXForExpression`, `JSXSwitchExpression`, `JSXTryExpression`, `JSXStyleElement` and `TSRXExpression`. It takes the same arguments as `parseModule` from `@tsrx/core`, so it drops into code written for that. A source error throws a `SyntaxError` containing source offsets; `parse` returns the diagnostics instead of throwing. [Parse](https://yuku.tsrx.dev/guide/parse) has the full shape.
 
 ## What it does
 
-**Parse.** `parse` and `parseModule` read every TSRX construct where TSRX allows it, `<style>` blocks with the rules inside them read into the tree, lazy `&{ }` destructuring patterns, and tags whose name is an expression. Ordinary `.js`, `.ts`, `.jsx` and `.tsx` go to Yuku unchanged.
+**Parse.** `parse` and `parseModule` support TSRX control flow, template blocks, style structure, lazy destructuring, and dynamic tags within the documented syntax boundaries. Yuku supplies the ordinary JavaScript and TypeScript grammar. See [Parse](https://yuku.tsrx.dev/guide/parse) and [Limitations](https://yuku.tsrx.dev/reference/limitations).
 
-**Analyze.** `analyze(source, "Cart.tsrx")` parses and then links the file: the same tree plus a `semantic` view of every scope, symbol, reference, import and export, and which symbol each reference resolves to. [Analyze](https://yuku.tsrx.dev/guide/analyze) shows what each table answers.
+**Analyze.** `analyze(source, "Cart.tsrx")` parses and runs native semantic analysis, returning the tree plus scopes, symbols, references, import/export records, and early-error diagnostics. Use those facts to plan compiler transforms, collect captured bindings, distinguish runtime from type-only uses, or build lint rules. [Analyze](https://yuku.tsrx.dev/guide/analyze) contains a working compiler-pass example. This package exposes per-file tables; upstream Yuku’s project `Analyzer` and cross-file linking APIs are separate.
 
-**Generate.** `generate(program)` prints a tree back out as source: types kept or stripped, pretty or minified, comments kept or dropped, quotes as written, and a source map when you ask for one. Every fixture in the test suite parses, prints and parses again to the same tree. [Generate](https://yuku.tsrx.dev/guide/generate) has every option with a live diff.
+**Generate.** `generate(program)` prints a tree back out as source: types kept or stripped, pretty or minified, comments kept or dropped, quotes as written, and a source map when you ask for one. Fixture tests exercise parse/print/parse round trips. Check `errors` before using stripped output: runtime TypeScript constructs such as enums need a lowering pass. [Generate](https://yuku.tsrx.dev/guide/generate) explains the options and includes an editable source / read-only output example.
 
-**This package compiles nothing.** Turning `.tsrx` into something a browser runs belongs to your framework's TSRX plugin. See [tsrx.dev/getting-started](https://tsrx.dev/getting-started).
+**Framework compilation.** These APIs are compiler building blocks. Your framework’s TSRX plugin supplies the transforms and runtime that turn `.tsrx` into code a browser can execute. See [tsrx.dev/getting-started](https://tsrx.dev/getting-started).
 
 ## Platforms
 
@@ -82,7 +82,7 @@ walk(program, {
 | `@tsrx/yuku-darwin-arm64`  | macOS on Apple Silicon | Apple M1 and newer |
 | `@tsrx/yuku-linux-x64-gnu` | Linux x64 with glibc   | x86-64-v2 (SSE4.2) |
 
-On any other platform `import "@tsrx/yuku"` throws on the first call rather than falling back to anything slower. [Build from source](https://yuku.tsrx.dev/guide/build-from-source) takes Zig 0.16 and pnpm:
+On other platforms, the npm package has no automatic JavaScript or WASM fallback. Loading the native binding fails unless you provide a compatible source build. [Build from source](https://yuku.tsrx.dev/guide/build-from-source) takes Zig 0.16 and pnpm:
 
 ```sh
 zig build            # writes the package to zig-out/npm/yuku/
@@ -92,7 +92,7 @@ pnpm test            # the JavaScript test suite
 
 ## Contributing
 
-Issues and pull requests are welcome at [the issue tracker](https://github.com/tsrx-org/yuku/issues). Plain JavaScript and TypeScript belong to Yuku; this package owns only the TSRX rules. [How the dialect works](https://yuku.tsrx.dev/architecture/dialect) describes the extension points and the file layout. Run `zig build test` and `pnpm test` first.
+Start with the [contribution guide](yuku-website/guide/contributing.md) for docs edits, parser setup, and the checks to run. The [website README](yuku-website/README.md) covers local previews and interactive examples. Bug reports and larger proposals are welcome in [the issue tracker](https://github.com/tsrx-org/yuku/issues).
 
 Join the [TSRX Discord community](https://discord.gg/HCYpT5QHQR).
 

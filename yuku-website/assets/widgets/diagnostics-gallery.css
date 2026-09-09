@@ -2,7 +2,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--c-divider);
 }
 .dg-chips button {
   padding: 4px 10px;

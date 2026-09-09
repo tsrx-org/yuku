@@ -1,148 +1,103 @@
 ---
 title: Generate
-description: Print a tree back to source with types kept or stripped, pretty or minified, comments kept or dropped, and a source map when you need one.
+description: Print a syntax tree back to code, with optional formatting and source maps.
 ---
 
 # Generate
 
-Print a tree back to source with types kept or stripped, pretty or minified, comments kept or dropped, and a source map when you need one.
+`generate` is the emission step of a source-to-source tool: it prints the AST you give it, including edits made by your compiler or codemod. It controls formatting, attached comments, TypeScript syntax stripping, and source maps. It does not choose a framework runtime or lower templates for you.
 
 ```js
-import { generate, parse } from "@tsrx/yuku";
+import { generate, parseModule } from "@tsrx/yuku";
 
 const source = "export const answer: number = 42;";
-const { program } = parse(source, { lang: "tsx" });
+const program = parseModule(source, "answer.ts");
+const { code, errors } = generate(program, { strip: true });
+
+if (errors.length > 0) throw new Error(errors[0].message);
+console.log(code); // export const answer = 42;
+```
+
+`strip: true` removes TypeScript types. TSRX and JSX remain in the output: printing a template doesn't make it runnable JavaScript. A compiler must transform those constructs too.
+
+## Check stripping errors
+
+Type annotations, interfaces, and other erasable syntax can be removed. TypeScript constructs that need generated runtime code—such as non-ambient enums, namespaces, parameter properties, and import/export assignments—need a separate lowering pass. Stripping reports unsupported constructs in `errors` and continues emitting the rest. Do not publish that partial output as a successful build.
+
+```js
+import { generate, parseModule } from "@tsrx/yuku";
+
+const program = parseModule("enum Mode { On }", "mode.ts");
+const result = generate(program, { strip: true });
+console.log(result.errors[0].message);
+// TypeScript enums cannot be stripped to JavaScript
+console.log(result.code); // empty: the enum was omitted
+```
+
+[Yuku’s codegen guide](https://yuku.fyi/parser/codegen/) explains the distinction between stripping and transpilation. The options below use this package’s spellings and behavior.
+
+## Try the printer
+
+Edit `count` in **Source**, or turn on **Strip types**. **Generated code** updates automatically; it is read-only.
+
+<!-- codegen-walkthrough -->
+```tsrx
+// A small counter.
+const count: number = 2;
+const view = <p>{count}</p>;
+```
+
+## Keep the options you need
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `strip` | `false` | Removes TypeScript types. |
+| `format` | `"pretty"` | Use `"compact"` to remove optional whitespace. |
+| `indent` | `2` | Spaces per indent in pretty output. |
+| `quotes` | `"preserve"` | Use `"single"` or `"double"` to choose a quote style. |
+| `comments` | `"some"` | Keeps selected comments such as legal headers and JSDoc. Use `"all"` or `"none"` to be explicit. |
+| `minify` | `false` | Enables whitespace, syntax, and quote minification. |
+
+To keep comments, attach them while parsing:
+
+```js
+import { generate, parseModule } from "@tsrx/yuku";
+
+const source = "// Keep this note.\nconst count = 1;";
+const program = parseModule(source, "count.ts", { attachComments: true });
+const { code } = generate(program, { comments: "all" });
+```
+
+To minify whitespace alone, use `minify: { whitespace: true }`. Shortest quotes require syntax minification: use `minify: { syntax: true }`. `quotes: "shortest"` or `minify: { quotes: true }` on its own throws.
+
+When `strip` and syntax minification are combined, stripping takes priority; whitespace minification still applies. See the [API reference](/reference/api) for every option.
+
+## Add a source map in Node
+
+A source map connects positions in generated code to the original file. Pass the exact source text you parsed:
+
+```js
+import { generate, parseModule } from "@tsrx/yuku";
+
+const source = "export const answer: number = 42;";
+const program = parseModule(source, "answer.ts");
 const { code, map } = generate(program, {
   strip: true,
   sourceMaps: {
     source,
     file: "answer.js",
-    sourceFileName: "answer.tsrx",
+    sourceFileName: "answer.ts",
     sourcesContent: true,
   },
 });
 
-map.version; // 3
+console.log(map.version); // 3
 ```
 
-`code` is `export const answer = 42;`. The npm package returns a Source Map V3 object in `map`, ready to write beside the generated file.
+`map` is a Source Map V3 object, or `null` when no map was requested. `sourcesContent: true` includes the original text. The browser build doesn't support source maps. This package calls the Node option `sourceMaps` (plural); the upstream `yuku-codegen` example uses `sourceMap`.
 
-Toggle Strip types and watch the generated module change.
+## Transform before printing
 
-<!-- codegen-walkthrough -->
-```tsrx
-import type { Item } from "./item";
-import { format } from './format';
+Printing preserves TSRX and JSX. To compile a template for a framework, first transform its nodes, then pass the resulting tree to `generate`.
 
-/* The cart list, one row per item. */
-export function Cart({ items }: { items: Item[] }) @{
-  // total is read by the attribute below
-  const total = items.length;
-
-  <ul class="cart" data-empty={total === 0}>
-    @for (const item of items; key item.id) {
-      <li>{format(item.label)}</li>
-    }
-  </ul>
-}
-```
-
-## Formatting options do one job each
-
-```ts
-interface GenerateOptions {
-  format?: "pretty" | "compact";
-  indent?: number;
-  quotes?: "preserve" | "double" | "single" | "shortest";
-  comments?: boolean | "all" | "some" | "none" | "line" | "block";
-  strip?: boolean;
-  minify?: boolean | { whitespace?: boolean; syntax?: boolean; quotes?: boolean };
-  sourceMaps?: SourceMapOptions;
-}
-```
-
-`format` defaults to `pretty`; `compact` removes spaces the grammar does not need. `indent` defaults to two spaces and affects only pretty output.
-
-`quotes` defaults to `preserve`. Choose `double` or `single` to force one style.
-
-`comments` defaults to `some`, which keeps legal headers, JSDoc, and tree-shaking annotations. Choose `all`, `line`, `block`, or `none`; booleans mean `all` and `none`. Comments must be attached during parsing, as in the opening sample.
-
-## The diff isolates each change
-
-Compare the landing diff, then change one option on output B.
-
-<!-- widget:generate-diff full -->
-```tsrx
-import type { Item } from "./item";
-import { format } from './format';
-
-/* The cart list, one row per item. */
-export function Cart({ items }: { items: Item[] }) @{
-  // total is read by the attribute below
-  const total = items.length;
-
-  <ul class="cart" data-empty={total === 0}>
-    @for (const item of items; key item.id) {
-      <li>{format(item.label)}</li>
-    }
-  </ul>
-}
-```
-
-The browser and npm package both apply `strip: true`, `minify: true`, and the syntax minification shown here. This widget runs the browser build; the opening example uses npm because the browser has no source maps.
-
-## Minify can make three choices
-
-```js
-generate(program, { minify: true });
-generate(program, { minify: { whitespace: true } });
-generate(program, { minify: { syntax: true } });
-```
-
-`minify: true` enables whitespace, syntax, and quote shortening. The object form lets you choose; syntax minification also picks the quote that needs fewer escapes.
-
-`strip` wins when you combine it with syntax minification, so types disappear instead of being tightened. Whitespace minification applies.
-
-Asking for `quotes: "shortest"` without syntax minification throws:
-
-```
-TypeError: yuku-tsrx generate: quotes "shortest" is not supported here; the codegen offers "preserve", "double" and "single", and minify picks the shortest quote itself
-```
-
-Use `minify: { syntax: true }` when you want shortest quotes. `minify: { quotes: true }` without `syntax` throws the same error.
-
-## A source map needs the original text
-
-```js
-const result = generate(program, {
-  sourceMaps: {
-    source,
-    file: "cart.js",
-    sourceFileName: "cart.tsrx",
-    sourceRoot: "/src",
-    sourcesContent: true,
-  },
-});
-
-result.map.sources; // ["cart.tsrx"]
-```
-
-`source` is required because mappings point back to the exact text you parsed. `file`, `sourceFileName`, and `sourceRoot` name the generated and authored locations; `sourcesContent: true` embeds the original text.
-
-Without `sourceMaps`, `map` is `null`. The browser build carries no source-map support and throws if you pass this option, so create maps through the npm package.
-
-## The result names code and printing errors
-
-```ts
-interface GenerateResult {
-  code: string;
-  errors: Array<{ message: string; start: number; end: number }>;
-  map: SourceMap | null;
-}
-```
-
-`errors` names anything [Yuku's printer](https://yuku.fyi) could not handle. Pass a `Program` from this parser; any other first argument throws `TypeError: Expected a Program node from yuku-tsrx`.
-
-Generated code can use different spacing from the input. Parse it again and you get the same structure with no diagnostics; the repository checks that round trip across every valid fixture.
-
-Next, change the tree before printing it on [Walk and transform](/guide/walk).
+[Walk and transform](/guide/walk) shows how to visit and change nodes.

@@ -16,7 +16,7 @@
 // caption.
 
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,17 +34,13 @@ async function prepareFirstParse() {
   const scopeDir = path.join(cwd, "node_modules", "@tsrx");
   await mkdir(scopeDir, { recursive: true });
   await symlink(path.join(repoRoot, "zig-out", "npm", "yuku"), path.join(scopeDir, "yuku"), "dir");
-  await writeFile(
-    path.join(cwd, "list.mjs"),
-    `// list.mjs
-import { parseModule } from "@tsrx/yuku";
-
-const source = \`<ul>@for (const item of items; key item.id) { <li>{item.label}</li> }</ul>\`;
-const program = parseModule(source, "list.tsrx");
-const list = program.body[0].expression;
-console.log(list.children.map((child) => child.type));
-`,
+  const page = await readFile(
+    path.join(repoRoot, "yuku-website", "guide", "quick-start.md"),
+    "utf8",
   );
+  const source = page.match(/^```js\n([\s\S]*?)^```/m)?.[1];
+  if (!source) throw new Error("Quick start is missing its first JavaScript example");
+  await writeFile(path.join(cwd, "example.mjs"), source);
   return cwd;
 }
 
@@ -55,7 +51,7 @@ const DEMOS = [
     commands: [
       {
         comment: "parse the first TSRX file",
-        argv: ["node", "list.mjs"],
+        argv: ["node", "example.mjs"],
       },
     ],
   },

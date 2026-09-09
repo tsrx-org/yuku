@@ -1,83 +1,54 @@
 ---
 title: Quick start
-description: Install it, parse one file, then see what real compilers do with the result.
+description: Install the package, parse a small example, and find your next step.
 ---
 
 # Quick start
 
-Install it, parse one file, then see what real compilers do with the result.
+`@tsrx/yuku` provides the parser, semantic analysis, and code generator for building tools around [TSRX](https://tsrx.dev). It extends [Yuku](https://yuku.fyi), the JavaScript and TypeScript toolchain written in Zig, with template syntax such as `@if`, `@for`, and `@{ ... }`.
+
+A compiler can parse a module, use its semantic model to plan a transformation, rewrite the AST, and generate source with a map. Lints and codemods can use the same infrastructure. Your framework supplies the transformation from TSRX to its runtime.
+
+## Install
+
+Use Node.js 22 or newer on macOS with Apple Silicon or Linux x64 with glibc. Other setups need a [source build](/guide/build-from-source); see [platform support](/reference/platforms) before installing.
 
 <!-- pm-install -->
 ```sh
 npm install @tsrx/yuku
 ```
 
+## Parse your first template
+
+Save this as `example.mjs`:
+
 ```js
-// list.mjs
 import { parseModule } from "@tsrx/yuku";
 
-const source = `<ul>@for (const item of items; key item.id) { <li>{item.label}</li> }</ul>`;
+const source = `<ul>@for (const item of items) { <li>{item.label}</li> }</ul>`;
 const program = parseModule(source, "list.tsrx");
 const list = program.body[0].expression;
-console.log(list.children.map((child) => child.type));
+
+console.log(list.type);
+console.log(list.children[0].type);
 ```
+
+Run `node example.mjs`. Press **Play** to see the command and its output:
 
 <!-- terminal-demo:getting-started-first-parse -->
 
-`parseModule` sees `.tsrx` and picks the TSX grammar. The `<ul>` comes back as a `JSXElement`; its `@for` child comes back as a `JSXForExpression`, named after what you wrote. Prebuilt packages exist for macOS arm64 and Linux x64; anything else needs the [source build](/guide/build-from-source).
+The `<ul>` became a `JSXElement`. Its loop became a `JSXForExpression`. These objects are nodes in the **abstract syntax tree**, or AST.
 
-## Some examples
+`"list.tsrx"` tells the parser which grammar to use; this call reads the `source` string, not a file on disk. `parseModule` throws a `SyntaxError` if the source has an error.
 
-### Parsing: key every loop before it ships
+## What would you like to build?
 
-Every `@for` needs a key before it ships. This adds one to each loop that lacks it, from the tree, not from regex.
+| Task | Next guide |
+| --- | --- |
+| Read a file and inspect its structure | [Parse](/guide/parse) |
+| Change nodes in a codemod | [Walk and transform](/guide/walk) |
+| Build compiler passes using bindings, captures, and module records | [Analyze](/guide/analyze) |
+| Print a changed tree | [Generate](/guide/generate) |
+| Improve these docs or the parser | [Contribute](/guide/contributing) |
 
-<!-- widget:keyed-loops -->
-```tsrx
-export function Results({ rows, cards, users }) @{
-  <section>
-    @for (const row of rows) { <p>{row.name}</p> }
-    @for (const card of cards; key card.id) { <p>{card.title}</p> }
-    @for (const user of users) { <p>{user.name}</p> }
-  </section>
-}
-```
-
-The [Parse guide](/guide/parse) shows how to walk the rest of the tree and handle diagnostics.
-
-### Analysis: see what re-renders
-
-Click a name and see everything on screen that would change with it, through the constants in between. A compiler uses exactly this to decide what to re-render.
-
-<!-- widget:what-rerenders -->
-```tsrx
-export function Cart({ items, user }) @{
-  const total = items.length;
-  const label = total === 1 ? "item" : "items";
-  const name = user.name;
-  <section><h2>{name}</h2><p>{total} {label}</p><ul>@for (const item of items; key item.id) { <li>{item.title}</li> }</ul></section>
-}
-```
-
-The [Analyze guide](/guide/analyze) shows what every semantic table answers.
-
-### Codegen: lower TSRX to plain TSX
-
-Every TSRX construct has a plain-TSX meaning. This rewrites the tree and lets the printer say it.
-
-<!-- widget:lower-to-tsx -->
-```tsrx
-export function Results({ items, ready }) @{
-  const heading = "Results";
-  const count = items.length;
-  <section>
-    <h2>{heading}</h2>
-    @if (ready) { <p>{count} ready</p> } @else { <p>Loading</p> }
-    <ul>@for (const item of items; key item.id) { <li>{item.title}</li> }</ul>
-  </section>
-}
-```
-
-The [Generate guide](/guide/generate) shows every printer option in a larger live diff.
-
-Choosing between the two TSRX parsers? [Oxc or Yuku?](/guide/oxc-or-yuku) is one screen: Oxc for consumers and Vite plugins, Yuku for compilers that lean on semantic analysis and parse speed.
+You can also [try the playground](/playground) without installing anything.

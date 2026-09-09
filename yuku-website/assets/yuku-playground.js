@@ -174,7 +174,7 @@ export async function initDemo(panel) {
   editor.append(diagLayer, textarea)
   panel.append(tooltip, srDiagnostics, escapeNote)
   if (actions) actions.hidden = false
-  if (hintEl) hintEl.textContent = 'edit me · runs in your browser'
+  if (hintEl) hintEl.textContent = 'Editable source'
 
   // In the /playground workbench the editor fills its pane and scrolls inside
   // it; on the home page it grows with its content instead.

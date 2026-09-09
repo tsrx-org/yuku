@@ -1,5 +1,5 @@
 ---
 title: yuku-tsrx
-description: Parse, analyze and print TSRX with the Yuku parser. Type in the editor and watch the tree.
+description: Compiler infrastructure for TSRX. Parse, analyze scopes and bindings, transform an AST, and generate source.
 layout: home
 ---

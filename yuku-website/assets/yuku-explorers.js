@@ -172,7 +172,7 @@ function createSourcePane(figure, { segmented, onChange }) {
     onChange(value) {
       source = value
       if (tryButton) tryButton.dataset.code = source
-      reset.hidden = source === original
+      reset.disabled = source === original
       onChange(source)
     },
     ariaLabel: 'Editable source for this figure',
@@ -189,11 +189,11 @@ function createSourcePane(figure, { segmented, onChange }) {
   reset.type = 'button'
   reset.dataset.exReset = ''
   reset.textContent = 'Reset source'
-  reset.hidden = true
+  reset.disabled = true
   controls?.append(reset)
   reset.addEventListener('click', async () => {
     source = original
-    reset.hidden = true
+    reset.disabled = true
     await editor.setValue(source)
     onChange(source)
   })
@@ -582,23 +582,19 @@ function equivalentCall(state) {
 function codegenControls(figure, state, onChange) {
   const controls = figure.querySelector('[data-ex-controls]')
   const options = document.createElement('div')
-  options.className = 'ex-option-rows'
+  options.className = 'ex-option-rows cg-options'
   options.innerHTML =
+    `<div class="cg-basic"><button type="button" role="switch" title="strip" data-ex-flag="strip" aria-checked="false">Strip types</button>` +
     chipGroup('Formatting', 'format', [
       { value: 'pretty', selected: true },
       { value: 'compact' },
     ]) +
+    `</div><details class="cg-advanced"><summary>More formatting options</summary><div class="cg-advanced-options">` +
     `<div class="ex-chip-group"><span class="ex-chip-label">Indent</span><input title="indent" type="number" min="0" max="8" step="1" value="2" data-ex-indent aria-label="Spaces per indentation level"></div>` +
     chipGroup('Quotes', 'quotes', [
       { value: 'preserve', selected: true },
       { value: 'double' },
       { value: 'single' },
-      {
-        value: 'shortest',
-        disabled: true,
-        title:
-          'not available: the Quotes enum in src/dialect/codegen.zig has preserve, double and single, so the host cannot request shortest',
-      },
     ]) +
     chipGroup('Comments', 'comments', [
       { value: 'none' },
@@ -607,10 +603,7 @@ function codegenControls(figure, state, onChange) {
       { value: 'line' },
       { value: 'block' },
     ]) +
-    `<div class="ex-chip-group">` +
-    `<button type="button" role="switch" title="strip" data-ex-flag="strip" aria-checked="false">Strip types</button>` +
-    `<button type="button" role="switch" title="minify" data-ex-flag="minify" aria-checked="false">Minify syntax</button>` +
-    `</div>`
+    `<button type="button" role="switch" title="minify" data-ex-flag="minify" aria-checked="false">Minify syntax</button></div><p class="ex-call" data-ex-call></p></details>`
   controls.prepend(options)
 
   const indentInput = options.querySelector('[data-ex-indent]')
@@ -676,7 +669,8 @@ async function runCodegen(figure, pane, state) {
   out.innerHTML = `${errors}${await highlightedHtml(
     result.code,
     'ex-generated',
-  )}<p class="ex-call"><code>${escapeHtml(equivalentCall(state))}</code></p>`
+  )}`
+  figure.querySelector('[data-ex-call]').innerHTML = `Current call: <code>${escapeHtml(equivalentCall(state))}</code>`
   out.querySelector('.ex-generated')?.setAttribute('data-ex-generated', '')
   const summary = `${state.strip ? 'types stripped' : 'types kept'}, ${state.comments === 'none' ? 'comments removed' : `${state.comments === 'all' ? 'all' : state.comments} comments kept`}.`
   plainStatus(figure, summary, result.ms, 'generated')

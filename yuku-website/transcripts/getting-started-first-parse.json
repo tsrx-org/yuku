@@ -1,8 +1,8 @@
 {
   "generated_by": "tools/capture-transcripts.mjs",
-  "captured_at": "2026-09-02T16:12:56.658Z",
+  "captured_at": "2026-09-07T19:49:16.884Z",
   "platform": {
-    "os": "Darwin 25.5.0",
+    "os": "Darwin 25.6.0",
     "arch": "arm64",
     "cpu": "Apple M5 Pro",
     "node": "v24.15.0",
@@ -13,10 +13,10 @@
   "transcript": [
     {
       "comment": "parse the first TSRX file",
-      "command": "node list.mjs",
+      "command": "node example.mjs",
       "exit_code": 0,
-      "duration_ms": 35,
-      "output": "[ 'JSXForExpression' ]",
+      "duration_ms": 42,
+      "output": "JSXElement\nJSXForExpression",
       "omitted_lines": 0
     }
   ]

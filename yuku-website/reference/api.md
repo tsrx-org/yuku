@@ -1,32 +1,35 @@
 ---
-title: API
-description: Search every exported function, option, and node type.
+title: API reference
+description: Find exported functions, options, and node types.
 ---
 
-# API
+# API reference
 
-Search every export, signature, option, and node type.
+Use this page when you know the function or type you need. If you're learning the package, start with the [quick start](/guide/quick-start).
 
-```js
-import { parseModule, analyze, generate, walk } from "@tsrx/yuku";
-```
+| I want to… | Function | Example |
+| --- | --- | --- |
+| Parse a module and stop on errors | `parseModule` | [Parse](/guide/parse) |
+| Read a tree and diagnostics separately | `parse` | [Diagnostics](/guide/diagnostics) |
+| Obtain the semantic model for compiler and lint passes | `analyze` | [Analyze](/guide/analyze) |
+| Visit or edit nodes | `walk` | [Walk and transform](/guide/walk) |
+| Print a tree | `generate` | [Generate](/guide/generate) |
 
-This reference is generated from `index.d.ts` during the docs build. The build also checks its declared functions against `index.js`, so a mismatch fails instead of publishing stale signatures.
+## Package boundary
 
-## How to read it
+These signatures describe `@tsrx/yuku`, not the separate upstream `yuku-parser`, `yuku-analyzer`, and `yuku-codegen` packages. In particular:
 
-Filter by a name or any word in its signature. Each function has a Try link that opens a matching playground example. Option rows show the addon's defaults and the combinations that throw.
+- `analyze` returns a per-file `AnalyzeResult` with table accessors. There is no exported project `Analyzer`, `Module`, `capturesOf`, or `SymbolFlags` API.
+- `walk` callbacks receive `{ parent, state }`, without upstream analyzer visitor methods.
+- Node source-map options are named `sourceMaps`; `generate` returns `{ code, errors, map }`.
+- `parseModule` is this package’s module-oriented convenience wrapper.
 
-## `parse` or `parseModule`
+## Find a signature
 
-`parse` returns `{ program, comments, diagnostics }` and never throws. It defaults to `lang: "js"`, so pass `lang: "tsx"` for [TSRX](https://tsrx.dev).
+Filter by a function, option, or node name, then open a row for its signature. The **Try** links open related playground examples.
 
-`parseModule(source, filename)` infers the language, forces module mode, enables semantic errors, and adjusts each error span to the authored construct. It throws on the first error unless you pass `collect` or `loose`. Use it in a build tool; use `parse` when you want to handle diagnostics yourself.
-
-`generate` strips and minifies through both hosts. Its `sourceMaps` option returns Source Map V3 through npm; the browser build has no source maps.
-
-Filter the exports by name, then open one to read its signature.
+Signatures come from the package's `index.d.ts`. The build checks declared functions against `index.js` to catch export mismatches.
 
 <!-- widget:api-from-dts -->
 
-Whether the addon those functions call exists for your machine: [Platforms and versions](/reference/platforms).
+The npm package and this site's browser build expose different surfaces. See [Limitations](/reference/limitations) before using a playground example outside the site.

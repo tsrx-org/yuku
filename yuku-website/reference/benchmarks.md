@@ -1,36 +1,44 @@
 ---
-title: Yuku parses this corpus in 0.29× the time
-description: Compare one native parser run, check size scaling, and reproduce it.
+title: Benchmarks
+description: Read the recorded parsing result and measure a workload of your own.
 ---
 
-# Yuku parses this corpus in 0.29× the time
+# Benchmarks
 
-See the measured result, check how parse time grows with file size, and reproduce the run.
+In the repository's recorded 224-file TSRX benchmark, Yuku took about **29% as long to parse** as `@tsrx/core`.
 
-| Package | Median parse time | Peak memory |
+| Package | Median parse time | Peak process memory |
 | --- | ---: | ---: |
 | `@tsrx/yuku` | 29,666 ns | 264,740,864 bytes |
-| [`@tsrx/core`](https://www.npmjs.com/package/@tsrx/core) | 103,075 ns | 309,960,704 bytes |
+| `@tsrx/core` | 103,075 ns | 309,960,704 bytes |
 
-On the same 224-file, 214,751-byte TSRX corpus, `@tsrx/yuku` took 0.29 times as long to parse and reached 0.85 times the peak memory of `@tsrx/core`. This is a parsing comparison from one Apple M5 Pro run, not a claim about every input, `analyze`, `generate`, or an entire build.
+These are results from `benchmarks/m6-baseline.json`: one Apple M5 Pro run over 214,751 bytes of source. Peak memory covers the whole child process, not just parser allocations. The result doesn't measure analysis, printing, or an entire application build, and isn't a measurement of each new package release.
 
-## How parse time grows
+## Upstream measurements
 
-Choose a source size and run the parser to compare it with the five-point sweep.
+[Yuku’s introduction](https://yuku.fyi/) reports separate native parsing and npm AST-transfer benchmarks for JavaScript inputs. Native parse time and the cost of obtaining a JavaScript AST measure different work. Neither is this TSRX corpus result, and neither establishes the cost of a complete compiler pipeline.
+
+## Try a size comparison
+
+Choose a source size and run the browser parser. This shows scaling on your machine; it isn't the native package benchmark above.
 
 <!-- widget:size-scaling sweep="16,64,128,256,512" max="1024" -->
 
-## Reproduce the result
+## Run the native benchmark
 
-From the repository root, build the ReleaseFast addon, then run both parsers against the same corpus:
+Follow [Build from source](/guide/build-from-source) first. The runner also needs the corpus files listed in `benchmarks/m5-corpus.json`; its paths are relative to a Markless checkout. The default is `../markless-yuku-tsrx-migration`; pass `--markless-root /path/to/checkout` to use another location. A fresh clone of this repository alone doesn't provide those files.
+
+From the repository root:
 
 ```sh
 zig build -Doptimize=ReleaseFast --prefix zig-out/perf-baseline
 LC_ALL=C node benchmarks/m6-performance.ts --phase baseline \
-  --package-baseline zig-out/perf-baseline/npm/yuku-tsrx \
+  --package-baseline zig-out/perf-baseline/npm/yuku \
   --corpus benchmarks/m5-corpus.json \
-  --output benchmarks/m6-baseline.json \
+  --output zig-out/m6-local.json \
   --warmups 5 --samples 20 --iterations 25 --seed 6d362d7631
 ```
 
-The command uses 5 warmups, 20 samples, 25 iterations per sample, and seed `6d362d7631`. Each sample runs each parser in a fresh child process; only the parse loop is timed. The runner verifies the corpus files against their SHA-256 manifest and writes `benchmarks/m6-baseline.json`. Peak-memory collection uses macOS's `/usr/bin/time -l`.
+Each sample runs a parser in a fresh child process. Only the parse loop is timed, and the runner checks each input file against the corpus manifest's SHA-256 hash. The command keeps your result separate from the committed report.
+
+Peak-memory collection uses macOS's `/usr/bin/time -l`. To compare an older result exactly, use its recorded source and package revisions as well as its inputs and sampling settings.

@@ -1,70 +1,74 @@
 ---
 title: Diagnostics and recovery
-description: Every problem in a file reported at once, each with the exact characters to underline, and the parse keeps going past each one.
+description: Report source errors and handle unfinished markup in an editor.
 ---
 
 # Diagnostics and recovery
 
-Every problem in a file reported at once, each with the exact characters to underline, and the parse keeps going past each one.
+A diagnostic describes a problem and points to the source text involved. `parse` returns the diagnostics it finds alongside the tree it could build.
 
 ```js
 import { parse } from "@tsrx/yuku";
 
 const { diagnostics } = parse("@if (x) <b/>", { lang: "tsx" });
-diagnostics[0].severity; // "error"
-diagnostics[0].message;  // "Expected '{' after TSRX control-flow directive"
-diagnostics[0].help;     // "TSRX control-flow bodies are written with braces."
-diagnostics[0].start;    // 8
-diagnostics[0].end;      // 9
+const problem = diagnostics[0];
+
+console.log(problem.message); // Expected '{' after TSRX control-flow directive
+console.log(problem.start, problem.end); // 8 9
 ```
 
-This error points at the `<` where the parser expected `{`. Each diagnostic also has `labels` for related spans and a `help` string or `null`.
+The parser expected `{` and found `<`. The offsets identify that character. A diagnostic also has a `severity`, a `help` string or `null`, and `labels` for related source ranges.
 
-## Errors stop `parseModule`; warnings do not
+## Stop a build, or collect errors for an editor
 
-The package returns `error` and `warning`. Syntax problems are errors. A repeated declaration is the only warning when `parse` runs with `semanticErrors: true`.
+`parseModule` throws on the first error by default. To collect errors instead, provide an array and set `collect: true`:
 
-`parseModule` throws on the first error. With `collect` or `loose`, it returns the program and adds errors to your `errors` array; warnings always return the program. [`parse` never throws](/guide/parse#parsemodule-chooses-defaults-and-throws).
+```js
+import { parseModule } from "@tsrx/yuku";
 
-## The gallery shows every common refusal
+const source = "@if (x) <b/>";
+const errors = [];
+const program = parseModule(source, "example.tsrx", { collect: true, errors });
 
-Pick a case; the underline and the message follow.
+console.log(errors.length > 0); // true
+```
+
+The returned program may be incomplete. Collecting errors is useful for an editor; it doesn't make the input safe to compile. Likewise, when using `parse`, check for diagnostics whose `severity` is `"error"` before transforming the tree.
+
+Warnings don't make `parseModule` throw. With `semanticErrors: true`, this fork’s `parse` path downgrades redeclaration diagnostics to warnings for editor recovery; [`analyze`](/guide/analyze) retains error severity. This is a local policy, not a general claim about upstream Yuku.
+
+## Parsing errors and semantic early errors
+
+A missing brace can be detected while parsing. Other errors require the surrounding scopes: `export { missing }` needs a local binding, and two `let` declarations cannot share one scope. `semanticErrors: true` adds those checks to `parse`; `analyze` runs them and also returns the semantic model. `parseModule` enables them by default.
+
+These are language early errors, not TypeScript type checking. For example, `const n: number = "text"` is structurally valid and does not produce a type-mismatch diagnostic here. [Upstream semantic analysis](https://yuku.fyi/parser/semantic/) explains the distinction.
+
+## Try common errors
+
+Choose a case to see its message and highlighted range. The last two cases need the semantic early-error checks (`semanticErrors: true`).
 
 <!-- widget:diagnostics-gallery -->
 
-The gallery covers malformed directives, loop clauses, blocks, and markup. The final two appear when name checking is on.
+## Recover unfinished markup
 
-Some errors leave a node in the tree. A forbidden `break` inside `@case`, for example, reports the error and keeps the `JSXSwitchExpression`; stop before using a tree whenever it carries an error.
+An editor often sees code halfway through a change. `loose: true` handles one such case: an element closed by an ancestor's tag.
 
-## `loose` repairs one unfinished closing tag
+For `<a><b>text</a>`, normal parsing reports a mismatched closing tag. Loose parsing closes `<b>` where `</a>` starts, keeps both elements, and reports no error for this mismatch.
 
-With the default settings, `<a><b>text</a>` reports a mismatched closing tag and returns an empty body. With `loose: true`, the parser closes `<b>` where `</a>` starts, keeps both elements, and reports no error.
+Other syntax rules still apply. `@if (x) <b/>` needs braces even in loose mode. On `parseModule`, `loose: true` also stops errors from throwing. Supply an `errors` array to read the remaining problems.
 
-Other errors stay errors. `@if (x) <b/>` requires braces with `loose` enabled.
-
-## Put the underline on the full closing tag
+## Show a useful source location
 
 ```js
 import { authoredDiagnosticSpan, sourcePosition } from "@tsrx/yuku";
 
-authoredDiagnosticSpan({ start: 18, end: 19 }, source); // { start: 16, end: 19 }, the "</a"
-sourcePosition(source, 16);                              // { line: 1, column: 16 }
+const source = "const v = <a><b></a>;";
+const span = authoredDiagnosticSpan({ start: 18, end: 19 }, source);
+
+console.log(source.slice(span.start, span.end)); // </a
+console.log(sourcePosition(source, span.start)); // { line: 1, column: 16 }
 ```
 
-For `const v = <a><b></a>;`, `parse` points at the `a` in `</a>`. `authoredDiagnosticSpan` expands that span to the whole closing tag; `parseModule` applies it before throwing or collecting.
+`authoredDiagnosticSpan` expands certain parser ranges to the markup the author wrote. `parseModule` applies this adjustment before throwing or collecting errors.
 
-Use `sourcePosition` for one offset or `sourceLocation` for both ends. Lines start at 1, columns at 0, and offsets outside the source are clamped.
-
-## Malformed constructs report where parsing breaks
-
-```tsrx no-playground
-const before = 1;
-const view = @for (const item of items) <li>{item}</li>;
-const after = 2;
-```
-
-The underline covers `<li>{item}</li>`, with `Expected '{' after TSRX control-flow directive`. `parse` returns an error and `parseModule` throws.
-
-A malformed for-in tail, a bare statement inside `@switch`, an unclosed dynamic tag, and a lazy marker without a pattern report at the place parsing stopped too. Treat any error as a rejected module; recovery exists to place the underline, not to make the tree safe to compile.
-
-Next, connect each name to its declaration on [Analyze](/guide/analyze).
+`sourcePosition` converts an offset to a line and column. `sourceLocation(source, start, end)` converts both ends of a range. Lines start at 1, columns at 0, and out-of-range offsets are clamped.

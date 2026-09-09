@@ -1,100 +1,81 @@
 ---
 title: Parse
-description: Read a .tsrx file into a tree your tools can walk: a position on every node, the comments kept, and problems returned as a list instead of a thrown error.
+description: Turn source text into a tree, inspect nodes, and choose how to handle errors.
 ---
 
 # Parse
 
-Read a `.tsrx` file into a tree your tools can walk: a position on every node, the comments kept, and problems returned as a list instead of a thrown error.
+`@tsrx/yuku` turns TSRX source into an abstract syntax tree (AST), with dedicated nodes for template constructs such as `@if` and `@for`. Use the tree to build compiler transforms, codemods, and lint rules. JavaScript and TypeScript are supported too. Add [semantic analysis](/guide/analyze) when a decision depends on bindings or scopes.
 
-```js
-import { parse } from "@tsrx/yuku";
-
-const result = parse(source, { lang: "tsx" });
-result.program;     // the tree, a Program node
-result.comments;    // every comment, flat
-result.diagnostics; // every problem, errors and warnings alike
-```
-
-[Yuku's `parse`](https://yuku.fyi) returns the tree it could build and every diagnostic it found. Bad source never makes this call throw.
-
-## `parseModule` chooses defaults and throws on errors
+Start with a small template:
 
 ```js
 import { parseModule } from "@tsrx/yuku";
 
-const program = parseModule(source, "Cart.tsrx");
+const source = "const view = <h1>Hello</h1>;";
+const program = parseModule(source, "hello.tsrx");
+const heading = program.body[0].declarations[0].init;
+
+console.log(heading.type); // "JSXElement"
+console.log(source.slice(heading.start, heading.end)); // "<h1>Hello</h1>"
 ```
 
-The filename selects the language: `.tsrx` and `.tsx` use `tsx`, `.jsx` uses `jsx`, `.d.ts` uses `dts`, and `.ts` uses `ts`. Everything else uses `js`; an explicit `lang` wins.
+`Program` is the root of the tree. Its `body` contains the file's top-level statements. Here, the first statement declares `view`, whose initial value is our heading.
 
-`parseModule` also checks names and treats the file as a module. It throws a `SyntaxError` on the first error, while warnings return a program.
+You rarely need to follow that whole path by hand. [`walk`](/guide/walk) finds nodes by type anywhere in the tree.
+
+## Choose how errors reach you
+
+| Function | Returns | On a source error |
+| --- | --- | --- |
+| `parseModule(source, filename)` | A `Program` | Throws `SyntaxError` |
+| `parse(source, options)` | `{ program, comments, diagnostics }` | Returns diagnostics |
+
+Use `parseModule` in a build tool that should stop on invalid input. Use `parse` in an editor or error reporter that needs to inspect problems:
 
 ```js
-const errors = [];
-const program = parseModule(source, "Cart.tsrx", { collect: true, errors });
-// program is always a Program here; errors holds every error, in order.
+import { parse } from "@tsrx/yuku";
+
+const source = "const view = <h1>Hello</h1>;";
+const result = parse(source, { lang: "tsx" });
+
+console.log(result.diagnostics); // []
 ```
 
-`collect: true` returns the program and fills `errors`. `loose: true` does the same, then recovers one unfinished closing-tag shape shown on [Diagnostics and recovery](/guide/diagnostics).
+Pass `lang: "tsx"` for TSRX. `parse` defaults to JavaScript and doesn't infer a language from your source.
 
-## Every node points back to your source
+`parseModule` infers the language from the filename: `.tsrx` and `.tsx` select `tsx`, `.jsx` selects `jsx`, `.d.ts` selects `dts`, and `.ts` selects `ts`. Other extensions select `js`. An explicit `lang` overrides this choice. It also uses module mode and enables scope-dependent early-error checks. Unlike the current upstream filename helpers, this wrapper does not infer CommonJS from `.cjs` or `.cts`, or TypeScript from `.mts` / `.cts`. For these files, use `parse` with explicit `lang` and `sourceType`.
 
-Hover or focus an AST row and watch its source range light up.
+## Explore the tree
+
+Edit the source to update the tree. Select a node in the read-only AST to highlight the source it came from.
 
 <!-- ast-explorer -->
 ```tsrx
-export function Cart({ items }) @{
-  const total = items.length;
-  <ul class="cart">
-    @for (const item of items; key item.id) {
-      <li>{item.label}</li>
-    }
-  </ul>
-}
+<ul>
+  @for (const item of items) {
+    <li>{item.label}</li>
+  }
+</ul>
 ```
 
-Every node has a `type`, `start`, and `end`. `source.slice(node.start, node.end)` returns the exact text for that node; the `@for` above is a `JSXForExpression`, and its loop is in `statement`.
+`type` tells you what a node represents. In the JavaScript API, `start` and `end` count UTF-16 code units in the source string; `end` is exclusive, just like `slice`. Native Zig spans count UTF-8 bytes. The transfer decoder converts positions for JavaScript consumers.
 
-## The TSRX node types and why the names are exact
+[Yuku’s native AST](https://yuku.fyi/parser/ast/) stores nodes in flat arrays with integer references. The JavaScript decoder exposes object nodes. Zig field names and native node tags are not the JavaScript API: for example, use `Program.body` and `node.type` here, not `tree.extra` or `tree.data`.
 
-Constructs sit directly where you wrote them. A top-level `@if` is a `JSXIfExpression` in `Program.body`, and an `@for` inside markup is a `JSXForExpression` in the element's `children`.
+TSRX constructs keep their own node types. The `@for` above is a `JSXForExpression` with its loop in `statement`. The [node guide](/architecture/dialect#recognize-tsrx-nodes) maps the other constructs.
 
-## Six options change what you get back
+## Parser options
 
-Read the clean TSX result, then switch to JavaScript and focus the new underline.
+Pass these options as the second argument to `parse`.
 
-<!-- widget:options-strip -->
-```tsrx
-export function Badge({ open }: { open: boolean }) @{
-  // one comment, so attachComments has something to attach
-  const label = open ? "open" : "closed";
-  <span class="badge">{label}</span>
-}
-
-// declared twice on purpose: flip semanticErrors
-const Badge = 1;
-```
-
-| Option | Default | Result |
+| Option | `parse` default | When to change it |
 | --- | --- | --- |
-| `lang` | `js` | Chooses `js`, `jsx`, `ts`, `tsx`, or `dts`. Markup needs `jsx` or `tsx`; types need `ts` or `tsx`. |
-| `sourceType` | `module` | Chooses `script`, `module`, or `commonjs`. |
-| `preserveParens` | `true` | Keeps `ParenthesizedExpression` around `(1)`. |
-| `semanticErrors` | `false` | Checks for problems such as a repeated name or missing export. |
-| `attachComments` | `false` | Adds comments to their nodes. `result.comments` is filled either way. |
-| `loose` | `false` | Recovers an element closed by an ancestor's tag. |
+| `lang` | `"js"` | Use `"tsx"` for TSRX. Also accepts `jsx`, `ts`, and `dts`. |
+| `sourceType` | `"module"` | Read a `script` or `commonjs` file. |
+| `preserveParens` | `true` | Set to `false` to omit `ParenthesizedExpression` wrappers. |
+| `semanticErrors` | `false` | Run scope-dependent early-error checks, such as invalid redeclarations and exports without a local binding. This does not return the semantic tables. |
+| `attachComments` | `false` | Attach comments to nodes so the printer can keep them. The flat `comments` list is returned either way. |
+| `loose` | `false` | Recover some unfinished markup in an editor. |
 
-Pass `lang: "tsx"` when calling `parse` on a `.tsrx` file. Without it, the first `<` produces `Unexpected token '<'`.
-
-## The wire format underneath
-
-```ts
-parseWire(source, options): ArrayBuffer
-decode(buffer, source): ParseResult
-encode(program): ArrayBuffer
-```
-
-`parse` combines the first two calls. `encode` turns a program back into the buffer that [`generate`](/guide/generate) accepts.
-
-Next, learn which problems stop a file on [Diagnostics and recovery](/guide/diagnostics).
+For error collection and recovery examples, continue to [Diagnostics](/guide/diagnostics). Detailed signatures, including the low-level `parseWire`, `decode`, and `encode` functions, live in the [API reference](/reference/api).

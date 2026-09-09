@@ -1,24 +1,37 @@
 ---
 title: Platforms and versions
-description: See why there are two prebuilt packages and how to add another platform.
+description: Check whether the native package supports your machine.
 ---
 
 # Platforms and versions
 
-## Why are there only two platforms?
+`@tsrx/yuku` needs Node.js 22 or newer. It includes native code, so your operating system, CPU architecture, and (on Linux) C library must match a prebuilt addon.
 
-The package you install is native code. It must be compiled separately for every operating system and CPU, and each one must be built on a matching machine in CI. CI uses macOS on Apple Silicon and Linux on x64. That produces the two packages below. On any other platform, the import throws an error instead of silently running something slower.
+## Supported prebuilt packages
 
-## How can I get another platform?
-
-You can [build from source anywhere Zig runs](/guide/build-from-source), or [open an issue](https://github.com/tsrx-org/yuku/issues). Adding a prebuilt platform means adding one more CI machine and choosing a CPU floor.
-
-## Packages and CPU floors
+The published targets are **macOS on Apple Silicon** and **Linux x64 with glibc**. The table below comes from the package manifests and release configuration.
 
 <!-- widget:platforms-table -->
 
-A CPU floor makes sure the addon runs on the oldest CPU of that family that we support, not only on the CI machine that built it.
+The CPU floor is the oldest instruction set the build targets. It keeps the addon from depending on features available only on the build machine.
 
-## Versions
+The platform packages are pinned to the same version as `@tsrx/yuku`. Let your package manager select the matching optional dependency; don't install a different binding version manually.
 
-The two binding packages are pinned to the exact version of `@tsrx/yuku` you install, so they never drift. Use Node 22 or newer.
+## Upstream packages use separate distribution paths
+
+The native and WASM packages listed on [yuku.fyi](https://yuku.fyi/parser/) belong to upstream Yuku. Their platforms and convenience APIs do not change the targets shipped by `@tsrx/yuku`. This site builds its own TSRX-capable WASM module; see the [host comparison](/reference/limitations#the-browser-build-is-a-separate-host).
+
+## If installation or import fails
+
+Check your Node version and architecture:
+
+```sh
+node --version
+node -p "process.platform + ' ' + process.arch"
+```
+
+On a supported machine, make sure your install hasn't disabled optional dependencies. On Linux, check that the environment uses glibc rather than musl.
+
+Other targets, including Windows, Intel macOS, and Alpine Linux, don't have a prebuilt addon in this repository. There is no automatic JavaScript or WASM fallback for the npm package.
+
+You can investigate a [source build](/guide/build-from-source) or [request platform support](https://github.com/tsrx-org/yuku/issues). Adding a prebuilt target requires build and runtime verification for that platform.

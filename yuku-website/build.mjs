@@ -713,7 +713,7 @@ const GUIDE_FIGURES = {
   'codegen-walkthrough': {
     attribute: 'data-codegen-walkthrough',
     className: 'codegen-walkthrough',
-    panes: ['Source', 'Generated'],
+    panes: ['Source', 'Generated code'],
     idleNote: 'The generator runs when this figure scrolls into view.',
     idleStatus:
       'the generator runs in your browser when this figure scrolls into view; with JavaScript off this stays the listing above',
@@ -792,21 +792,25 @@ function guideFigureHtml(kind, source, blockHtml) {
         <ul class="ex-tree ex-scope-tree" data-ex-scope-tree><li class="ex-note">The analyzer builds this tree in your browser.</li></ul>
       </section>`
       : ''
-  return `<figure class="explorer ex-figure ${spec.className}" ${spec.attribute} data-source="${escapeHtml(source)}">
+  return `<figure class="explorer ex-figure code-workspace ${spec.className}" ${spec.attribute} data-source="${escapeHtml(source)}">
+  <div class="ex-controls ex-toolbar" data-ex-controls>${fence.button}</div>
+  <div class="workspace-tabs" data-workspace-tabs role="tablist" aria-label="Source and result" hidden>
+    <button type="button" role="tab" data-workspace-tab aria-selected="true">Edit source</button>
+    <button type="button" role="tab" data-workspace-tab aria-selected="false" tabindex="-1">View ${spec.panes[1].toLowerCase()}</button>
+  </div>
   <div class="projection-map-panes">
-    <div class="projection-map-pane">
-      <h3>${spec.panes[0]}</h3>
+    <div class="projection-map-pane workspace-input" data-workspace-panel>
+      <h3>${spec.panes[0]} <span class="workspace-editable">Editable</span></h3>
       <div class="ex-source-host" data-ex-source>${fence.html}</div>
       <div class="explorer-diagnostics" data-ex-diagnostics></div>
     </div>
-    <div class="projection-map-pane">
-      <h3>${spec.panes[1]}</h3>
+    <div class="projection-map-pane workspace-result" data-workspace-panel>
+      <h3>${spec.panes[1]} <span class="workspace-readonly">Read only</span></h3>
       <div class="ex-out" data-ex-out><p class="ex-note">${spec.idleNote}</p></div>
       ${scopePane}
-      <p class="ex-readout" data-ex-readout aria-live="polite">${spec.readout}</p>
+      ${kind === 'codegen-walkthrough' ? '' : `<p class="ex-readout" data-ex-readout aria-live="polite">${spec.readout}</p>`}
     </div>
   </div>
-  <div class="ex-controls ex-toolbar" data-ex-controls>${fence.button}</div>
   <figcaption class="ex-status" data-ex-status aria-live="polite">${spec.idleStatus}</figcaption>
 </figure>
 `
@@ -1118,14 +1122,14 @@ const TSRX_NODE_TYPES = [
 async function howItWorksSteps() {
   const { names, groups } = await readHooks()
   const nodeTypesHref = withBase(
-    '/guide/parse#the-tsrx-node-types-and-why-the-names-are-exact',
+    '/architecture/dialect#recognize-tsrx-nodes',
   )
-  const wireHref = withBase('/guide/parse#the-wire-format-underneath')
+  const wireHref = withBase('/architecture/dialect#connect-the-native-tree-to-semantic-analysis')
   return [
     {
       id: 'source',
       label: 'Your .tsrx',
-      text: 'The file you wrote. Nothing owns it yet, and nothing on disk changes at any point in what follows.',
+      text: 'The source string passed to the parser. Parsing does not execute it or change the file on disk.',
       panel: `<div class="hiw-source code-block" data-lang="tsrx">${addTsrxHovers(highlightHtml(heroCode, 'tsrx'))}</div>`,
     },
     {
@@ -1143,7 +1147,7 @@ async function howItWorksSteps() {
     },
     {
       id: 'tree',
-      label: 'A TSRX tree, not a lowering',
+      label: 'A tree that preserves TSRX',
       text: 'Yuku owns the ordinary nodes. yuku-tsrx owns these records, declared in <code>src/dialect/schema.zig</code>, and the parser produces those exact names rather than lowering TSRX to TSX.',
       panel: `<p class="hiw-nodes">${TSRX_NODE_TYPES.map(
         (type) => `<a href="${nodeTypesHref}"><code>${type}</code></a>`,
@@ -1153,7 +1157,7 @@ async function howItWorksSteps() {
       id: 'buffer',
       label: 'One buffer across the boundary',
       text: 'The tree crosses into JavaScript as a single buffer, decoded on the JavaScript side rather than built node by node in the addon.',
-      panel: `<p>The layout, and what the decoder does with it, is written up in <a href="${wireHref}">The wire format underneath</a>. The Zig side of it is <code>src/dialect/transfer.zig</code> and <code>src/dialect/semantic_transfer.zig</code>.</p>`,
+      panel: `<p>Read how <a href="${wireHref}">the native tree connects to JavaScript and semantic analysis</a>. The Zig transfer code lives in <code>src/dialect/transfer.zig</code> and <code>src/dialect/semantic_transfer.zig</code>.</p>`,
     },
     {
       id: 'api',
@@ -1161,7 +1165,7 @@ async function howItWorksSteps() {
       text: 'Three calls on the JavaScript side, each with its own guide.',
       panel: `<ul class="hiw-api">
         <li><a href="${withBase('/guide/parse')}"><code>parse</code> and <code>parseModule</code></a>: source in, a TSRX tree and its diagnostics out.</li>
-        <li><a href="${withBase('/guide/analyze')}"><code>analyze</code></a>: scopes, symbols and references over that tree.</li>
+        <li><a href="${withBase('/guide/analyze')}"><code>analyze</code></a>: native semantic facts for compiler transforms and lint rules.</li>
         <li><a href="${withBase('/guide/generate')}"><code>generate</code></a>: a tree back to source.</li>
       </ul>
       <p>The same module compiled to WebAssembly is what runs in the <a href="${withBase(PLAYGROUND_ROUTE)}">playground</a> and in the figures on the guide pages.</p>`,
@@ -2104,7 +2108,7 @@ function outputPanelHtml() {
   ]
   return `<div class="code-panel pg-output" id="pg-output" data-explorer>
         <div class="code-panel-bar pg-output-tabs" role="tablist" aria-label="Parser output">
-          <span class="pg-pane-label" aria-hidden="true">Output</span>
+          <span class="pg-pane-label" aria-hidden="true">Read-only output</span>
           ${tabs
             .map(
               ([id, label], index) =>
@@ -2228,12 +2232,12 @@ async function renderHomePage({ description }) {
     </div>
   </section>
   <section class="home-bench" aria-label="Measured parse time">
-    <h2>Measured, not claimed</h2>
-    <p>These four numbers are computed from <code>benchmarks/m6-baseline.json</code> when this page is built, so they cannot drift from the committed report.</p>
+    <h2>Parsing performance</h2>
+    <p>How much time does parsing take? Here is one recorded comparison on a corpus of TSRX files.</p>
     ${homeBenchCards()}
     ${homeCompChart()}
     <p class="home-bench-caption" title="MB means 1,000,000 bytes here, the unit the report uses.">One measurement on one machine (${escapeHtml(baseline.provenance.runtime.cpu)}, a ${benchNumber(baseline.input.file_count)}-file corpus). Your hardware will differ. MB means 1,000,000 bytes.</p>
-    <p class="home-bench-link"><a href="${withBase('/reference/benchmarks')}">See the report and its caveats</a></p>
+    <p class="home-bench-link"><a href="${withBase('/reference/benchmarks')}">Read the benchmark and how to run it</a></p>
   </section>
   <section class="features" aria-label="Feature highlights">
     <ul class="features-grid">

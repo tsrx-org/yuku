@@ -1,131 +1,103 @@
 ---
 title: Analyze
-description: Every scope, symbol and reference linked into flat tables as soon as a file is parsed, so a compiler asks what a name points at instead of walking the tree to find out.
+description: Build compiler passes with scopes, binding identity, runtime references, and module records.
 ---
 
 # Analyze
 
-Every scope, symbol and reference linked into flat tables as soon as a file is parsed, so a compiler asks what a name points at instead of walking the tree to find out.
+A compiler needs more than the shape of a template. Before moving an expression into a generated function, it needs to know which outer bindings that function will capture. Before rewriting an imported helper, it needs to distinguish calls to that import from calls to a local variable with the same name. A lint rule needs to distinguish a runtime use from a type annotation.
+
+`analyze` supplies the semantic information behind those decisions. Yuku builds lexical scopes, binds declarations, resolves references in TypeScript's declaration spaces, and checks scope-dependent early errors in Zig. The JavaScript result includes the AST and tables for scopes, symbols, references, imports, and exports.
+
+A **symbol** identifies a binding, even when other bindings have the same spelling. A **reference** records a use, its resolved symbol, its declaration space, and whether it writes to the binding. A **scope** records the lexical environment and its parent.
+
+## Analyze a TSRX module
 
 ```js
 import { analyze } from "@tsrx/yuku";
 
-const { semantic } = analyze(source, "Cart.tsrx");
-const ref = semantic.reference;
-for (let i = 0; i < ref.count; i++) {
-  console.log(ref.name(i), "->", ref.symbolId(i));
+const source = `let count = 0;
+const step = 2;
+function Counter() @{
+  count += step;
+  <p>{count}</p>
+}`;
+const result = analyze(source, "Counter.tsrx");
+if (result.diagnostics.some((d) => d.severity === "error")) {
+  throw new Error(result.diagnostics.map((d) => d.message).join("\n"));
 }
+const { scope, symbol, reference } = result.semantic;
 ```
 
-Focus `reset` and watch the explorer report that it has no symbol.
+The filename selects the language; it doesn't read a file. An explicit `lang` overrides filename inference. `analyze(source, { lang: "tsx" })` is also supported. Without either, the Node package defaults to JavaScript in module mode.
+
+## Identify captured bindings
+
+Continue the example above. `Counter` uses `count` and `step` from outside its function scope. The resolved reference table lets a compiler collect those bindings without rebuilding JavaScript's binding rules:
+
+```js
+const counter = result.program.body[2];
+const functionScope = result.semantic.nodeScope(result.indexOf(counter));
+const isInside = (id) => {
+  for (; id !== null; id = scope.parentId(id)) {
+    if (id === functionScope) return true;
+  }
+  return false;
+};
+
+const captures = new Map();
+for (let r = 0; r < reference.count; r++) {
+  const s = reference.symbolId(r);
+  if (s === null || reference.inTypePosition(r)) continue;
+  if (!isInside(reference.scopeId(r)) || isInside(symbol.scopeId(s))) continue;
+  captures.set(s, (captures.get(s) ?? false) || reference.isWrite(r));
+}
+for (const [s, written] of captures) {
+  console.log(symbol.name(s), written ? "written" : "read only");
+}
+// count written
+// step read only
+```
+
+This example collects resolved outer bindings, including uses in nested functions. It excludes local bindings and type-only references. Unresolved globals, `this`, and implicit `arguments` need separate treatment. A write to `count.value` is a property mutation, not a reassignment of `count`; `isWrite` describes the binding itself.
+
+These are inputs to your compiler's transformation. They do not determine a framework's reactivity, effect scheduling, or serialization rules.
+
+## Inspect the semantic model
+
+Edit the source and select a symbol to highlight its declaration and references. The scope tree shows which environment owns each binding. Try adding a local `count` inside `Counter` and see how its references change.
 
 <!-- symbol-explorer -->
 ```tsrx
-export function Cart({ items }) @{
-  const total = items.length;
-  const label = total === 1 ? "item" : "items";
-
-  <ul class="cart">
-    @try {
-      @for (const item of items; index i; key item.id) {
-        <li>{item.label}</li>
-      }
-    } @catch (error, reset) {
-      <li><button onClick={reset}>{error.message}</button></li>
-    }
-  </ul>
+let count = 0;
+const step = 2;
+function Counter() @{
+  count += step;
+  <p>{count}</p>
 }
 ```
 
-## Five tables answer five kinds of question
+## Use the model in a compiler pass
 
-[Yuku's `analyze`](https://yuku.fyi) returns `program`, `comments`, and `diagnostics`, then adds `semantic`:
-
-```ts
-interface SemanticView {
-  scope: SemanticScopeTable;
-  symbol: SemanticSymbolTable;
-  reference: SemanticReferenceTable;
-  import: SemanticImportTable;
-  export: SemanticExportTable;
-  moduleFlags: SemanticModuleFlags;
-  nodeScope(nodeIndex: NodeIndex): ScopeId;
-}
-```
-
-Each table has a `count`. Pass a row id to its accessors, from `0` through `count - 1`.
-
-Switch to Symbols, then focus a token to read its scope and symbol.
-
-<!-- widget:symbol-table unresolved="reset" -->
-```tsrx
-import { format } from "./format";
-
-export function Cart({ items }) @{
-  const total = items.length;
-  const label = total === 1 ? "item" : "items";
-
-  <ul class="cart">
-    @try {
-      @for (const item of items; index i; key item.id) {
-        <li>{format(item.label)}</li>
-      }
-    } @catch (error, reset) {
-      <li><button onClick={reset}>{error.message}</button></li>
-    }
-  </ul>
-}
-```
-
-| Question | Read |
+| Task | Information to use |
 | --- | --- |
-| Where is this name declared? | `reference.symbolId(r)`, then `symbol.declNode(s, 0)` |
-| Which names belong together? | `symbol.scopeId(s)`, then `scope.parentId(id)` |
-| What enters or leaves this file? | `import.specifier(i)`, `import.name(i)`, `export.name(e)` |
-| Where does this node belong? | `semantic.nodeScope(result.indexOf(node))` |
-| Does the file use Node globals or `import.meta`? | `moduleFlags` |
+| Rewrite an imported helper without touching a shadowing local | The import's `symbolId`, then matching resolved references |
+| Collect a function's captured bindings | Reference scopes, symbol scopes, and the scope parent chain |
+| Separate type-only uses from runtime uses | `reference.space(r)` and `reference.inTypePosition(r)` |
+| Inspect reassignment | `reference.isWrite(r)`; a declaration initializer is not a write reference |
+| Build dependency and export metadata | The `import` and `export` tables and `moduleFlags` |
+| Rewrite a binding and its uses | `symbol.declNode(s, i)` and `reference.node(r)` for that symbol |
 
-The first two scopes are always `global` and `module`. Function and block scopes follow as the analyzer encounters them.
+Tables use numeric row IDs from `0` through `count - 1`. One symbol can have multiple declarations when the language permits merging. `symbolId: null` means a reference has no matching binding in its declaration space; an environment-supplied global such as `console` is one example.
 
-## A missing declaration is `null`
+Nodes reached through semantic queries are the same memoized objects reached through `result.program`. You can edit those nodes and pass the program to [`generate`](/guide/generate). For a rename, check for collisions and preserve property keys, import names, and exported names as required by the transformation.
 
-The second name in `@catch (error, reset)` is not declared. The `reset` used by `onClick` therefore has `symbolId: null`; `window` and `console` do too when the file never declares them.
+The tables describe the source at analysis time. Editing the AST does not refresh them. Generate and re-analyze the output when a later pass needs the transformed program's semantics. IDs and node objects belong to one result and must not be reused across analyses.
 
-That answer does not add a diagnostic. The same sample returns no diagnostics.
+## Relationship to upstream Yuku
 
-## The filename chooses the language
+[Yuku's analyzer](https://yuku.fyi/analyzer/) also provides a project-level `Analyzer`, object-oriented `Module` queries, `capturesOf`, semantic visitor contexts, and import/re-export linking across files. This package currently exports the lower-level per-file `AnalyzeResult`; it does **not** export those convenience or project APIs. The capture example above uses this package's actual table accessors.
 
-```js
-analyze(source, "Cart.tsrx");                 // tsx, from the extension
-analyze(source, { lang: "tsx" });             // the options form
-analyze(source, "Cart.tsrx", { lang: "js" }); // an explicit lang wins
-analyze(source);                              // js: the first "<" is a diagnostic
-```
+Import/export records are available, but `@tsrx/yuku` does not load dependencies or link a project. Semantic analysis also does not infer types or check assignability. See [Yuku's semantic model](https://yuku.fyi/parser/semantic/) for the underlying concepts and the [API reference](/reference/api) for the API shipped here.
 
-Use a filename or pass `lang`. Without either, `analyze` uses JavaScript.
-
-## Name errors are always errors here
-
-```js
-analyze("const a = 1; const a = 2; export { nope };", "x.tsrx").diagnostics;
-// [error] Identifier 'a' has already been declared
-// [error] Export 'nope' is not defined
-```
-
-`analyze` always checks names and keeps both entries at `error`. By contrast, `parse` checks them only with `semanticErrors: true` and changes the repeated declaration to `warning`.
-
-## Read nodes by index
-
-```js
-const view = analyze(source, "Cart.tsrx");
-view.nodeOf(0);                 // the node at index 0 (an Identifier here)
-view.indexOf(view.program);     // the last index: the Program is written last
-view.semantic.nodeScope(12);    // scope id for node 12
-view.str(0, 6);                 // "import": a slice by offset and byte length
-```
-
-`parentIndex` returns `-1` for the program and the parent node's index for every other indexed node, including nodes inside `@{}`, `@if`, `@for`, `@switch`, `@try`, and `<style>`. [Walk the tree](/guide/walk) to receive each node and its parent in a visitor.
-
-Text inside `<style>` adds no names or references because it is CSS.
-
-Next, print the tree back to source on [Generate](/guide/generate).
+The current TSRX adapter does not bind the second `@catch` parameter, `reset`. CSS and raw script text in templates are not analyzed as JavaScript. See [Limitations](/reference/limitations) before building a pass that depends on these cases.

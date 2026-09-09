@@ -108,7 +108,7 @@ export default function mount(root, { cleanup }) {
         afterRender: decorate,
         onChange(value) {
           source = value
-          reset.hidden = source === seed
+          reset.disabled = source === seed
           reparse()
         },
         onPointerOffset: (target, offset) => {
@@ -123,7 +123,7 @@ export default function mount(root, { cleanup }) {
       })
       reset.addEventListener('click', async () => {
         source = seed
-        reset.hidden = true
+        reset.disabled = true
         await editor.setValue(seed)
         reparse()
       })

@@ -1,9 +1,11 @@
 .widget-visitor .vi-controls {
+  padding: 16px;
   border-top: 0;
   border-bottom: 1px solid var(--c-divider);
 }
 .widget-visitor .vi-pick {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   white-space: nowrap;

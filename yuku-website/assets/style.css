@@ -1877,6 +1877,11 @@ html.dark .ex-source span[style] {
 .ex-controls:empty {
   display: none;
 }
+.ex-figure > .ex-toolbar:first-child {
+  padding: 16px;
+  border-top: 0;
+  border-bottom: 1px solid var(--c-divider);
+}
 .ex-option-rows {
   display: flex;
   flex-wrap: wrap;
@@ -2065,6 +2070,19 @@ html.dark .ex-source span[style] {
   border-color: var(--c-divider);
   background: var(--c-bg-alt);
   color: var(--c-text-2);
+}
+
+.doc figure img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.doc figure:has(> img[src*="/assets/benchmarks/"]) {
+  margin: 24px 0;
+  overflow-x: auto;
+}
+.doc figure > img[src*="/assets/benchmarks/"] {
+  min-width: 640px;
 }
 
 /* #css-pages-end */
@@ -4651,7 +4669,7 @@ html.dark .page-status-label {
 }
 
 /* #css-pages-end */
-/* A widget narrower than ~760px stacks its panes; side by side only fits the playground. */
+/* General data widgets stack their panes in a narrow article. */
 figure.widget,
 .ex-figure {
   container-type: inline-size;
@@ -4669,3 +4687,137 @@ figure.widget,
     max-height: 320px;
   }
 }
+
+/* #css-pages: doc */
+/* Editors use one source/result pair, with tabs when two columns cannot fit. */
+.code-workspace > .projection-map-panes {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+}
+.code-workspace .projection-map-pane + .projection-map-pane {
+  border-left: 1px solid var(--c-divider);
+  border-top: 0;
+}
+.code-workspace .projection-map-pane h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 48px;
+  background: var(--c-bg);
+}
+.workspace-editable,
+.workspace-readonly {
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.workspace-editable {
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
+}
+.workspace-readonly {
+  color: var(--c-text-2);
+  background: var(--c-bg-alt);
+}
+.code-workspace .workspace-input .ex-source-host {
+  margin: 12px;
+  border: 1px solid color-mix(in srgb, var(--c-brand) 50%, var(--c-divider));
+  border-radius: 6px;
+  max-height: 420px;
+}
+.code-workspace .workspace-input .ex-source-host:focus-within {
+  outline: 2px solid var(--c-brand);
+  outline-offset: 2px;
+}
+.code-workspace .ex-editor {
+  min-height: 220px;
+  cursor: text;
+}
+.code-workspace .workspace-result,
+.code-workspace .workspace-result .ex-out {
+  background: var(--c-bg-alt);
+}
+.code-workspace .workspace-result .ex-out {
+  max-height: 420px;
+}
+.code-workspace .workspace-result .ex-generated {
+  cursor: text;
+}
+.workspace-tabs {
+  display: flex;
+  padding: 8px 12px;
+  gap: 6px;
+  border-bottom: 1px solid var(--c-divider);
+}
+.workspace-tabs[hidden],
+.code-workspace [data-workspace-panel][hidden] {
+  display: none;
+}
+.workspace-tabs button {
+  flex: 1;
+  padding: 10px 8px;
+  border: 1px solid var(--c-divider);
+  border-radius: 6px;
+  background: var(--c-bg);
+  color: var(--c-text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.workspace-tabs button[aria-selected="true"] {
+  color: var(--c-brand);
+  border-color: var(--c-brand);
+  background: var(--c-brand-soft);
+}
+.workspace-tabs button:focus-visible {
+  outline: 2px solid var(--c-brand);
+  outline-offset: 2px;
+}
+.code-workspace .cg-options {
+  flex: 1 1 100%;
+  display: block;
+}
+.cg-basic,
+.cg-advanced-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+.cg-advanced {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--c-text-2);
+}
+.cg-advanced summary {
+  width: fit-content;
+  cursor: pointer;
+}
+.cg-advanced-options {
+  padding-top: 12px;
+}
+.cg-advanced .ex-call {
+  margin-top: 12px;
+  padding: 12px 0 0;
+  overflow-wrap: anywhere;
+}
+.code-workspace .ex-toolbar > .try-button {
+  order: 1;
+  padding-inline: 0;
+  border: 0;
+  background: transparent;
+  text-decoration: underline;
+  font-weight: 400;
+}
+@container (max-width: 519px) {
+  .code-workspace > .projection-map-panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .code-workspace .projection-map-pane + .projection-map-pane {
+    border-left: 0;
+  }
+}
+/* #css-pages-end */

@@ -48,8 +48,14 @@ export default async function render({ attrs, fence, ctx }) {
       <p class="ex-call" data-gd-call="${id}"></p>
     </div>`
   return `<div class="projection-map-pane gd-source-pane"><h3>Source</h3><div class="ex-source-host gd-seed" data-gd-source>${fence.html}</div></div>
+  <div class="ex-controls ex-toolbar gd-toolbar">
+    <span class="gd-options-label">Output B options</span>
+    <div class="gd-controls" data-gd-controls="b" role="group" aria-label="Output B options"></div>
+    <button type="button" data-gd-reset hidden>Reset source</button>
+  </div>
+  ${attrs.full === 'true' ? `<details class="gd-more"><summary>More output B options</summary><div class="ex-controls gd-advanced" data-gd-advanced aria-label="More output B options"></div></details>` : ''}
   <div class="projection-map-panes">
-    ${side('a', 'As written')}
+    ${side('a', 'Output A · default options')}
     ${side('b', 'Output B')}
   </div>
   <div class="gd-diff-host">
@@ -57,11 +63,6 @@ export default async function render({ attrs, fence, ctx }) {
     <div class="ex-out" data-gd-diff></div>
     <p class="ex-readout" data-gd-readout aria-live="polite">Focus or hover a changed line to read the difference.</p>
   </div>
-  <div class="ex-controls ex-toolbar gd-toolbar">
-    <div class="gd-controls" data-gd-controls="b" aria-label="Output B options"></div>
-    <button type="button" data-gd-reset hidden>Reset source</button>
-  </div>
-  ${attrs.full === 'true' ? `<details class="gd-more"><summary>More options</summary><div class="ex-controls gd-advanced" data-gd-advanced aria-label="More output B options"></div></details>` : ''}
   <figcaption class="ex-status" data-widget-status aria-live="polite">the generator runs in your browser when this widget scrolls into view; with JavaScript off this stays the listing above</figcaption>
   <script type="application/json" data-gd-seed>${payload}</script>`
 }

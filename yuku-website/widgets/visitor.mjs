@@ -2,7 +2,7 @@
 // The fence is parsed here so the landing type is proven to occur in it; the
 // select is filled from the tree the parser produces in the reader's tab.
 
-export const className = 'explorer ex-figure'
+export const className = 'explorer ex-figure code-workspace'
 
 const isNode = (value) =>
   value !== null && typeof value === 'object' && typeof value.type === 'string' && typeof value.start === 'number'
@@ -39,22 +39,26 @@ export default async function render({ attrs, fence, ctx }) {
     throw new Error(`visitor: the fence has no ${landing} node, so the landing state would show nothing`)
   }
   const payload = JSON.stringify({ source: fence.code, landing }).replaceAll('<', '\\u003c')
-  return `<div class="projection-map-panes">
-    <div class="projection-map-pane">
-      <h3>Source</h3>
-      <div class="ex-source-host" data-vi-source>${fence.html}</div>
-      <p class="ex-readout" data-vi-readout aria-live="polite">Focus or hover a match to read its node type and span.</p>
-    </div>
-    <div class="projection-map-pane">
-      <h3>Visitor</h3>
-      <div class="ex-out" data-vi-out><p class="ex-note">The parser runs when this widget scrolls into view.</p></div>
-    </div>
-  </div>
-  <div class="ex-controls ex-toolbar vi-controls">
+  return `<div class="ex-controls ex-toolbar vi-controls">
     <label class="vi-pick"><span class="ex-chip-label">Highlight node type</span>
       <select data-vi-type aria-label="Node type to highlight" disabled><option>${ctx.escapeHtml(landing)}</option></select>
     </label>
-    <button type="button" data-vi-reset hidden>Reset source</button>
+    <button type="button" data-vi-reset disabled>Reset source</button>
+  </div>
+  <div class="workspace-tabs" data-workspace-tabs role="tablist" aria-label="Source and visitor" hidden>
+    <button type="button" role="tab" data-workspace-tab aria-selected="true">Edit source</button>
+    <button type="button" role="tab" data-workspace-tab aria-selected="false" tabindex="-1">View visitor</button>
+  </div>
+  <div class="projection-map-panes">
+    <div class="projection-map-pane workspace-input" data-workspace-panel>
+      <h3>Source <span class="workspace-editable">Editable</span></h3>
+      <div class="ex-source-host" data-vi-source>${fence.html}</div>
+      <p class="ex-readout" data-vi-readout aria-live="polite">Focus or hover a match to read its node type and span.</p>
+    </div>
+    <div class="projection-map-pane workspace-result" data-workspace-panel>
+      <h3>Visitor <span class="workspace-readonly">Read only</span></h3>
+      <div class="ex-out" data-vi-out><p class="ex-note">The parser runs when this widget scrolls into view.</p></div>
+    </div>
   </div>
   <figcaption class="ex-status" data-widget-status aria-live="polite">the parser runs in your browser when this widget scrolls into view; with JavaScript off this stays the listing above</figcaption>
   <script type="application/json" data-vi-seed>${payload}</script>`

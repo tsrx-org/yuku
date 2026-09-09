@@ -38,7 +38,15 @@ export default async function render({ fence, ctx }) {
     '<',
     '\\u003c',
   )
-  return `<div class="projection-map-panes">
+  return `  <div class="ex-controls ex-toolbar" data-os-controls>
+    <div class="ex-option-rows">
+      <div class="ex-chip-group" role="group" aria-label="Language"><span class="ex-chip-label">Language</span>${langChips}</div>
+      <div class="ex-chip-group" role="group" aria-label="Parse options"><span class="ex-chip-label">Options</span>${flagChips}</div>
+      <div class="ex-chip-group" role="group" aria-label="Example"><button type="button" data-os-break>Show broken example</button></div>
+      <button type="button" data-os-reset hidden>Reset source and options</button>
+    </div>
+  </div>
+  <div class="projection-map-panes">
     <div class="projection-map-pane">
       <h3>Source</h3>
       <div class="ex-source-host" data-os-source>${fence.html}</div>
@@ -49,15 +57,7 @@ export default async function render({ fence, ctx }) {
       <div class="ex-out os-out" data-os-out><p class="ex-note">The parser runs when this widget scrolls into view.</p></div>
     </div>
   </div>
-  <p class="os-call">This widget calls <code>parse</code>, never <code>parseModule</code>: nothing throws, every diagnostic lands in the list. The call it makes: <code data-os-call>parse(source, { lang: "tsx" })</code></p>
-  <div class="ex-controls ex-toolbar" data-os-controls>
-    <div class="ex-option-rows">
-      <div class="ex-chip-group" role="group" aria-label="Language"><span class="ex-chip-label">Language</span>${langChips}</div>
-      <div class="ex-chip-group" aria-label="Parse options"><span class="ex-chip-label">Options</span>${flagChips}</div>
-      <div class="ex-chip-group" role="group" aria-label="Example"><button type="button" data-os-break>Show broken example</button></div>
-      <button type="button" data-os-reset hidden>Reset source and options</button>
-    </div>
-  </div>
+  <p class="os-call">Current call: <code data-os-call>parse(source, { lang: "tsx" })</code></p>
   <figcaption class="ex-status" data-widget-status aria-live="polite">the parser runs in your browser when this widget scrolls into view; with JavaScript off this stays the listing above</figcaption>
   <script type="application/json" data-os-payload>${payload}</script>`
 }

@@ -1,29 +1,27 @@
 ---
 title: Oxc or Yuku?
-description: Oxc for consumers and Vite plugins; Yuku for compilers that lean on semantic analysis and parse speed. One screen says which is yours.
+description: Choose the TSRX linting and formatting toolchain or the compiler APIs your project needs.
 ---
 
 # Oxc or Yuku?
 
-Oxc for consumers and Vite plugins; Yuku for compilers that lean on semantic analysis and parse speed. One screen says which is yours.
+Use [Oxc for TSRX](https://oxc.tsrx.dev) for the existing linting, formatting, and editor integrations around `.tsrx` files. Use `@tsrx/yuku` when building a compiler or another tool that needs a TSRX AST, native semantic analysis, and code generation from JavaScript or TypeScript.
 
-Use [Oxc](https://oxc.tsrx.dev) when you need:
+The two can serve different parts of the same project: Oxc for the lint and format workflow, Yuku inside the framework compiler. Yuku’s `generate` is an AST printer; it does not replace a configurable project formatter.
 
-- Linting
-- Formatting
-- The same parser as your Vite plugins, in Rolldown
+## What Yuku gives a compiler
 
-Use Yuku when you need:
+- A tree with dedicated TSRX node types, suitable for structural transforms.
+- Per-file scopes, binding identity, type/value references, write information, and module records for semantic compiler passes.
+- Code generation with formatting, type stripping, and Node source maps.
 
-- The fastest possible parsing speed in TypeScript
-- Semantic analysis in TypeScript
-- TypeScript codegen
+[Analyze](/guide/analyze) shows how a pass uses that model to collect captured bindings. The package currently exposes per-file tables; the project-level `Analyzer` documented on [yuku.fyi](https://yuku.fyi/analyzer/) is a separate upstream API.
 
-Oxc fits consumers, and the maintenance side of framework work: one toolchain lints, formats and bundles the files you ship. Yuku fits framework authors doing compiler work: parse once, look up where every name is defined and used, print code back out, all from TypeScript and at the fastest parse time.
+## Read performance numbers in context
 
-## Why Yuku parses faster
+[Yuku’s upstream introduction](https://yuku.fyi/) separates native parsing from npm calls that obtain a JavaScript AST. Its npm benchmark includes AST transfer and decoding. Yuku’s compact transfer format is designed to keep that boundary inexpensive; a native-only parser benchmark measures different work.
 
-[Yuku](https://yuku.fyi)'s parser is built around a data-driven design, and that is where the speed comes from. Bringing that design into Oxc would mean breaking changes to the tree its whole ecosystem depends on, which is not a trade Oxc should make. That does not make Oxc the worse tool. It has its own jobs, especially inside the Vite ecosystem, where the same parser runs in Rolldown and its plugins.
+The figures below are saved upstream npm benchmark results for JavaScript inputs. They are not measurements of TSRX compilation, linting, or your application. See [Benchmarks](/reference/benchmarks) for this repository’s separate TSRX corpus and reproduction command.
 
 <figure>
   <img src="/assets/benchmarks/parse-react.png" alt="Parse time for react.js, 0.07 MB: Yuku 0.30 ms, Acorn 0.88 ms, Babel 1.35 ms, Oxc 1.50 ms, SWC 2.78 ms" width="1500" height="430" loading="lazy">
@@ -35,4 +33,4 @@ Oxc fits consumers, and the maintenance side of framework work: one toolchain li
   <figcaption>typescript.js, 7.83 MB. Same benchmark.</figcaption>
 </figure>
 
-Picked Yuku? [Quick start](/guide/quick-start) is one install and one parse.
+Start with the [quick start](/guide/quick-start) to try the compiler APIs.

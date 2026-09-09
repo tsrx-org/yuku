@@ -1,8 +1,8 @@
 {
   "generated_by": "tools/capture-transcripts.mjs",
-  "captured_at": "2026-08-17T21:47:44.943Z",
+  "captured_at": "2026-09-07T19:49:26.570Z",
   "platform": {
-    "os": "Darwin 25.5.0",
+    "os": "Darwin 25.6.0",
     "arch": "arm64",
     "cpu": "Apple M5 Pro",
     "node": "v24.15.0",
@@ -15,7 +15,7 @@
       "comment": "the WebAssembly build the docs site and the playground load",
       "command": "zig build wasm -Doptimize=ReleaseSmall",
       "exit_code": 0,
-      "duration_ms": 114,
+      "duration_ms": 7625,
       "output": "",
       "omitted_lines": 0
     },
@@ -23,8 +23,8 @@
       "comment": "prove the module in Node before a page ever fetches it",
       "command": "node tools/wasm-smoke.mjs",
       "exit_code": 0,
-      "duration_ms": 53,
-      "output": "wasm: zig-out/wasm/yuku-tsrx.wasm 1246 KiB\nimports: none\nhero: 92 nodes in 6.21 ms, 0 diagnostics\nsemantic: 9 scopes, 4 symbols, 5 references\ngenerate: 338 bytes, 0 errors\nfixtures: 15 parsed\nok",
+      "duration_ms": 50,
+      "output": "wasm: zig-out/wasm/yuku-tsrx.wasm 1268 KiB\nimports: none\nhero: 90 nodes in 5.98 ms, 0 diagnostics\nsemantic: 8 scopes, 4 symbols, 5 references\ngenerate: 321 bytes, 0 errors\nfixtures: 15 parsed\nok",
       "omitted_lines": 0
     }
   ]

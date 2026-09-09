@@ -1,3 +1,5 @@
+import { mountWorkspace } from './_workspace.js'
+
 export function createLayeredEditor({
   host,
   source,
@@ -29,6 +31,7 @@ export function createLayeredEditor({
     textarea.rows = Math.min(Math.max(textarea.value.split('\n').length + 1, rows || 3), 30)
   }
   fitRows()
+  const disposeWorkspace = mountWorkspace(host)
 
   const renderMirror = async () => {
     const ticket = ++renderTicket
@@ -117,9 +120,11 @@ export function createLayeredEditor({
     setValue(nextValue) {
       value = nextValue
       textarea.value = value
+      fitRows()
       return renderMirror()
     },
     dispose() {
+      disposeWorkspace()
       clearTimeout(timer)
       if (pointerFrame !== null) cancelAnimationFrame(pointerFrame)
       pointerFrame = null

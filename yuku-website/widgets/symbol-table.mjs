@@ -56,13 +56,13 @@ export default async function render({ attrs, fence, ctx }) {
       <p class="st-readout" data-st-readout aria-live="polite">Focus or hover a token to read its scope and symbol.</p>
     </div>
     <div class="projection-map-pane">
-      <h3>semantic</h3>
+      <h3>Semantic tables</h3>
+      <div class="ex-controls ex-toolbar">
+        <div class="st-tabs" role="tablist" aria-label="Semantic tables" data-st-tabs>${tabs}</div>
+        <button type="button" data-st-reset hidden>Reset source</button>
+      </div>
       <div class="ex-out" id="st-table" role="tabpanel" data-st-out><p class="ex-note">The analyzer runs when this widget scrolls into view.</p></div>
     </div>
-  </div>
-  <div class="ex-controls ex-toolbar">
-    <div class="st-tabs" role="tablist" aria-label="Semantic tables" data-st-tabs>${tabs}</div>
-    <button type="button" data-st-reset hidden>Reset source</button>
   </div>
   <figcaption class="ex-status" data-widget-status aria-live="polite">the analyzer runs in your browser when this widget scrolls into view; with JavaScript off this stays the listing above</figcaption>
   <script type="application/json" data-st-seed>${payload}</script>`
