@@ -93,7 +93,7 @@ export default {
     '/reference/platform-support': '/reference/platforms',
   },
   hero: {
-    name: '@tsrx/yuku',
+    name: 'Yuku for TSRX',
     text: 'Parse, analyze and print TSRX with the Yuku parser',
     tagline:
       'Build compilers, lints, and codemods with a TSRX AST, native semantic analysis, and code generation.',
