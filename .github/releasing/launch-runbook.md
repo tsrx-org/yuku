@@ -156,14 +156,7 @@ npm unpublish @tsrx/yuku@0.0.0
 Never unpublish a placeholder while it is the only version: removing the last
 version removes the package and its trusted publisher with it.
 
-## 9. The site and the domain
-
-[site-yuku-tsrx-dev.md](site-yuku-tsrx-dev.md): the Vercel project for
-`yuku.tsrx.dev`, the DNS record, the repository variables that turn the deploy
-job on, and the redirect-only deploy that keeps `compiled.run/yuku-tsrx`
-pointing at the new home.
-
-## 10. Optional hardening, later
+## 9. Optional hardening, later
 
 On each package: Settings, Publishing access, require two-factor authentication
 and disallow tokens. Trusted publishing keeps working. Consider stage-only

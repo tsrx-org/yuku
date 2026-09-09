@@ -137,8 +137,7 @@ site, checks code fences, and runs browser verification in CI. On `main`, it
 also publishes and pins a new WASM artifact when the parser source changes.
 
 Vercel deploys from this folder using the Git integration. Its build downloads
-the pinned artifact and generates the site at the domain root. The
-[deployment notes](../.github/releasing/site-yuku-tsrx-dev.md) cover project setup.
+the pinned artifact and generates the site at the domain root.
 
 For generated artwork, use `docs:assets`, `docs:social-card`, and
 `docs:readme-hero` from the root package scripts. The last two need Chrome and
