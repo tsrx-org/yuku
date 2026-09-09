@@ -16,9 +16,10 @@ export default async function verify({ routes, open, check, notes }) {
     const landing = await page.inputValue(`${widget} [data-vi-type]`)
     check(landing === 'JSXIfExpression', `${label}: the select does not land on JSXIfExpression: ${landing}`)
     const source = await page.inputValue(`${widget} .ex-editor`)
+    const seed = JSON.parse(await page.textContent(`${widget} [data-vi-seed]`)).source
     check(
-      source.includes('export function Badge({ count, label }) @{') && !source.includes('return ('),
-      `${label}: the seed is not a TSRX component body`,
+      source === seed,
+      `${label}: the editor did not load the published source example`,
     )
     const options = await page.$$eval(`${widget} [data-vi-type] option`, (nodes) => nodes.map((node) => node.value))
     check(options.length >= 10 && options.includes('JSXElement'), `${label}: the select holds ${options.length} types`)

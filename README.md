@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@tsrx/yuku"><img alt="npm version" src="https://img.shields.io/npm/v/@tsrx/yuku"></a>
   <a href="https://nodejs.org/en/about/previous-releases"><img alt="supported Node.js versions" src="https://img.shields.io/node/v/@tsrx/yuku"></a>
-  <a href="https://github.com/tsrx-org/yuku/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/tsrx-org/yuku/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/tsrx-org/yuku/actions/workflows/checks.yml"><img alt="CI status" src="https://github.com/tsrx-org/yuku/actions/workflows/checks.yml/badge.svg?branch=main"></a>
   <a href="https://discord.gg/HCYpT5QHQR"><img alt="Discord" src="https://img.shields.io/badge/Discord-Join%20the%20community-7289da?logo=discord&logoColor=white"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/npm/l/@tsrx/yuku"></a>
 </p>
