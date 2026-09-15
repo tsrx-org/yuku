@@ -1,6 +1,6 @@
 {
 	"name": "@tsrx/yuku",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "TSRX parser, analyzer, and code generator: a compile-time dialect on Yuku, with a JavaScript API on a native addon",
 	"keywords": [
 		"analyzer",
@@ -45,8 +45,8 @@
 		"provenance": true
 	},
 	"optionalDependencies": {
-		"@tsrx/yuku-darwin-arm64": "0.2.0",
-		"@tsrx/yuku-linux-x64-gnu": "0.2.0"
+		"@tsrx/yuku-darwin-arm64": "0.3.0",
+		"@tsrx/yuku-linux-x64-gnu": "0.3.0"
 	},
 	"engines": {
 		"node": ">=22"

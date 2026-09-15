@@ -1,6 +1,6 @@
 {
 	"name": "@tsrx/yuku-linux-x64-gnu",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "linux-x64-gnu native addon for @tsrx/yuku. Installed automatically as an optional dependency of @tsrx/yuku; do not depend on it directly.",
 	"license": "MIT",
 	"repository": {
