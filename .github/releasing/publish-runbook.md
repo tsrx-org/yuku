@@ -78,10 +78,10 @@ A manual dispatch defaults to `mode: dry-run` and does everything except the
 two registry writes. `mode: publish` from a dispatch additionally requires
 `confirm` to be `PUBLISH <version>`.
 
-| Input | Rehearsal | Real publish (dispatch) |
-| --- | --- | --- |
-| `mode` | `dry-run` | `publish` |
-| `confirm` | leave empty | `PUBLISH 0.2.0` |
+| Input      | Rehearsal   | Real publish (dispatch)      |
+| ---------- | ----------- | ---------------------------- |
+| `mode`     | `dry-run`   | `publish`                    |
+| `confirm`  | leave empty | `PUBLISH 0.2.0`              |
 | `dist_tag` | leave empty | leave empty (means `latest`) |
 
 ## Rehearsing from a laptop

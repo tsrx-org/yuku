@@ -7,13 +7,13 @@ it; the scripts it names were only rehearsed with their `--dry-run` flags.
 
 The identities:
 
-| What | Value |
-| --- | --- |
-| Repository | `https://github.com/tsrx-org/yuku` (transferred; GitHub redirects the old `compiled-run/yuku-tsrx` URL) |
-| Packages | `@tsrx/yuku`, `@tsrx/yuku-darwin-arm64`, `@tsrx/yuku-linux-x64-gnu` |
-| Version | `0.2.0`, already in every manifest (`node scripts/sync-version.ts --check`) |
-| Tag | `v0.2.0`; pushing it is what publishes |
-| Docs | `https://yuku.tsrx.dev`, with `compiled.run/yuku-tsrx` redirecting to it |
+| What          | Value                                                                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repository    | `https://github.com/tsrx-org/yuku` (transferred; GitHub redirects the old `compiled-run/yuku-tsrx` URL)                                     |
+| Packages      | `@tsrx/yuku`, `@tsrx/yuku-darwin-arm64`, `@tsrx/yuku-linux-x64-gnu`                                                                         |
+| Version       | `0.2.0`, already in every manifest (`node scripts/sync-version.ts --check`)                                                                 |
+| Tag           | `v0.2.0`; pushing it is what publishes                                                                                                      |
+| Docs          | `https://yuku.tsrx.dev`, with `compiled.run/yuku-tsrx` redirecting to it                                                                    |
 | Retired names | `yuku-tsrx`, `@yuku-tsrx/binding-darwin-arm64`, `@yuku-tsrx/binding-linux-x64-gnu` (0.1.4 is their last release; 0.1.5 was never published) |
 
 ## 0. Already done
