@@ -1,7 +1,7 @@
 {
   "release": "docs-wasm",
-  "asset": "yuku-tsrx-37fdf33f0c2b.wasm",
-  "sha256": "106cf8867fa35be575290ed26d1f3596c93b9e5a54181f150ed7473f0c9a4d6d",
-  "srcTree": "37fdf33f0c2b27bff3d38710898b1016dfaff30e",
-  "sizeBytes": 1298232
+  "asset": "yuku-tsrx-a0035636c4f5.wasm",
+  "sha256": "3877c8bacdc91c3f41952026686530c1489e5fa5caf3ce03d7e614168828bfec",
+  "srcTree": "a0035636c4f55517d0fdc1966087170f6fd78f2f",
+  "sizeBytes": 1271671
 }
