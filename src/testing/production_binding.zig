@@ -2,55 +2,7 @@ const std = @import("std");
 const parser = @import("parser");
 const transfer = @import("transfer");
 
-test "production lazy object parameter preserves alias type span overlay and transfer" {
-    const source = "type Props = { title: string }; function pick(&{ title: label }: Props) { return label; }";
-    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .ts });
-    defer tree.deinit();
-    try std.testing.expect(!tree.hasErrors());
-
-    const pattern = findNode(&tree, .object_pattern) orelse return error.MissingObjectPattern;
-    const prefix = std.mem.indexOfScalar(u8, source, '&').?;
-    try std.testing.expectEqual(@as(u32, @intCast(prefix)), tree.span(pattern).start);
-    const data = tree.data(pattern).object_pattern;
-    try std.testing.expect(data.type_annotation != .null);
-    try std.testing.expectEqualStrings(": Props", source[tree.span(data.type_annotation).start..tree.span(data.type_annotation).end]);
-
-    const properties = tree.extra(data.properties);
-    try std.testing.expectEqual(@as(usize, 1), properties.len);
-    const property = tree.data(properties[0]).binding_property;
-    try std.testing.expectEqualStrings("title", source[tree.span(property.key).start..tree.span(property.key).end]);
-    try std.testing.expectEqualStrings("label", source[tree.span(property.value).start..tree.span(property.value).end]);
-
-    const overlay = tree.dialectOverlay(@intFromEnum(pattern)) orelse return error.MissingObjectOverlay;
-    const record = tree.dialect_store.records.items[overlay].object_pattern;
-    try std.testing.expectEqual(@intFromEnum(pattern), record.host_node.raw);
-    try std.testing.expect(record.lazy);
-    try expectRoundTrip(&tree);
-}
-
-test "production lazy array parameter preserves type span overlay and transfer" {
-    const source = "type Values = string[]; function pick(&[first, ...rest]: Values) { return first; }";
-    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .ts });
-    defer tree.deinit();
-    try std.testing.expect(!tree.hasErrors());
-
-    const pattern = findNode(&tree, .array_pattern) orelse return error.MissingArrayPattern;
-    const prefix = std.mem.indexOfScalar(u8, source, '&').?;
-    try std.testing.expectEqual(@as(u32, @intCast(prefix)), tree.span(pattern).start);
-    const data = tree.data(pattern).array_pattern;
-    try std.testing.expect(data.type_annotation != .null);
-    try std.testing.expectEqualStrings(": Values", source[tree.span(data.type_annotation).start..tree.span(data.type_annotation).end]);
-    try std.testing.expectEqual(@as(usize, 1), tree.extra(data.elements).len);
-    try std.testing.expect(data.rest != .null);
-
-    const overlay = tree.dialectOverlay(@intFromEnum(pattern)) orelse return error.MissingArrayOverlay;
-    const record = tree.dialect_store.records.items[overlay].array_pattern;
-    try std.testing.expectEqual(@intFromEnum(pattern), record.host_node.raw);
-    try std.testing.expect(record.lazy);
-    try expectRoundTrip(&tree);
-}
-
-test "production binding prefix leaves ordinary patterns untouched" {
+test "production ordinary patterns carry no dialect overlay" {
     const source = "type Props = { title: string }; function pick({ title: label }: Props) { return label; }";
     var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .ts });
     defer tree.deinit();
@@ -60,27 +12,16 @@ test "production binding prefix leaves ordinary patterns untouched" {
     try std.testing.expectEqual(@as(usize, 0), tree.dialect_store.records.items.len);
 }
 
-test "production lazy let bindings preserve ordinary let ambiguity" {
-    for ([_]struct { source: []const u8, tag: std.meta.Tag(parser.ast.NodeData), lazy: bool }{
-        .{ .source = "let &[value] = source;", .tag = .array_pattern, .lazy = true },
-        .{ .source = "let &{value} = source;", .tag = .object_pattern, .lazy = true },
-        .{ .source = "let [value] = source;", .tag = .array_pattern, .lazy = false },
+test "production let bindings preserve ordinary let ambiguity" {
+    for ([_]struct { source: []const u8, tag: std.meta.Tag(parser.ast.NodeData) }{
+        .{ .source = "let [value] = source;", .tag = .array_pattern },
+        .{ .source = "let {value} = source;", .tag = .object_pattern },
     }) |case| {
         var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .js });
         defer tree.deinit();
         try std.testing.expect(!tree.hasErrors());
         const pattern = findNode(&tree, case.tag) orelse return error.MissingLetPattern;
-        const overlay = tree.dialectOverlay(@intFromEnum(pattern));
-        if (case.lazy) {
-            const record_index = overlay orelse return error.MissingLazyLetOverlay;
-            switch (tree.dialect_store.records.items[record_index]) {
-                .array_pattern => |record| try std.testing.expect(record.lazy),
-                .object_pattern => |record| try std.testing.expect(record.lazy),
-                else => return error.UnexpectedLazyLetOverlay,
-            }
-        } else {
-            try std.testing.expectEqual(@as(?u32, null), overlay);
-        }
+        try std.testing.expectEqual(@as(?u32, null), tree.dialectOverlay(@intFromEnum(pattern)));
     }
 
     for ([_]struct { source: []const u8, tag: std.meta.Tag(parser.ast.NodeData) }{
@@ -342,7 +283,7 @@ test "for-of dialect labels reject malformed statement-host tails deterministica
     }
 }
 
-test "production binding prefix deterministically rejects non-pattern targets" {
+test "production deterministically rejects an ampersand before a parameter" {
     for ([_][]const u8{
         "function invalid(&name: string) {}",
         "function invalid(&42) {}",

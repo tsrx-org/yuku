@@ -43,7 +43,7 @@ The browser generator reparses the source string; it does not print an edited Ja
 
 ## Syntax and recovery
 
-Lazy declarations and assignments **are supported in C-style loops**: `for (let &{ x } = obj; ready; step()) {}` and `for (&{ x } = obj; ready; step()) {}` both parse and print. A bare pattern followed immediately by `;`, as in `for (&{ x }; ; ) {}`, is rejected with `A lazy pattern needs 'of' or 'in' after it`.
+Lazy `&{ ... }` and `&[ ... ]` patterns were removed in 0.3.0 to match tsrx: `&` directly before `{` or `[` is a syntax error, as in TypeScript, while `a & { b: 1 }` and `x & [1]` remain bitwise AND.
 
 A call inside a dynamic tag name, such as `<{makeTag()} />`, is rejected by the current tag validator. Assign the result to a variable first: `const Tag = makeTag(); const view = <{Tag} />;`.
 

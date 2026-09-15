@@ -38,7 +38,7 @@ A new construct can touch several of these parts. Test its tree shape, name reso
 
 ## Recognize TSRX nodes
 
-A record introduces a new node type, such as `JSXForExpression`. An overlay adds fields to an existing type, such as `lazy: true` on an `ObjectPattern`.
+A record introduces a new node type, such as `JSXForExpression`. An overlay adds fields to an existing type, such as `index` and `key` on a `ForOfStatement`.
 
 | Construct | Node type | Where it can appear |
 | --- | --- | --- |
@@ -47,8 +47,6 @@ A record introduces a new node type, such as `JSXForExpression`. An overlay adds
 | `@for` | `JSXForExpression` | At the top level, as a value, or as a JSX child |
 | `@switch` | `JSXSwitchExpression` | At the top level, as a value, or as a JSX child |
 | `@try` | `JSXTryExpression` | At the top level, as a value, or as a JSX child |
-| `&{ ... }` | `ObjectPattern` with `lazy: true` | In a declaration, parameter, assignment, loop head, or catch parameter |
-| `&[ ... ]` | `ArrayPattern` with `lazy: true` | In a declaration, parameter, assignment, loop head, or catch parameter |
 | `; index ...` or `; key ...` | `ForOfStatement` with `index` or `key` | In an `@for` or TypeScript `for...of` loop |
 | `import { x } from server` | `Identifier` for `server` | As an import source |
 | `<{tag}>...</{tag}>` | `JSXElement` with a `JSXExpressionContainer` name | Anywhere a JSX element can appear |

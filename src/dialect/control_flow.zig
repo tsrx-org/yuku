@@ -1,7 +1,6 @@
 const std = @import("std");
 const abi = @import("dialect_abi");
 const schema = @import("dialect_schema");
-const patterns = @import("patterns.zig");
 const jsx_text = @import("text.zig");
 
 pub fn statement(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
@@ -487,10 +486,6 @@ fn parseCatch(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeInd
 
 fn parseCatchParam(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeIndex {
     const param = switch (Host.currentToken(parser)) {
-        .bitwise_and => switch (try patterns.binding(Host, parser)) {
-            .unhandled => unreachable,
-            .handled => |node| node orelse return null,
-        },
         .left_brace, .left_bracket => try Host.parseOrdinaryBinding(parser) orelse return null,
         else => try parseBindingIdentifier(Host, parser) orelse return null,
     };

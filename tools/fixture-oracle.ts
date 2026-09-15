@@ -31,27 +31,6 @@ export const intentionalDifference = Object.freeze({
 	justification: "Dialect-free Yuku must not contain TSRX-specific policy.",
 } as const);
 
-export const lazyDestructuringDifference = Object.freeze({
-	kind: "intentional-difference",
-	fixture: "ts/lazy-destructuring-outside-tsrx.ts",
-	diagnosticIndex: 0,
-	differences: Object.freeze([
-		Object.freeze({
-			path: "diagnostics[0].message",
-			priorArtText: "Lazy destructuring patterns are only enabled in TSRX files",
-			seamText: "Unexpected token '&' in binding pattern",
-		}),
-		Object.freeze({
-			path: "diagnostics[0].help",
-			priorArtText: "Use a .tsrx file or remove the '&' lazy-pattern marker.",
-			seamText: "Expected an identifier, array pattern ([a, b]), or object pattern ({a, b}).",
-		}),
-	]),
-	upstreamBase: "eb2adcb4c17da16e7ade1a0517192d81d469e67f",
-	justification:
-		"Dialect-free Yuku must use the ordinary binding-pattern diagnostic and contain no TSRX-specific policy.",
-} as const);
-
 export const submoduleImportDifference = Object.freeze({
 	kind: "intentional-difference",
 	fixture: "ts/submodule-import-outside-tsrx.ts",
@@ -101,10 +80,7 @@ const priorArtProjection = (value: unknown, visits: { styleSheets: number }): un
 	return rebuilt;
 };
 
-type IntentionalDifference =
-	| typeof intentionalDifference
-	| typeof lazyDestructuringDifference
-	| typeof submoduleImportDifference;
+type IntentionalDifference = typeof intentionalDifference | typeof submoduleImportDifference;
 
 export const compareOutside = (
 	fixture: string,
@@ -131,31 +107,6 @@ export const compareOutside = (
 		assert.equal(expectedDiagnostic.help, intentionalDifference.priorArtText);
 		assert.equal(actualDiagnostic.help, intentionalDifference.seamText);
 		return intentionalDifference;
-	}
-
-	if (fixture === lazyDestructuringDifference.fixture) {
-		assert.deepEqual(actual.program, expected.program, `${fixture} program mismatch`);
-		assert.deepEqual(actual.comments, expected.comments, `${fixture} comments mismatch`);
-		assert.equal(actual.diagnostics.length, 1, `${fixture} current diagnostic count`);
-		assert.equal(expected.diagnostics.length, 1, `${fixture} prior-art diagnostic count`);
-		const actualDiagnostic = actual.diagnostics[lazyDestructuringDifference.diagnosticIndex];
-		const expectedDiagnostic = expected.diagnostics[lazyDestructuringDifference.diagnosticIndex];
-		assert.deepEqual(
-			Object.keys(actualDiagnostic),
-			Object.keys(expectedDiagnostic),
-			`${fixture} diagnostic shape mismatch`,
-		);
-		assert.equal(actualDiagnostic.severity, expectedDiagnostic.severity);
-		assert.equal(actualDiagnostic.start, expectedDiagnostic.start);
-		assert.equal(actualDiagnostic.end, expectedDiagnostic.end);
-		assert.deepEqual(actualDiagnostic.labels, expectedDiagnostic.labels);
-		const message = lazyDestructuringDifference.differences[0];
-		assert.equal(expectedDiagnostic.message, message.priorArtText);
-		assert.equal(actualDiagnostic.message, message.seamText);
-		const help = lazyDestructuringDifference.differences[1];
-		assert.equal(expectedDiagnostic.help, help.priorArtText);
-		assert.equal(actualDiagnostic.help, help.seamText);
-		return lazyDestructuringDifference;
 	}
 
 	if (fixture === submoduleImportDifference.fixture) {
@@ -253,7 +204,7 @@ const main = async (): Promise<void> => {
 	const tsrxFiles = (await readdir(tsrxRoot)).filter((name) => name.endsWith(".tsrx")).sort();
 	const valid = tsrxFiles.filter((name) => !name.includes("-invalid."));
 	const invalid = tsrxFiles.filter((name) => name.includes("-invalid."));
-	assert.equal(valid.length, 12);
+	assert.equal(valid.length, 11);
 	assert.equal(invalid.length, 3);
 	let intentionalDifferenceCount = 0;
 
@@ -302,11 +253,7 @@ const main = async (): Promise<void> => {
 		);
 	}
 
-	for (const name of [
-		"dynamic-tag-outside-tsrx.tsx",
-		"lazy-destructuring-outside-tsrx.ts",
-		"submodule-import-outside-tsrx.ts",
-	]) {
+	for (const name of ["dynamic-tag-outside-tsrx.tsx", "submodule-import-outside-tsrx.ts"]) {
 		const snapshotName = name.replace(/\.(tsx|ts)$/, ".snapshot.json");
 		const expected = JSON.parse(await readFile(join(tsRoot, "snapshots", snapshotName), "utf8"));
 		const actual = current.get(`ts/${name}`);
@@ -317,9 +264,9 @@ const main = async (): Promise<void> => {
 			console.log(JSON.stringify(difference));
 		}
 	}
-	assert.equal(intentionalDifferenceCount, 4);
-	console.log(JSON.stringify({ kind: "intentional-difference-summary", count: 4 }));
-	console.log("Exact fixture oracle passed: 12 valid, 3 invalid, 3 dialect-off");
+	assert.equal(intentionalDifferenceCount, 3);
+	console.log(JSON.stringify({ kind: "intentional-difference-summary", count: 3 }));
+	console.log("Exact fixture oracle passed: 11 valid, 3 invalid, 2 dialect-off");
 };
 
 if (pathToFileURL(resolve(process.argv[1])).href === import.meta.url) await main();

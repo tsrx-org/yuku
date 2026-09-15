@@ -1102,18 +1102,7 @@ fn Printer(comptime cfg: Config) type {
             if (self.at_lead != .none) {
                 switch (data) {
                     .object_expression => return true,
-                    .assignment_expression => |a| if (self.nodeData(a.left) == .object_pattern) {
-                        const target_raw: u32 = @intFromEnum(a.left);
-                        if (self.tree.dialectOverlay(target_raw)) |record_index| {
-                            if (hasDisambiguatingAssignmentTargetPrefix(
-                                Self,
-                                self,
-                                record_index,
-                                target_raw,
-                            )) return false;
-                        }
-                        return true;
-                    },
+                    .assignment_expression => |a| if (self.nodeData(a.left) == .object_pattern) return true,
                     else => {},
                 }
             }
@@ -1215,13 +1204,6 @@ fn Printer(comptime cfg: Config) type {
                 try self.emit(node);
                 try self.flushSemi();
             }
-        }
-
-        pub fn dialectEmitOverlaySuppressed(self: *Self, raw: u32) Error!void {
-            const previous = self.dialect_overlay;
-            defer self.dialect_overlay = previous;
-            self.dialect_overlay = false;
-            try self.emitNode(@enumFromInt(raw), .{});
         }
 
         pub fn dialectEmitForLeft(self: *Self, raw: u32) Error!void {
@@ -3798,27 +3780,8 @@ fn dialectPrintRecord(comptime Host: type, host: *Host, record_index: u32) !void
         },
         // CSS structure records are offsets into the sheet text `style_sheet` already wrote.
         .css_rule, .css_atrule, .css_selector => {},
-        .for_of, .catch_clause, .array_pattern, .object_pattern => unreachable,
+        .for_of, .catch_clause => unreachable,
     }
-}
-
-pub fn hasDisambiguatingAssignmentTargetPrefix(
-    comptime Host: type,
-    host: *const Host,
-    record_index: u32,
-    target_raw: u32,
-) bool {
-    std.debug.assert(target_raw < host.tree.nodes.len);
-    std.debug.assert(record_index < host.tree.dialect_store.records.items.len);
-    const target = host.tree.data(@enumFromInt(target_raw));
-    std.debug.assert(target == .object_pattern);
-    const overlay_index = host.tree.dialectOverlay(target_raw);
-    std.debug.assert(overlay_index != null);
-    std.debug.assert(overlay_index.? == record_index);
-    return switch (host.tree.dialect_store.records.items[record_index]) {
-        .object_pattern => |overlay| overlay.lazy,
-        else => false,
-    };
 }
 
 fn dialectPrintOverlay(
@@ -3832,18 +3795,6 @@ fn dialectPrintOverlay(
     return switch (host.tree.dialect_store.records.items[record_index]) {
         .for_of => |overlay| block: {
             try printForOf(Host, host, raw, overlay.index.raw, overlay.key.raw);
-            break :block true;
-        },
-        .array_pattern => |overlay| block: {
-            if (!overlay.lazy) break :block false;
-            try host.dialectWrite("&");
-            try host.dialectEmitOverlaySuppressed(raw);
-            break :block true;
-        },
-        .object_pattern => |overlay| block: {
-            if (!overlay.lazy) break :block false;
-            try host.dialectWrite("&");
-            try host.dialectEmitOverlaySuppressed(raw);
             break :block true;
         },
         .catch_clause => |overlay| block: {

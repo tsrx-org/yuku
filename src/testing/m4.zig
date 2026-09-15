@@ -140,47 +140,9 @@ test "dialect codegen reparses without diagnostics" {
     try std.testing.expect(!reparsed.hasErrors());
 }
 
-test "lazy object assignment prefix disambiguates statement lead" {
-    // Lazy overlays remove only the wrapper made unnecessary by their emitted prefix.
-    const Case = struct {
-        source: []const u8,
-        expected: []const u8,
-        lazy: bool,
-        parenthesized: bool,
-    };
-    for ([_]Case{
-        .{
-            .source = "({ title } = props);",
-            .expected = "({ title } = props);",
-            .lazy = false,
-            .parenthesized = true,
-        },
-        .{
-            .source = "&{ title } = props;",
-            .expected = "&{ title } = props;",
-            .lazy = true,
-            .parenthesized = false,
-        },
-    }) |case| {
-        var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
-        defer tree.deinit();
-        try std.testing.expect(!tree.hasErrors());
-
-        const result = try parser.codegen.generate(std.testing.allocator, &tree, .{});
-        defer result.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(usize, 0), result.errors.len);
-        try std.testing.expectEqualStrings(case.expected, result.code);
-
-        var reparsed = try parser.parse(std.testing.allocator, result.code, .{ .lang = .tsx });
-        defer reparsed.deinit();
-        try std.testing.expect(!reparsed.hasErrors());
-        try expectObjectAssignment(&reparsed, case.lazy, case.parenthesized);
-    }
-}
-
-test "lazy object assignment prefix disambiguates direct arrow body" {
-    // Direct arrow bodies preserve assignment shape through the emitted lazy prefix.
-    const source = "const update = () => &{ title } = props;";
+test "an object-pattern assignment at statement lead keeps its parentheses" {
+    // With no dialect prefix to disambiguate it, `{` at statement lead reads as a block.
+    const source = "({ title } = props);";
     var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
     defer tree.deinit();
     try std.testing.expect(!tree.hasErrors());
@@ -193,104 +155,7 @@ test "lazy object assignment prefix disambiguates direct arrow body" {
     var reparsed = try parser.parse(std.testing.allocator, result.code, .{ .lang = .tsx });
     defer reparsed.deinit();
     try std.testing.expect(!reparsed.hasErrors());
-    const program = reparsed.data(reparsed.root).program;
-    const body = reparsed.extra(program.body);
-    try std.testing.expectEqual(@as(usize, 1), body.len);
-    const declaration = reparsed.data(body[0]).variable_declaration;
-    const declarators = reparsed.extra(declaration.declarators);
-    try std.testing.expectEqual(@as(usize, 1), declarators.len);
-    const declarator = reparsed.data(declarators[0]).variable_declarator;
-    const arrow = reparsed.data(declarator.init).arrow_function_expression;
-    try std.testing.expect(arrow.expression);
-    try std.testing.expectEqual(
-        .assignment_expression,
-        std.meta.activeTag(reparsed.data(arrow.body)),
-    );
-    const assignment = reparsed.data(arrow.body).assignment_expression;
-    try std.testing.expectEqual(.object_pattern, std.meta.activeTag(reparsed.data(assignment.left)));
-    const record_index = reparsed.dialectOverlay(@intFromEnum(assignment.left));
-    try std.testing.expect(record_index != null);
-    const record = reparsed.dialect_store.records.items[record_index.?];
-    try std.testing.expectEqual(.object_pattern, std.meta.activeTag(record));
-    try std.testing.expect(record.object_pattern.lazy);
-}
-
-test "lazy patterns recurse through object values and array elements" {
-    const Case = struct {
-        source: []const u8,
-        outer: std.meta.Tag(parser.ast.NodeData),
-        patterns: usize,
-        lazy: usize,
-    };
-    for ([_]Case{
-        .{ .source = "const f = (&{ user: &{ id } }) => id;", .outer = .object_pattern, .patterns = 2, .lazy = 2 },
-        .{ .source = "const &{ user: &{ id } } = props;", .outer = .object_pattern, .patterns = 2, .lazy = 2 },
-        .{ .source = "const &[ &{ id } ] = props;", .outer = .array_pattern, .patterns = 2, .lazy = 2 },
-        .{ .source = "const &{ user: { id }, row: [first] } = props;", .outer = .object_pattern, .patterns = 3, .lazy = 1 },
-    }) |case| {
-        var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
-        defer tree.deinit();
-        try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
-
-        var patterns_seen: usize = 0;
-        var lazy_patterns: usize = 0;
-        for (tree.tree.nodes.items(.data), 0..) |data, index| switch (data) {
-            .object_pattern, .array_pattern => {
-                patterns_seen += 1;
-                const node: parser.ast.NodeIndex = @enumFromInt(index);
-                if (!isLazyPattern(&tree, node)) continue;
-                lazy_patterns += 1;
-                if (tree.span(node).start == std.mem.indexOfScalar(u8, case.source, '&').?) {
-                    try std.testing.expectEqual(case.outer, std.meta.activeTag(data));
-                }
-            },
-            else => {},
-        };
-        try std.testing.expectEqual(case.patterns, patterns_seen);
-        try std.testing.expectEqual(case.lazy, lazy_patterns);
-    }
-}
-
-test "lazy covers keep parameter and arrow annotations" {
-    const Case = struct {
-        source: []const u8,
-        parameter_typed: bool,
-        return_typed: bool,
-    };
-    for ([_]Case{
-        .{ .source = "const f = (&{ a }: P): string => a;", .parameter_typed = true, .return_typed = true },
-        .{ .source = "const g = (&{ a }): R => a;", .parameter_typed = false, .return_typed = true },
-        .{ .source = "const h = (&{ a }) => a;", .parameter_typed = false, .return_typed = false },
-    }) |case| {
-        var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
-        defer tree.deinit();
-        try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
-
-        const arrow_node = nodeOfKind(&tree, .arrow_function_expression) orelse return error.ArrowMissing;
-        const arrow = tree.data(arrow_node).arrow_function_expression;
-        const parameters = tree.data(arrow.params).formal_parameters;
-        const items = tree.extra(parameters.items);
-        try std.testing.expectEqual(@as(usize, 1), items.len);
-        const pattern_node = tree.data(items[0]).formal_parameter.pattern;
-        const pattern = tree.data(pattern_node).object_pattern;
-        try std.testing.expect(isLazyPattern(&tree, pattern_node));
-        try std.testing.expectEqual(case.parameter_typed, pattern.type_annotation != .null);
-        try std.testing.expectEqual(case.return_typed, arrow.return_type != .null);
-    }
-
-    const source = "const [a, &{ b }, &[c], { d }] = x;";
-    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
-    defer tree.deinit();
-    try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
-    const declaration = tree.data(tree.extra(tree.data(tree.root).program.body)[0]).variable_declaration;
-    const declarator = tree.data(tree.extra(declaration.declarators)[0]).variable_declarator;
-    const outer = tree.data(declarator.id).array_pattern;
-    const elements = tree.extra(outer.elements);
-    try std.testing.expectEqual(@as(usize, 4), elements.len);
-    try std.testing.expect(!isLazyPattern(&tree, declarator.id));
-    try std.testing.expect(isLazyPattern(&tree, elements[1]));
-    try std.testing.expect(isLazyPattern(&tree, elements[2]));
-    try std.testing.expect(!isLazyPattern(&tree, elements[3]));
+    try expectParenthesizedObjectAssignment(&reparsed);
 }
 
 test "line-leading committed JSX forms a statement boundary" {
@@ -846,39 +711,19 @@ fn dialectChildTags(
     return found;
 }
 
-fn expectObjectAssignment(
-    tree: *const parser.ParseResult,
-    lazy: bool,
-    parenthesized: bool,
-) !void {
+fn expectParenthesizedObjectAssignment(tree: *const parser.ParseResult) !void {
     const program = tree.data(tree.root).program;
     const body = tree.extra(program.body);
     try std.testing.expectEqual(@as(usize, 1), body.len);
     const statement = tree.data(body[0]).expression_statement;
-    var expression = statement.expression;
-    if (parenthesized) {
-        try std.testing.expectEqual(
-            .parenthesized_expression,
-            std.meta.activeTag(tree.data(expression)),
-        );
-        expression = tree.data(expression).parenthesized_expression.expression;
-    } else {
-        try std.testing.expectEqual(
-            .assignment_expression,
-            std.meta.activeTag(tree.data(expression)),
-        );
-    }
+    try std.testing.expectEqual(
+        .parenthesized_expression,
+        std.meta.activeTag(tree.data(statement.expression)),
+    );
+    const expression = tree.data(statement.expression).parenthesized_expression.expression;
     const assignment = tree.data(expression).assignment_expression;
     try std.testing.expectEqual(.object_pattern, std.meta.activeTag(tree.data(assignment.left)));
-    const record_index = tree.dialectOverlay(@intFromEnum(assignment.left));
-    if (lazy) {
-        try std.testing.expect(record_index != null);
-        const record = tree.dialect_store.records.items[record_index.?];
-        try std.testing.expectEqual(.object_pattern, std.meta.activeTag(record));
-        try std.testing.expect(record.object_pattern.lazy);
-    } else {
-        try std.testing.expectEqual(@as(?u32, null), record_index);
-    }
+    try std.testing.expectEqual(@as(?u32, null), tree.dialectOverlay(@intFromEnum(assignment.left)));
 }
 
 /// Shape of one JSX child, coarse enough to describe an interleaving without
@@ -1619,24 +1464,6 @@ test "a malformed TSRX construct reports where it breaks instead of truncating t
             .len = 1,
             .message = "Expected '}' to close TSRX dynamic tag expression",
         },
-        .{
-            .source = "let &x = p; const z = 1;",
-            .needle = "x = p",
-            .len = 1,
-            .message = "Expected '[' or '{' after '&'",
-        },
-        .{
-            .source = "let &{ 1 } = p; const z = 1;",
-            .needle = "1 }",
-            .len = 1,
-            .message = "Expected a property name",
-        },
-        .{
-            .source = "let &[ 1 ] = p; const z = 1;",
-            .needle = "1 ]",
-            .len = 1,
-            .message = "Expected an identifier",
-        },
     };
     for (cases) |case| {
         var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
@@ -1722,21 +1549,20 @@ test "a closed function code block still keeps its render element" {
 }
 
 test "a TSRX catch parameter takes any binding pattern" {
-    // `@catch` used to read one identifier by hand, so every destructured or lazy parameter failed at ')'.
+    // `@catch` used to read one identifier by hand, so every destructured parameter failed at ')'.
     const Case = struct {
         source: []const u8,
         param: std.meta.Tag(parser.ast.NodeData),
-        lazy: bool,
         annotation: ?std.meta.Tag(parser.ast.NodeData),
         reset: bool,
     };
     const cases = [_]Case{
-        .{ .source = "const v = @try { <b/> } @catch (&{ message }: { message: string }, reset) { <i>{message}</i> };", .param = .object_pattern, .lazy = true, .annotation = .ts_type_literal, .reset = true },
-        .{ .source = "const v = @try { <b/> } @catch (e: Result<T>, reset) { <i>{e}</i> };", .param = .binding_identifier, .lazy = false, .annotation = .ts_type_reference, .reset = true },
-        .{ .source = "const v = @try { <b/> } @catch (e: A | B) { <i>{e}</i> };", .param = .binding_identifier, .lazy = false, .annotation = .ts_union_type, .reset = false },
-        .{ .source = "const v = @try { <b/> } @catch ({ message }, reset) { <i>{message}</i> };", .param = .object_pattern, .lazy = false, .annotation = null, .reset = true },
-        .{ .source = "const v = @try { <b/> } @catch (&[first]) { <i>{first}</i> };", .param = .array_pattern, .lazy = true, .annotation = null, .reset = false },
-        .{ .source = "const v = @try { <b/> } @catch (error) { <i>{error}</i> };", .param = .binding_identifier, .lazy = false, .annotation = null, .reset = false },
+        .{ .source = "const v = @try { <b/> } @catch ({ message }: { message: string }, reset) { <i>{message}</i> };", .param = .object_pattern, .annotation = .ts_type_literal, .reset = true },
+        .{ .source = "const v = @try { <b/> } @catch (e: Result<T>, reset) { <i>{e}</i> };", .param = .binding_identifier, .annotation = .ts_type_reference, .reset = true },
+        .{ .source = "const v = @try { <b/> } @catch (e: A | B) { <i>{e}</i> };", .param = .binding_identifier, .annotation = .ts_union_type, .reset = false },
+        .{ .source = "const v = @try { <b/> } @catch ({ message }, reset) { <i>{message}</i> };", .param = .object_pattern, .annotation = null, .reset = true },
+        .{ .source = "const v = @try { <b/> } @catch ([first]) { <i>{first}</i> };", .param = .array_pattern, .annotation = null, .reset = false },
+        .{ .source = "const v = @try { <b/> } @catch (error) { <i>{error}</i> };", .param = .binding_identifier, .annotation = null, .reset = false },
     };
     for (cases) |case| {
         var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
@@ -1749,7 +1575,6 @@ test "a TSRX catch parameter takes any binding pattern" {
         const clause = nodeOfKind(&tree, .catch_clause) orelse return error.CatchClauseMissing;
         const data = tree.data(clause).catch_clause;
         try std.testing.expectEqual(case.param, std.meta.activeTag(tree.data(data.param)));
-        try std.testing.expectEqual(case.lazy, isLazyPattern(&tree, data.param));
         const annotation = switch (tree.data(data.param)) {
             inline .binding_identifier, .object_pattern, .array_pattern => |value| value.type_annotation,
             else => unreachable,
@@ -1765,35 +1590,53 @@ test "a TSRX catch parameter takes any binding pattern" {
     }
 }
 
-test "a lazy pattern cannot initialize a C-style for loop" {
-    const invalid = [_][]const u8{
-        "for (&{ bit }; i < 4; i++) { a(bit); }",
-        "const v = @for (&{ bit }; index < 4; index += 1) { <b/> };",
+test "an ampersand before a destructuring pattern is a syntax error" {
+    // tsrx RFC #106: `&{ }` / `&[ ]` is no longer a lazy pattern anywhere, so the
+    // seam's ordinary parser rejects it in binding, loop-header, assignment,
+    // statement, and arrow-parameter position and no dialect record is produced.
+    // `let &{ a }` is the one outlier: with no binding able to start after it,
+    // the seam reads `let` as an identifier, `let & { a }` as bitwise AND, and
+    // then rejects the whole thing as an assignment target.
+    const Case = struct { source: []const u8, message: []const u8, span: []const u8 };
+    const cases = [_]Case{
+        .{ .source = "function f(&{ a }) {}", .message = "Unexpected token '&' in binding pattern", .span = "&" },
+        .{ .source = "const &[x] = y;", .message = "Unexpected token '&' in binding pattern", .span = "&" },
+        .{ .source = "let &{ a } = b;", .message = "Invalid element in assignment pattern", .span = "let &{ a }" },
+        .{ .source = "for (const &{ v } of items) {}", .message = "Unexpected token '&' in binding pattern", .span = "&" },
+        .{ .source = "&[x] = expr;", .message = "Unexpected token '&'", .span = "&" },
+        .{ .source = "(&{ a }) => a;", .message = "Unexpected token '&'", .span = "&" },
     };
-    for (invalid) |source| {
-        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+    for (cases) |case| {
+        var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
         defer tree.deinit();
-        const diagnostics = boundaryDiagnostics(&tree);
-        try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
-        const diagnostic = diagnostics[0];
-        try std.testing.expectEqualStrings("A lazy pattern needs 'of' or 'in' after it", diagnostic.message);
-        const start = std.mem.indexOf(u8, source, "&{ bit }") orelse return error.PatternMissing;
+        try std.testing.expect(tree.hasErrors());
+        try std.testing.expect(tree.diagnostics.items.len >= 1);
+        const diagnostic = findDiagnostic(tree.diagnostics.items, case.message) orelse {
+            std.debug.print("\n{s}\n  wanted {s}, got {d} diagnostics:\n", .{ case.source, case.message, tree.diagnostics.items.len });
+            for (tree.diagnostics.items) |diagnostic| std.debug.print("    {s} @{d}:{d}\n", .{ diagnostic.message, diagnostic.span.start, diagnostic.span.end });
+            return error.AmpersandPatternAccepted;
+        };
+        try std.testing.expectEqualStrings(case.message, diagnostic.message);
+        const start = std.mem.indexOf(u8, case.source, case.span) orelse return error.SpanMissing;
         try std.testing.expectEqual(@as(u32, @intCast(start)), diagnostic.span.start);
-        try std.testing.expectEqual(@as(u32, @intCast(start + "&{ bit }".len)), diagnostic.span.end);
+        try std.testing.expectEqual(@as(u32, @intCast(start + case.span.len)), diagnostic.span.end);
+        try std.testing.expectEqual(@as(usize, 0), tree.dialect_store.records.items.len);
+        try std.testing.expectEqual(@as(usize, 0), tree.dialect_store.overlays.items.len);
     }
+}
 
-    for ([_][]const u8{
-        "for (&{ bit } of items) { a(bit); }",
-        "for (&[key] in table) { a(key); }",
-        "for await (&{ a } of s) { a; }",
-        "const v = @for (&{ id } of items) { <b/> };",
-        "const &{ a } = props;",
-        "const f = (&{ a }) => a;",
-        "try {} catch (&{ cause }) {}",
-    }) |source| {
+test "an ampersand before a brace or bracket in an expression stays bitwise AND" {
+    for ([_][]const u8{ "a & { b: 1 };", "x & [1];" }) |source| {
         var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
         defer tree.deinit();
         try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+        const body = tree.extra(tree.data(tree.root).program.body);
+        try std.testing.expectEqual(@as(usize, 1), body.len);
+        const statement = tree.data(body[0]).expression_statement;
+        try std.testing.expectEqual(.binary_expression, std.meta.activeTag(tree.data(statement.expression)));
+        const binary = tree.data(statement.expression).binary_expression;
+        try std.testing.expectEqual(parser.ast.BinaryOperator.bitwise_and, binary.operator);
+        try std.testing.expectEqual(@as(usize, 0), tree.dialect_store.records.items.len);
     }
 }
 
@@ -1802,13 +1645,4 @@ fn nodeOfKind(tree: *const parser.ParseResult, kind: std.meta.Tag(parser.ast.Nod
         if (std.meta.activeTag(data) == kind) return @enumFromInt(index);
     }
     return null;
-}
-
-fn isLazyPattern(tree: *const parser.ParseResult, node: parser.ast.NodeIndex) bool {
-    const overlay = tree.dialectOverlay(@intFromEnum(node)) orelse return false;
-    return switch (tree.dialect_store.records.items[overlay]) {
-        .object_pattern => |record| record.lazy,
-        .array_pattern => |record| record.lazy,
-        else => false,
-    };
 }

@@ -207,12 +207,11 @@ test("all valid fixtures generate and strictly reparse to the same structure", (
 		"control-flow-switch.module.tsrx",
 		"control-flow-try.module.tsrx",
 		"dynamic-tag.module.tsrx",
-		"lazy-destructuring.module.tsrx",
 		"style-element.module.tsrx",
 		"submodule-import.module.tsrx",
 		"text-entities.module.tsrx",
 	];
-	expect(fixtures).toHaveLength(12);
+	expect(fixtures).toHaveLength(11);
 	for (const fixture of fixtures) {
 		const source = readFileSync(resolve(fixtureRoot, fixture), "utf8");
 		const first = parse(source, { lang: "tsx" });
@@ -299,7 +298,7 @@ test("parentIndex answers for every node of every dialect construct", () => {
 		switch: "const v = @switch (x) { @case 1: { <b/> } @default: { <i/> } };",
 		try: "const v = @try { <b/> } @pending { <p/> } @catch (error, reset) { <i>{error}</i> };",
 		style: "const v = <style>.a { color: red; }</style>;",
-		lazyPattern: "const &[a, b] = pair; let &{ c } = obj; &{ c } = obj;",
+		pattern: "const [a, b] = pair; let { c } = obj; ({ c } = obj);",
 		dynamicTag: 'const v = <{tag} id="x"><{inner}/></{tag}>;',
 		plain: "const a: number = 1; function f() { return a; }",
 	};
@@ -347,28 +346,27 @@ function holds(parent: unknown, child: object): boolean {
 }
 
 test("a TSRX catch parameter takes any binding pattern", () => {
-	// `@catch` used to read one identifier by hand, so every destructured or lazy parameter failed at ')'.
-	const cases: [clause: string, type: string, lazy: boolean, reset: boolean][] = [
-		["@catch (&{ message }, reset)", "ObjectPattern", true, true],
-		["@catch ({ message }, reset)", "ObjectPattern", false, true],
-		["@catch ({ message }: ErrorInfo, reset)", "ObjectPattern", false, true],
-		["@catch (&[first])", "ArrayPattern", true, false],
-		["@catch (error)", "Identifier", false, false],
-		["@catch (error: Error, reset)", "Identifier", false, true],
-		["@catch (error, reset)", "Identifier", false, true],
+	// `@catch` used to read one identifier by hand, so every destructured parameter failed at ')'.
+	const cases: [clause: string, type: string, reset: boolean][] = [
+		["@catch ({ message }, reset)", "ObjectPattern", true],
+		["@catch ({ message }: ErrorInfo, reset)", "ObjectPattern", true],
+		["@catch ([first])", "ArrayPattern", false],
+		["@catch (error)", "Identifier", false],
+		["@catch (error: Error, reset)", "Identifier", true],
+		["@catch (error, reset)", "Identifier", true],
 	];
-	for (const [clause, type, lazy, reset] of cases) {
+	for (const [clause, type, reset] of cases) {
 		const source = `const v = @try { <b/> } ${clause} { <i/> };`;
 		const result = parse(source, { lang: "tsx" });
 		expect(result.diagnostics, clause).toEqual([]);
 		const handler = result.program.body[0].declarations[0].init.statement.handler;
 		expect(handler.param.type, clause).toBe(type);
-		expect(handler.param.lazy ?? false, clause).toBe(lazy);
+		expect("lazy" in handler.param, clause).toBe(false);
 		expect(handler.resetParam?.type ?? null, clause).toBe(reset ? "Identifier" : null);
 	}
 
 	for (const [clause, annotation] of [
-		["@catch (&{ message }: { message: string }, reset)", "TSTypeLiteral"],
+		["@catch ({ message }: { message: string }, reset)", "TSTypeLiteral"],
 		["@catch (e: Result<T>, reset)", "TSTypeReference"],
 		["@catch (e: A | B)", "TSUnionType"],
 	] as const) {
@@ -381,37 +379,6 @@ test("a TSRX catch parameter takes any binding pattern", () => {
 			expect(param.typeAnnotation.typeAnnotation.typeArguments.params, clause).toHaveLength(1);
 		}
 	}
-});
-
-test("lazy covers keep parameter and arrow annotations", () => {
-	for (const [source, parameterTyped, returnTyped] of [
-		["const f = (&{ a }: P): string => a;", true, true],
-		["const g = (&{ a }): R => a;", false, true],
-		["const h = (&{ a }) => a;", false, false],
-	] as const) {
-		const result = parse(source, { lang: "tsx" });
-		expect(result.diagnostics, source).toEqual([]);
-		const arrow = result.program.body[0].declarations[0].init;
-		expect(arrow.params[0], source).toMatchObject({ type: "ObjectPattern", lazy: true });
-		expect(arrow.params[0].typeAnnotation !== null, source).toBe(parameterTyped);
-		expect(arrow.returnType !== null, source).toBe(returnTyped);
-	}
-
-	const source = "const [a, &{ b }, &[c], { d }] = x;";
-	const result = parse(source, { lang: "tsx" });
-	expect(result.diagnostics).toEqual([]);
-	const pattern = result.program.body[0].declarations[0].id;
-	expect(pattern).toMatchObject({
-		type: "ArrayPattern",
-		elements: [
-			{ type: "Identifier", name: "a" },
-			{ type: "ObjectPattern", lazy: true },
-			{ type: "ArrayPattern", lazy: true },
-			{ type: "ObjectPattern" },
-		],
-	});
-	expect(pattern.lazy ?? false).toBe(false);
-	expect(pattern.elements[3].lazy ?? false).toBe(false);
 });
 
 test("line-leading committed JSX forms a statement boundary", () => {
@@ -445,64 +412,46 @@ test("less-than continuations remain one expression", () => {
 	}
 });
 
-test("a lazy pattern cannot initialize a C-style for loop", () => {
-	for (const source of [
-		"for (&{ bit }; i < 4; i++) { a(bit); }",
-		"const v = @for (&{ bit }; index < 4; index += 1) { <b/> };",
-	]) {
+test("an ampersand before a destructuring pattern is a syntax error", () => {
+	// tsrx RFC #106: `&{ }` / `&[ ]` is no longer a lazy pattern anywhere, so the
+	// seam's ordinary parser rejects it and no `lazy` field reaches the tree.
+	// `let &{ a }` is the one outlier: with no binding able to start after it,
+	// the seam reads `let` as an identifier, `let & { a }` as bitwise AND, and
+	// then rejects the whole thing as an assignment target.
+	const cases: [source: string, message: string, span: string][] = [
+		["function f(&{ a }) {}", "Unexpected token '&' in binding pattern", "&"],
+		["const &[x] = y;", "Unexpected token '&' in binding pattern", "&"],
+		["let &{ a } = b;", "Invalid element in assignment pattern", "let &{ a }"],
+		["for (const &{ v } of items) {}", "Unexpected token '&' in binding pattern", "&"],
+		["&[x] = expr;", "Unexpected token '&'", "&"],
+		["(&{ a }) => a;", "Unexpected token '&'", "&"],
+	];
+	for (const [source, message, span] of cases) {
 		const result = parse(source, { lang: "tsx" });
-		const start = source.indexOf("&{ bit }");
-		expect(result.diagnostics).toHaveLength(1);
-		expect(result.diagnostics[0]).toMatchObject({
-			message: "A lazy pattern needs 'of' or 'in' after it",
-			start,
-			end: start + "&{ bit }".length,
+		expect(result.diagnostics.length, source).toBeGreaterThanOrEqual(1);
+		const start = source.indexOf(span);
+		expect(result.diagnostics, source).toContainEqual(
+			expect.objectContaining({ severity: "error", message, start, end: start + span.length }),
+		);
+		const lazy: unknown[] = [];
+		walk(result.program, {
+			enter(node) {
+				if ("lazy" in node) lazy.push(node);
+			},
 		});
-	}
-
-	for (const source of [
-		"for (&{ bit } of items) { a(bit); }",
-		"for (&[key] in table) { a(key); }",
-		"for await (&{ a } of s) { a; }",
-		"const v = @for (&{ id } of items) { <b/> };",
-		"const &{ a } = props;",
-		"const f = (&{ a }) => a;",
-		"try {} catch (&{ cause }) {}",
-	]) {
-		expect(parse(source, { lang: "tsx" }).diagnostics, source).toEqual([]);
+		expect(lazy, source).toEqual([]);
 	}
 });
 
-test("lazy patterns recurse through object values and array elements", () => {
-	for (const [source, outerType, patternCount, lazyCount] of [
-		["const f = (&{ user: &{ id } }) => id;", "ObjectPattern", 2, 2],
-		["const &{ user: &{ id } } = props;", "ObjectPattern", 2, 2],
-		["const &[ &{ id } ] = props;", "ArrayPattern", 2, 2],
-		["const &{ user: { id }, row: [first] } = props;", "ObjectPattern", 3, 1],
-	] as const) {
+test("an ampersand before a brace or bracket in an expression stays bitwise AND", () => {
+	for (const source of ["a & { b: 1 };", "x & [1];"]) {
 		const result = parse(source, { lang: "tsx" });
 		expect(result.diagnostics, source).toEqual([]);
-		let patterns = 0;
-		const lazyPatterns: { type: string; lazy?: boolean; start: number }[] = [];
-		walk(result.program, {
-			enter(node) {
-				if (node.type === "ObjectPattern" || node.type === "ArrayPattern") {
-					patterns += 1;
-				}
-				if ((node.type === "ObjectPattern" || node.type === "ArrayPattern") && node.lazy) {
-					lazyPatterns.push(node);
-				}
-			},
+		expect(result.program.body, source).toHaveLength(1);
+		expect(result.program.body[0].expression, source).toMatchObject({
+			type: "BinaryExpression",
+			operator: "&",
 		});
-		expect(patterns, source).toBe(patternCount);
-		expect(lazyPatterns, source).toHaveLength(lazyCount);
-		expect(lazyPatterns.find(({ start }) => start === source.indexOf("&"))?.type, source).toBe(
-			outerType,
-		);
-		expect(
-			lazyPatterns.every(({ lazy }) => lazy === true),
-			source,
-		).toBe(true);
 	}
 });
 

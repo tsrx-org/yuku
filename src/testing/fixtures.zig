@@ -19,13 +19,11 @@ const fixtures = [_]Fixture{
     .{ .path = "tsrx/control-flow-try.module.tsrx", .source = @embedFile("control_flow_try") },
     .{ .path = "tsrx/dynamic-tag-invalid.module.tsrx", .source = @embedFile("dynamic_tag_invalid") },
     .{ .path = "tsrx/dynamic-tag.module.tsrx", .source = @embedFile("dynamic_tag") },
-    .{ .path = "tsrx/lazy-destructuring.module.tsrx", .source = @embedFile("lazy_destructuring") },
     .{ .path = "tsrx/style-element.module.tsrx", .source = @embedFile("style_element") },
     .{ .path = "tsrx/submodule-import.module.tsrx", .source = @embedFile("submodule_import") },
     .{ .path = "tsrx/template-return-invalid.module.tsrx", .source = @embedFile("template_return_invalid") },
     .{ .path = "tsrx/text-entities.module.tsrx", .source = @embedFile("text_entities") },
     .{ .path = "ts/dynamic-tag-outside-tsrx.tsx", .source = @embedFile("dynamic_tag_outside") },
-    .{ .path = "ts/lazy-destructuring-outside-tsrx.ts", .source = @embedFile("lazy_destructuring_outside") },
     .{ .path = "ts/submodule-import-outside-tsrx.ts", .source = @embedFile("submodule_import_outside") },
 };
 
@@ -35,7 +33,7 @@ pub fn main(init: std.process.Init) !void {
     var output_buffer: [64 * 1024]u8 = undefined;
     var output = stdout.writer(init.io, &output_buffer);
 
-    try writeU32(&output.interface, if (fixture_options.dialect_mode) 15 else 3);
+    try writeU32(&output.interface, if (fixture_options.dialect_mode) 14 else 2);
     for (fixtures) |fixture| {
         const is_tsrx = std.mem.endsWith(u8, fixture.path, ".tsrx");
         if (is_tsrx != fixture_options.dialect_mode) continue;

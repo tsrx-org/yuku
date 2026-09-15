@@ -27,7 +27,7 @@ const catch_only = @try {
 
 const caught_shape = @try {
     <span>ready</span>
-} @catch (&{ message }: { message: string }, reset) {
+} @catch ({ message }: { message: string }, reset) {
     <button onClick={reset}>{message}</button>
 };
 

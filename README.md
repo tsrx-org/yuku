@@ -65,7 +65,7 @@ walk(program, {
 
 ## What it does
 
-**Parse.** `parse` and `parseModule` support TSRX control flow, template blocks, style structure, lazy destructuring, and dynamic tags within the documented syntax boundaries. Yuku supplies the ordinary JavaScript and TypeScript grammar. See [Parse](https://yuku.tsrx.dev/guide/parse) and [Limitations](https://yuku.tsrx.dev/reference/limitations).
+**Parse.** `parse` and `parseModule` support TSRX control flow, template blocks, style structure, and dynamic tags within the documented syntax boundaries. Yuku supplies the ordinary JavaScript and TypeScript grammar. See [Parse](https://yuku.tsrx.dev/guide/parse) and [Limitations](https://yuku.tsrx.dev/reference/limitations).
 
 **Analyze.** `analyze(source, "Cart.tsrx")` parses and runs native semantic analysis, returning the tree plus scopes, symbols, references, import/export records, and early-error diagnostics. Use those facts to plan compiler transforms, collect captured bindings, distinguish runtime from type-only uses, or build lint rules. [Analyze](https://yuku.tsrx.dev/guide/analyze) contains a working compiler-pass example. This package exposes per-file tables; upstream Yuku’s project `Analyzer` and cross-file linking APIs are separate.
 

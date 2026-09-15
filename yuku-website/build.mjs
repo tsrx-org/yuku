@@ -1032,22 +1032,19 @@ const chooserTwin =
 // here is either prose or read out of the repository at build time: the hook
 // chips are the `pub fn` declarations in src/dialect/parser_extension.zig, and
 // the build refuses to render the figure if that file stops declaring exactly
-// twenty of them.
+// seventeen of them.
 const HOOK_AREAS = {
   statement_at_code_block: 'Statement',
   statement_at_control_flow: 'Statement',
   expression_at_code_block: 'Expression',
   expression_at_control_flow: 'Expression',
-  lazy_assignment_pattern: 'Pattern',
   function_body: 'Function',
   for_of_tail: 'For-of',
-  binding_pattern: 'Pattern',
   module_specifier: 'Module',
   jsx_child_at_code_block: 'JSX',
   jsx_child_at_control_flow: 'JSX',
   jsx_element_name: 'JSX',
   function_body_starts: 'Function',
-  can_start_binding: 'Pattern',
   jsx_element_after_open: 'JSX',
   jsx_fragment_after_open: 'JSX',
   validate_jsx_element_name: 'JSX',
@@ -1056,7 +1053,7 @@ const HOOK_AREAS = {
   jsx_text_value: 'Text',
 }
 
-const EXPECTED_HOOK_COUNT = 20
+const EXPECTED_HOOK_COUNT = 17
 
 // The dialect files a hook body can hand the work to. A hook that names none of
 // them does the work where it is declared.
@@ -1310,16 +1307,6 @@ const TSRX_OVERLAYS = [
     chip: 'ForOfStatement.key',
     title: 'the `; key <expr>` clause, an extra field on an ordinary ForOfStatement',
     test: (node) => node.type === 'ForOfStatement' && node.key != null,
-  },
-  {
-    chip: 'ObjectPattern.lazy',
-    title: 'a `&{ }` pattern: the lazy marking sits on the ordinary ObjectPattern',
-    test: (node) => node.type === 'ObjectPattern' && node.lazy === true,
-  },
-  {
-    chip: 'ArrayPattern.lazy',
-    title: 'a `&[ ]` pattern: the lazy marking sits on the ordinary ArrayPattern',
-    test: (node) => node.type === 'ArrayPattern' && node.lazy === true,
   },
   {
     chip: 'CatchClause.resetParam',

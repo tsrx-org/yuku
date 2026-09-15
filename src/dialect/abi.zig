@@ -9,13 +9,10 @@ pub const Hook = enum(u8) {
     statement_at_control_flow,
     expression_at_code_block,
     expression_at_control_flow,
-    lazy_assignment_pattern,
     function_body_starts,
     function_body,
     for_of_tail,
-    binding_pattern,
     module_specifier,
-    can_start_binding,
     jsx_element_after_open,
     jsx_names_match,
     jsx_text_boundary,
@@ -84,28 +81,16 @@ pub const CatchClauseOverlay = struct {
     reset_param: OptionalNodeRef,
 };
 
-pub const ArrayPatternOverlay = struct {
-    host_node: OverlayHost,
-    lazy: bool,
-};
-
-pub const ObjectPatternOverlay = struct {
-    host_node: OverlayHost,
-    lazy: bool,
-};
-
 pub const Record = union(enum) {
     node: NodeRecord,
     for_of: ForOfOverlay,
     catch_clause: CatchClauseOverlay,
-    array_pattern: ArrayPatternOverlay,
-    object_pattern: ObjectPatternOverlay,
 };
 
 pub const record_count: u8 = @typeInfo(Record).@"union".fields.len;
 
 comptime {
-    std.debug.assert(@typeInfo(Hook).@"enum".fields.len == 19);
+    std.debug.assert(@typeInfo(Hook).@"enum".fields.len == 16);
     std.debug.assert(@sizeOf(FieldRole) == 1);
     std.debug.assert(@sizeOf(ScopeRole) == 1);
     std.debug.assert(@sizeOf(NodeRef) == 4);

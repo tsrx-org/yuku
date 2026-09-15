@@ -18,16 +18,6 @@ pub const CatchClauseOverlay = struct {
     reset_param: abi.OptionalNodeRef,
 };
 
-pub const ArrayPatternOverlay = struct {
-    host_node: abi.OverlayHost,
-    lazy: bool,
-};
-
-pub const ObjectPatternOverlay = struct {
-    host_node: abi.OverlayHost,
-    lazy: bool,
-};
-
 pub const JSXCodeBlock = struct {
     pub const estree_type = "JSXCodeBlock";
     pub const scope_role = abi.ScopeRole.block;
@@ -110,8 +100,6 @@ pub const Record = union(enum) {
     node: NodeRecord,
     for_of: ForOfOverlay,
     catch_clause: CatchClauseOverlay,
-    array_pattern: ArrayPatternOverlay,
-    object_pattern: ObjectPatternOverlay,
     jsx_code_block: JSXCodeBlock,
     jsx_for_expression: JSXForExpression,
     jsx_if_expression: JSXIfExpression,
@@ -120,7 +108,7 @@ pub const Record = union(enum) {
     style_sheet: StyleSheet,
     jsx_style_element: JSXStyleElement,
     tsrx_expression: TSRXExpression,
-    // Appended only: the Record union is positional ABI (tags 185/186/187).
+    // Appended only: the Record union is positional ABI (tags 183/184/185).
     css_rule: CssRule,
     css_atrule: CssAtrule,
     css_selector: CssSelector,
@@ -130,12 +118,10 @@ pub const Record = union(enum) {
 pub const record_count: u8 = @typeInfo(Record).@"union".fields.len;
 
 comptime {
-    std.debug.assert(record_count == 17);
+    std.debug.assert(record_count == 15);
     std.debug.assert(@sizeOf(NodeRecord) <= 28);
     std.debug.assert(@sizeOf(ForOfOverlay) <= 28);
     std.debug.assert(@sizeOf(CatchClauseOverlay) <= 28);
-    std.debug.assert(@sizeOf(ArrayPatternOverlay) <= 28);
-    std.debug.assert(@sizeOf(ObjectPatternOverlay) <= 28);
     std.debug.assert(@sizeOf(JSXCodeBlock) <= 28);
     std.debug.assert(@sizeOf(JSXForExpression) <= 28);
     std.debug.assert(@sizeOf(JSXIfExpression) <= 28);

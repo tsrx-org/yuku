@@ -510,13 +510,11 @@ fn addFixtureImports(b: *std.Build, module: *std.Build.Module) void {
         .{ .name = "control_flow_try", .path = "test/parser/misc/tsrx/control-flow-try.module.tsrx" },
         .{ .name = "dynamic_tag_invalid", .path = "test/parser/misc/tsrx/dynamic-tag-invalid.module.tsrx" },
         .{ .name = "dynamic_tag", .path = "test/parser/misc/tsrx/dynamic-tag.module.tsrx" },
-        .{ .name = "lazy_destructuring", .path = "test/parser/misc/tsrx/lazy-destructuring.module.tsrx" },
         .{ .name = "style_element", .path = "test/parser/misc/tsrx/style-element.module.tsrx" },
         .{ .name = "submodule_import", .path = "test/parser/misc/tsrx/submodule-import.module.tsrx" },
         .{ .name = "template_return_invalid", .path = "test/parser/misc/tsrx/template-return-invalid.module.tsrx" },
         .{ .name = "text_entities", .path = "test/parser/misc/tsrx/text-entities.module.tsrx" },
         .{ .name = "dynamic_tag_outside", .path = "test/parser/misc/ts/dynamic-tag-outside-tsrx.tsx" },
-        .{ .name = "lazy_destructuring_outside", .path = "test/parser/misc/ts/lazy-destructuring-outside-tsrx.ts" },
         .{ .name = "submodule_import_outside", .path = "test/parser/misc/ts/submodule-import-outside-tsrx.ts" },
     }) |fixture| {
         module.addAnonymousImport(fixture.name, .{

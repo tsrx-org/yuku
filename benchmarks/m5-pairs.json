@@ -223,30 +223,6 @@
 			"pair_timing_only": true
 		},
 		{
-			"id": "lazy-array-pattern",
-			"construct": "lazy array binding pattern",
-			"representative_paths": {
-				"accepted": [
-					"test/parser/misc/tsrx/lazy-destructuring.module.tsrx"
-				],
-				"migration": []
-			},
-			"no_faithful_tsx_reason": "The ampersand array pattern encodes reactive binding semantics absent from TypeScript destructuring.",
-			"pair_timing_only": true
-		},
-		{
-			"id": "lazy-object-pattern",
-			"construct": "lazy object binding pattern",
-			"representative_paths": {
-				"accepted": [
-					"test/parser/misc/tsrx/lazy-destructuring.module.tsrx"
-				],
-				"migration": []
-			},
-			"no_faithful_tsx_reason": "The ampersand object pattern encodes reactive binding semantics absent from TypeScript destructuring.",
-			"pair_timing_only": true
-		},
-		{
 			"id": "raw-style-css",
 			"construct": "raw CSS style element",
 			"representative_paths": {

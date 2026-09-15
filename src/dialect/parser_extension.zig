@@ -11,7 +11,6 @@ const code_block = @import("code_block.zig");
 const control_flow = @import("control_flow.zig");
 const jsx = @import("jsx.zig");
 const modules = @import("modules.zig");
-const patterns = @import("patterns.zig");
 const script = @import("script.zig");
 const style = @import("style.zig");
 const text = @import("text.zig");
@@ -666,18 +665,10 @@ pub fn Host(comptime Parser: type) type {
             }));
         }
 
-        pub fn parseArrayCover(p: *P) ErrorType!?NodeIndex {
-            return parseLazyPattern(p);
-        }
-
-        pub fn parseObjectCover(p: *P) ErrorType!?NodeIndex {
-            return parseLazyPattern(p);
-        }
-
         pub fn expressionToAssignablePattern(_: *P, _: NodeIndex) ErrorType!void {}
 
         pub fn parseOrdinaryBinding(p: *P) ErrorType!?NodeIndex {
-            return parseLazyPattern(p);
+            return parsePattern(p);
         }
 
         pub fn parseChild(p: *P) ErrorType!?NodeIndex {
@@ -807,10 +798,6 @@ pub fn Host(comptime Parser: type) type {
             } }, .{ .start = value.start, .end = p.tree.span(body).end });
         }
 
-        pub fn parseLazyPattern(p: *P) ErrorType!?NodeIndex {
-            return parsePattern(p);
-        }
-
         fn parsePattern(p: *P) ErrorType!?NodeIndex {
             return switch (p.current_token.tag) {
                 .left_brace => parseObjectPattern(p),
@@ -821,7 +808,6 @@ pub fn Host(comptime Parser: type) type {
 
         fn parseNestedPattern(p: *P) ErrorType!?NodeIndex {
             return switch (p.current_token.tag) {
-                .bitwise_and => patterns.nested(Self, p),
                 .left_brace, .left_bracket => parsePattern(p),
                 else => parseBindingIdentifier(p),
             };
@@ -843,7 +829,7 @@ pub fn Host(comptime Parser: type) type {
             while (p.current_token.tag != .right_brace and p.current_token.tag != .eof) {
                 const key_token = p.current_token;
                 if (!key_token.tag.isIdentifierLike()) {
-                    try p.reportExpected(key_token.span, "Expected a property name in TSRX lazy object pattern", .{});
+                    try p.reportExpected(key_token.span, "Expected a property name in object pattern", .{});
                     return null;
                 }
                 const name = try p.identifierName(key_token);
@@ -855,7 +841,7 @@ pub fn Host(comptime Parser: type) type {
                     shorthand = false;
                     try p.advance() orelse return null;
                     value = try parseNestedPattern(p) orelse {
-                        try p.reportExpected(p.current_token.span, "Expected an identifier after ':' in TSRX lazy object pattern", .{});
+                        try p.reportExpected(p.current_token.span, "Expected an identifier after ':' in object pattern", .{});
                         return null;
                     };
                 } else {
@@ -864,7 +850,7 @@ pub fn Host(comptime Parser: type) type {
                 if (p.current_token.tag == .assign) {
                     try p.advance() orelse return null;
                     const right = try parseSimpleExpression(p) orelse {
-                        try p.reportExpected(p.current_token.span, "Expected a default value after '=' in TSRX lazy object pattern", .{});
+                        try p.reportExpected(p.current_token.span, "Expected a default value after '=' in object pattern", .{});
                         return null;
                     };
                     value = try p.tree.addNode(.{ .assignment_pattern = .{ .left = value, .right = right } }, .{
@@ -907,7 +893,7 @@ pub fn Host(comptime Parser: type) type {
                     const rest_start = p.current_token.span.start;
                     try p.advance() orelse return null;
                     const argument = try parseBindingIdentifier(p) orelse {
-                        try p.reportExpected(p.current_token.span, "Expected an identifier after '...' in TSRX lazy array pattern", .{});
+                        try p.reportExpected(p.current_token.span, "Expected an identifier after '...' in array pattern", .{});
                         return null;
                     };
                     rest = try p.tree.addNode(.{ .binding_rest_element = .{ .argument = argument } }, .{
@@ -917,7 +903,7 @@ pub fn Host(comptime Parser: type) type {
                     break;
                 }
                 try elements.append(p.allocator(), try parseNestedPattern(p) orelse {
-                    try p.reportExpected(p.current_token.span, "Expected an identifier in TSRX lazy array pattern", .{});
+                    try p.reportExpected(p.current_token.span, "Expected an identifier in array pattern", .{});
                     return null;
                 });
                 if (p.current_token.tag != .comma) break;
@@ -980,9 +966,6 @@ pub fn expression_at_code_block(comptime Result: type, parser: anytype) Result {
 pub fn expression_at_control_flow(comptime Result: type, parser: anytype) Result {
     return hookNode(Result, parser, control_flow.expression);
 }
-pub fn lazy_assignment_pattern(comptime Result: type, parser: anytype) Result {
-    return hookNode(Result, parser, patterns.lazyAssignment);
-}
 pub fn function_body(comptime Result: type, parser: anytype) Result {
     return hookNode(Result, parser, code_block.functionBody);
 }
@@ -994,9 +977,6 @@ pub fn for_of_tail(comptime Result: type, parser: anytype, context: anytype) Res
         .right = context.right,
         .is_for_await = context.is_for_await,
     }));
-}
-pub fn binding_pattern(comptime Result: type, parser: anytype) Result {
-    return hookNode(Result, parser, patterns.binding);
 }
 pub fn module_specifier(comptime Result: type, parser: anytype) Result {
     return hookNode(Result, parser, modules.specifier);
@@ -1014,15 +994,6 @@ pub fn jsx_element_name(comptime Result: type, parser: anytype) Result {
 pub fn function_body_starts(parser: anytype) ?bool {
     const H = Host(@TypeOf(parser.*));
     return switch (code_block.functionBodyStarts(H, parser)) {
-        .unhandled => null,
-        .handled => |value| value,
-    };
-}
-pub fn can_start_binding(tag: anytype) ?bool {
-    const DummyHost = struct {
-        pub const Token = @TypeOf(tag);
-    };
-    return switch (patterns.canStartBinding(DummyHost, tag)) {
         .unhandled => null,
         .handled => |value| value,
     };

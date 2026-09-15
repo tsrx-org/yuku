@@ -6,7 +6,6 @@ import { expect, test } from "vitest";
 import {
 	compareOutside,
 	intentionalDifference,
-	lazyDestructuringDifference,
 	submoduleImportDifference,
 	type Parsed,
 } from "../tools/fixture-oracle.ts";
@@ -20,27 +19,6 @@ const expectedDifference = {
 	seamText: "JSX element names must start with a valid identifier",
 	upstreamBase: "eb2adcb4c17da16e7ade1a0517192d81d469e67f",
 	justification: "Dialect-free Yuku must not contain TSRX-specific policy.",
-} as const;
-
-const expectedLazyDifference = {
-	kind: "intentional-difference",
-	fixture: "ts/lazy-destructuring-outside-tsrx.ts",
-	diagnosticIndex: 0,
-	differences: [
-		{
-			path: "diagnostics[0].message",
-			priorArtText: "Lazy destructuring patterns are only enabled in TSRX files",
-			seamText: "Unexpected token '&' in binding pattern",
-		},
-		{
-			path: "diagnostics[0].help",
-			priorArtText: "Use a .tsrx file or remove the '&' lazy-pattern marker.",
-			seamText: "Expected an identifier, array pattern ([a, b]), or object pattern ({a, b}).",
-		},
-	],
-	upstreamBase: "eb2adcb4c17da16e7ade1a0517192d81d469e67f",
-	justification:
-		"Dialect-free Yuku must use the ordinary binding-pattern diagnostic and contain no TSRX-specific policy.",
 } as const;
 
 const expectedSubmoduleDifference = {
@@ -88,10 +66,9 @@ test("matches every immutable tree and diagnostic oracle", () => {
 	expect(reports).toEqual([
 		JSON.stringify(expectedStyleSheetDifference),
 		JSON.stringify(expectedDifference),
-		JSON.stringify(expectedLazyDifference),
 		JSON.stringify(expectedSubmoduleDifference),
-		JSON.stringify({ kind: "intentional-difference-summary", count: 4 }),
-		"Exact fixture oracle passed: 12 valid, 3 invalid, 3 dialect-off",
+		JSON.stringify({ kind: "intentional-difference-summary", count: 3 }),
+		"Exact fixture oracle passed: 11 valid, 3 invalid, 2 dialect-off",
 	]);
 }, 30_000);
 
@@ -139,52 +116,6 @@ test("pins one fail-closed intentional difference and rejects every unlisted fie
 	expect(source).not.toMatch(
 		/wildcard|normalize|structuredClone|\.delete\(|JSON\.parse\(JSON\.stringify/,
 	);
-});
-
-test("pins the independent lazy diagnostic record and rejects non-target drift", () => {
-	expect(lazyDestructuringDifference).toEqual(expectedLazyDifference);
-	const priorArt: Parsed = {
-		program: { type: "Program" },
-		comments: [],
-		diagnostics: [
-			{
-				severity: "error",
-				message: expectedLazyDifference.differences[0].priorArtText,
-				start: 46,
-				end: 47,
-				help: expectedLazyDifference.differences[1].priorArtText,
-				labels: [],
-			},
-		],
-	};
-	const seam: Parsed = {
-		program: priorArt.program,
-		comments: priorArt.comments,
-		diagnostics: [
-			{
-				severity: "error",
-				message: expectedLazyDifference.differences[0].seamText,
-				start: 46,
-				end: 47,
-				help: expectedLazyDifference.differences[1].seamText,
-				labels: [],
-			},
-		],
-	};
-	expect(compareOutside(expectedLazyDifference.fixture, seam, priorArt)).toBe(
-		lazyDestructuringDifference,
-	);
-	expect(() =>
-		compareOutside(
-			expectedLazyDifference.fixture,
-			{
-				...seam,
-				diagnostics: [{ ...seam.diagnostics[0], start: 45 }],
-			},
-			priorArt,
-		),
-	).toThrow();
-	expect(() => compareOutside("ts/a-third-case.ts", seam, priorArt)).toThrow();
 });
 
 test("pins the independent submodule diagnostic record and rejects fourth drift", () => {

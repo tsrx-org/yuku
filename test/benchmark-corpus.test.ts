@@ -16,8 +16,6 @@ const exclusionIds = [
 	"for-index",
 	"for-key",
 	"jsx-child-statements",
-	"lazy-array-pattern",
-	"lazy-object-pattern",
 	"raw-style-css",
 	"submodule-import",
 	"try-pending-catch",
