@@ -24,7 +24,7 @@ const DEFAULTS = {
     semanticErrors: 'true',
     attachComments: 'true when comments is passed',
     loose: 'false',
-    tsrx: 'true for a .tsrx filename',
+    tsrx: 'true, for every filename, as in @tsrx/core',
     collect: 'false: the first error is thrown as a SyntaxError',
     errors: 'none; filled only with collect or loose',
     comments: 'none',

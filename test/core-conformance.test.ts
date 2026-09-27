@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { generate, parse, parseModule } from "@tsrx/yuku";
+import { analyze, generate, parse, parseModule } from "@tsrx/yuku";
 
 // Regression tests for the @tsrx/core 0.5.0 rules reported against tsrx-org/oxc
 // (#110, #112, #113, #114, #115, #116). Every expected value below is what
@@ -197,24 +197,34 @@ test("#114: a self-closing <script /> has no content, and still prints", () => {
 	expect("content" in findAll(program, (node) => node.type === "JSXScriptElement")[0]).toBe(false);
 });
 
-test("#110: only a .tsrx file reads comments in JSX text; in .tsx and .jsx they are text", () => {
+test("#110: parseModule reads comments in JSX text for every filename; parse and analyze only for .tsrx", () => {
 	const source =
 		"export function App() {\n\treturn <div>\n\t\t// x <b>y</b>\n\t\ta /* c */ b\n\t</div>;\n}";
 	const values = (filename: string) =>
 		findAll(parseModule(source, filename), (node) => node.type === "JSXText")
 			.map(({ value }) => String(value).trim())
 			.filter(Boolean);
-	expect(values("App.tsrx")).toEqual(["a  b"]);
-	for (const filename of ["App.tsx", "App.jsx"]) {
-		expect(values(filename), filename).toEqual(["// x", "y", "a /* c */ b"]);
+	// @tsrx/core's parseModule applies the comment rule whatever the extension
+	for (const filename of ["App.tsrx", "App.tsx", "App.jsx"]) {
+		expect(values(filename), filename).toEqual(["a  b"]);
 	}
-	expect(values("App.tsx").length).toBe(3);
-	// the option overrides the filename
-	const tsrx = findAll(
-		parseModule(source, "App.tsx", { tsrx: true }),
+	// `tsrx: false` reads standard JSX
+	const standard = findAll(
+		parseModule(source, "App.tsx", { tsrx: false }),
 		(node) => node.type === "JSXText",
 	);
-	expect(tsrx.map(({ value }) => String(value).trim()).filter(Boolean)).toEqual(["a  b"]);
+	expect(standard.map(({ value }) => String(value).trim()).filter(Boolean)).toEqual([
+		"// x",
+		"y",
+		"a /* c */ b",
+	]);
+	// `analyze` gates on the filename
+	const analyzed = (filename: string) =>
+		findAll(analyze(source, filename).program, (node) => node.type === "JSXText")
+			.map(({ value }) => String(value).trim())
+			.filter(Boolean);
+	expect(analyzed("App.tsrx")).toEqual(["a  b"]);
+	expect(analyzed("App.tsx")).toEqual(["// x", "y", "a /* c */ b"]);
 	// `parse` reads standard JSX unless `tsrx` is set
 	const plain = (options: object) =>
 		findAll(

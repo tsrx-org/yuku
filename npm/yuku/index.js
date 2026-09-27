@@ -249,7 +249,10 @@ export function parseModule(source, filename, options = {}) {
   const result = parse(source, {
     ...parseOptions,
     lang: parseOptions.lang ?? inferLang(filename),
-    tsrx: parseOptions.tsrx ?? isTsrxFile(filename),
+    // The core-compatible entry reads a comment in JSX text as a comment for
+    // every filename, as `@tsrx/core`'s parseModule does. `parse` and
+    // `analyze` keep standard JSX for `.tsx` and `.jsx`.
+    tsrx: parseOptions.tsrx ?? true,
     sourceType: "module",
     loose,
     // A module boundary owes its caller the scope-dependent early errors, not
