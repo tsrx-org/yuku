@@ -48,11 +48,11 @@ function isSelfClosingScript(node) {
 }
 
 /**
- * Calls `visit` once on every self-closing `<script />` in `program`. Each
+ * Calls `visit` once on every node in `program` that passes `test`. Each
  * object is walked once, so a back-edge a caller added (a `parent`, say) ends
  * the walk instead of looping.
  */
-function forEachSelfClosingScript(program, visit) {
+function forEachNode(program, test, visit) {
   const seen = new Set();
   const pending = [program];
   while (pending.length > 0) {
@@ -63,7 +63,7 @@ function forEachSelfClosingScript(program, visit) {
       for (const item of value) pending.push(item);
       continue;
     }
-    if (isSelfClosingScript(value)) visit(value);
+    if (test(value)) visit(value);
     for (const key in value) if (key !== "comments") pending.push(value[key]);
   }
 }
@@ -78,7 +78,7 @@ function forEachSelfClosingScript(program, visit) {
  */
 export function dropSelfClosingScriptContent(program, text) {
   if (!text.includes("<script")) return;
-  forEachSelfClosingScript(program, (script) => {
+  forEachNode(program, isSelfClosingScript, (script) => {
     delete script.content;
   });
 }
@@ -96,7 +96,7 @@ export function dropSelfClosingScriptContent(program, text) {
  */
 export function withSelfClosingScriptContent(program, callback) {
   const filled = [];
-  forEachSelfClosingScript(program, (script) => {
+  forEachNode(program, isSelfClosingScript, (script) => {
     if (script.content === undefined) {
       script.content = "";
       filled.push(script);
@@ -107,6 +107,44 @@ export function withSelfClosingScriptContent(program, callback) {
   } finally {
     for (const script of filled) delete script.content;
   }
+}
+
+/**
+ * Gives every `{}` whose source is exactly one comment the `innerComments`
+ * `@tsrx/core`'s parseModule gives it. `comments` is the file's comment list,
+ * in source order: only the nodes around a comment are walked.
+ * `loc(text, start, end)` is the comment's ESTree `loc`.
+ */
+export function addInnerComments(program, text, comments, loc) {
+  // the first comment at or after `offset`
+  const firstFrom = (offset) => {
+    let [low, high] = [0, comments.length];
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (comments[middle].start < offset) low = middle + 1;
+      else high = middle;
+    }
+    return comments[low];
+  };
+  const visit = (node) => {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (typeof node?.start !== "number" || !(firstFrom(node.start)?.start < node.end)) return;
+    if (node.type !== "JSXEmptyExpression") {
+      for (const key in node) if (key !== "comments") visit(node[key]);
+      return;
+    }
+    const comment = firstFrom(node.start);
+    if (comment.start !== node.start || comment.end !== node.end) return;
+    const { type, start, end } = comment;
+    // as core, a block comment's lines lose the indentation of its first line
+    const indent = /[ \t]*/.exec(text.slice(text.lastIndexOf("\n", start - 1) + 1, start))[0];
+    const multiline = type === "Block" && comment.value.includes("\n");
+    const value = multiline
+      ? comment.value.replace(new RegExp(`^${indent}`, "gm"), "")
+      : comment.value;
+    node.innerComments = [{ type, value, start, end, loc: loc(text, start, end) }];
+  };
+  if (comments.length > 0) visit(program);
 }
 
 /**
