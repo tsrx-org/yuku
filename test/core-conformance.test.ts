@@ -825,3 +825,12 @@ test("sloppy-mode scripts keep Annex B function declarations", () => {
 		/^Identifier 'g' has already been declared/,
 	);
 });
+
+test("an @switch parses with its comments collected (yuku#12)", () => {
+	const source =
+		"export function A({ x }) @{\n\t@switch (x) {\n\t\t// a\n\t\t@case 1: {\n\t\t\t<b />\n\t\t}\n\t}\n}\n";
+	const comments: { value: string }[] = [];
+	parseModule(source, "A.tsrx", { comments });
+	expect(comments.map(({ value }) => value)).toEqual([" a"]);
+	expect(analyze(source, "A.tsrx", { attachComments: true }).comments).toHaveLength(1);
+});

@@ -86,6 +86,15 @@ pub fn analyze(tree: anytype) AnalyzeResult {
             tree.tree.setData(case_node, .{ .switch_case = .{ .@"test" = case_data.@"test", .consequent = consequent } });
         }
     }
+    // Those blocks come after comment attachment, which sized its offsets
+    // table to the nodes it saw. They hold no comments of their own.
+    const offsets = tree.tree.attached_comment_offsets;
+    if (offsets.len != 0 and offsets.len <= tree.tree.nodes.len) {
+        const grown = try tree.tree.allocator().alloc(u32, tree.tree.nodes.len + 1);
+        @memcpy(grown[0..offsets.len], offsets);
+        @memset(grown[offsets.len..], offsets[offsets.len - 1]);
+        tree.tree.attached_comment_offsets = grown;
+    }
     return parser.semantic.analyze(&tree.tree);
 }
 
