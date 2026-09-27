@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { analyze, generate, parse, parseModule } from "@tsrx/yuku";
+import { analyze, encode, generate, parse, parseModule } from "@tsrx/yuku";
 
 // Regression tests for the @tsrx/core 0.5.0 rules reported against tsrx-org/oxc
 // (#110, #112, #113, #114, #115, #116). Every expected value below is what
@@ -195,6 +195,38 @@ test("#114: a self-closing <script /> has no content, and still prints", () => {
 	const program = parseModule(source, "App.tsrx");
 	expect(generate(program).code).toContain('<script src="x" /><script></script>');
 	expect("content" in findAll(program, (node) => node.type === "JSXScriptElement")[0]).toBe(false);
+});
+
+test("#114: a self-closing <script /> without content prints from a cloned or hand-built tree", () => {
+	const source = 'export function App() @{\n\t<script src="x" />\n}';
+	const expected = generate(parseModule(source, "App.tsrx")).code;
+	const cloned = structuredClone(parseModule(source, "App.tsrx"));
+	expect(generate(cloned).code).toBe(expected);
+	expect("content" in findAll(cloned, (node) => node.type === "JSXScriptElement")[0]).toBe(false);
+
+	// A tree rebuilt from plain objects, as a transform might, with no content.
+	const rebuilt = JSON.parse(JSON.stringify(parseModule(source, "App.tsrx")));
+	const [script] = findAll(rebuilt, (node) => node.type === "JSXScriptElement");
+	expect("content" in script).toBe(false);
+	expect(encode(rebuilt)).toBeInstanceOf(ArrayBuffer);
+	expect(generate(rebuilt).code).toBe(expected);
+	expect("content" in script).toBe(false);
+
+	// An explicit empty string is still accepted and left in place.
+	script.content = "";
+	expect(generate(rebuilt).code).toBe(expected);
+	expect(script.content).toBe("");
+});
+
+test("#114: parse and analyze programs encode directly with no content on <script />", () => {
+	const source = 'export function App() @{\n\t<script src="x" />\n}';
+	for (const result of [parse(source, { lang: "tsx", tsrx: true }), analyze(source, "App.tsrx")]) {
+		expect(
+			"content" in findAll(result.program, (node) => node.type === "JSXScriptElement")[0],
+		).toBe(false);
+		expect(() => encode(result.program)).not.toThrow();
+		expect(() => encode(structuredClone(result.program))).not.toThrow();
+	}
 });
 
 test("#110: parseModule reads comments in JSX text for every filename; parse and analyze only for .tsrx", () => {

@@ -39,19 +39,13 @@ export function withDiagnosticCode(diagnostic) {
   return code === undefined ? diagnostic : { ...diagnostic, code };
 }
 
-/**
- * Removes `content` from every self-closing `<script />` in `program`: it has
- * no body, and core gives it no `content`, where the wire format carries an
- * empty string. Returns the elements it changed, so an encoder can put the
- * empty string back. Skips the walk when `text` holds no `<script`.
- *
- * @param {object} program
- * @param {string} text Source text the program was decoded from.
- * @returns {object[]}
- */
-export function dropSelfClosingScriptContent(program, text) {
-  if (!text.includes("<script")) return [];
-  const scripts = [];
+/** Whether `node` is a `<script />` with no closing tag, and so no body. */
+function isSelfClosingScript(node) {
+  return node.type === "JSXScriptElement" && node.closingElement == null;
+}
+
+/** Calls `visit` on every self-closing `<script />` in `program`. */
+function forEachSelfClosingScript(program, visit) {
   const pending = [program];
   while (pending.length > 0) {
     const value = pending.pop();
@@ -60,13 +54,50 @@ export function dropSelfClosingScriptContent(program, text) {
       for (const item of value) pending.push(item);
       continue;
     }
-    if (value.type === "JSXScriptElement" && value.closingElement === null) {
-      delete value.content;
-      scripts.push(value);
-    }
+    if (isSelfClosingScript(value)) visit(value);
     for (const key in value) if (key !== "comments") pending.push(value[key]);
   }
-  return scripts;
+}
+
+/**
+ * Removes `content` from every self-closing `<script />` in `program`: it has
+ * no body, and core gives it no `content`, where the wire format carries an
+ * empty string. Skips the walk when `text` holds no `<script`.
+ *
+ * @param {object} program
+ * @param {string} text Source text the program was decoded from.
+ */
+export function dropSelfClosingScriptContent(program, text) {
+  if (!text.includes("<script")) return;
+  forEachSelfClosingScript(program, (script) => {
+    delete script.content;
+  });
+}
+
+/**
+ * Runs `callback` with an empty `content` on every self-closing `<script />`
+ * in `program` that has none, and removes it again afterwards. The encoder
+ * needs the string the wire format carries, and core's shape has none, so any
+ * tree in that shape (parsed, cloned, or built by hand) encodes this way.
+ *
+ * @template T
+ * @param {object} program
+ * @param {() => T} callback
+ * @returns {T}
+ */
+export function withSelfClosingScriptContent(program, callback) {
+  const filled = [];
+  forEachSelfClosingScript(program, (script) => {
+    if (script.content === undefined) {
+      script.content = "";
+      filled.push(script);
+    }
+  });
+  try {
+    return callback();
+  } finally {
+    for (const script of filled) delete script.content;
+  }
 }
 
 /**
@@ -78,11 +109,9 @@ export function dropSelfClosingScriptContent(program, text) {
  * @template {{ program: object, diagnostics: object[] }} T
  * @param {T} view
  * @param {string} text Source text the result was decoded from.
- * @param {(program: object, scripts: object[]) => void} [onSelfClosingScripts]
- *   Called once with the program and the elements whose `content` was removed.
  * @returns {T} The same `view`.
  */
-export function applyCoreShape(view, text, onSelfClosingScripts) {
+export function applyCoreShape(view, text) {
   const decodeProgram = Object.getOwnPropertyDescriptor(view, "program").get;
   const decodeDiagnostics = Object.getOwnPropertyDescriptor(view, "diagnostics").get;
   let program;
@@ -93,8 +122,7 @@ export function applyCoreShape(view, text, onSelfClosingScripts) {
     get() {
       if (program === undefined) {
         program = decodeProgram.call(view);
-        const scripts = dropSelfClosingScriptContent(program, text);
-        if (scripts.length > 0) onSelfClosingScripts?.(program, scripts);
+        dropSelfClosingScriptContent(program, text);
       }
       return program;
     },
