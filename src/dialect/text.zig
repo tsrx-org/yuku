@@ -82,9 +82,9 @@ pub fn codeCommentEnd(source: []const u8, index: usize) ?u32 {
     return @intCast(end);
 }
 
-/// Where the text after a block's `}` at `from` ends when `@tsrx/core` reads it
-/// as code: JavaScript's whitespace and comments, up to a child or closing tag.
-/// 0 when something else follows them, and it is text.
+/// Where the JavaScript whitespace and comments after a block's `}` at `from`
+/// end. `@tsrx/core` reads their comments as code; the text itself is code up
+/// to there only when a child or closing tag follows (`childAt`).
 pub fn codeAfterBlock(source: []const u8, from: usize) u32 {
     var at = from;
     while (at < source.len) {
@@ -97,5 +97,10 @@ pub fn codeAfterBlock(source: []const u8, from: usize) u32 {
             at += 2;
         } else at = codeCommentEnd(source, at) orelse break;
     }
-    return if (at < source.len and std.mem.indexOfScalar(u8, "<{@", source[at]) != null) @intCast(at) else 0;
+    return @intCast(at);
+}
+
+/// Whether a child, a closing tag or a directive starts at `at`.
+pub fn childAt(source: []const u8, at: usize) bool {
+    return at < source.len and std.mem.indexOfScalar(u8, "<{@", source[at]) != null;
 }
