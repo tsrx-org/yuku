@@ -3765,10 +3765,10 @@ fn dialectPrintRecord(comptime Host: type, host: *Host, record_index: u32) !void
         },
         .jsx_script_element => |element| {
             try host.dialectEmit(element.opening_element.raw);
-            if (element.raw.start != element.raw.end)
+            if (element.content.start != element.content.end)
                 try host.dialectWrite(host.tree.string(.{
-                    .start = element.raw.start,
-                    .end = element.raw.end,
+                    .start = element.content.start,
+                    .end = element.content.end,
                 }));
             if (element.closing_element.raw != std.math.maxInt(u32))
                 try host.dialectEmit(element.closing_element.raw);

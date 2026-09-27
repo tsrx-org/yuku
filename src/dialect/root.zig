@@ -15,6 +15,9 @@ pub const Options = struct {
     preserve_parens: bool = true,
     comments: CommentMode = .flat,
     loose: bool = false,
+    /// The source is a `.tsrx` file. Only then is a comment in JSX text a
+    /// comment, as `@tsrx/core` reads it; in `.tsx` and `.jsx` it is text.
+    tsrx: bool = false,
 };
 
 pub const ParseResult = struct {
@@ -89,6 +92,7 @@ fn parseLocal(allocator: std.mem.Allocator, source: []const u8, options: Options
             .lang = options.lang,
             .preserve_parens = options.preserve_parens,
             .comments = options.comments,
+            .extension_flags = if (options.tsrx) extension.extension_flag_tsrx else 0,
         }),
         .options = .{ .loose = options.loose },
     };

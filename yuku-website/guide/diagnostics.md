@@ -35,7 +35,9 @@ console.log(errors.length > 0); // true
 
 The returned program may be incomplete. Collecting errors is useful for an editor; it doesn't make the input safe to compile. Likewise, when using `parse`, check for diagnostics whose `severity` is `"error"` before transforming the tree.
 
-Warnings don't make `parseModule` throw. With `semanticErrors: true`, this fork’s `parse` path downgrades redeclaration diagnostics to warnings for editor recovery; [`analyze`](/guide/analyze) retains error severity. This is a local policy, not a general claim about upstream Yuku.
+Warnings don't make `parseModule` throw. Scope errors such as `Identifier 'count' has already been declared` are errors, as in `@tsrx/core`: a normal `parseModule` throws them, and `collect` or `loose` records them and returns the tree. Up to 0.3.0, `parse` reported redeclarations as warnings, so `parseModule` let them through.
+
+Some diagnostics carry a `code`, the same one `@tsrx/core` uses, so a tool can match on it instead of on the message: `tsrx-dynamic-tag-expression` for a dynamic tag like `<{c ? A : B} />`, and `tsrx-script-end-tag-in-body` for a `</script` inside a `<script>` body. The thrown `SyntaxError` carries the same `code`.
 
 ## Parsing errors and semantic early errors
 

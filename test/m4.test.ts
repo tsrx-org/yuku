@@ -99,13 +99,28 @@ test("an at sign only starts a complete JSX child directive keyword", () => {
 	]);
 });
 
-test("dynamic tags preserve conditional and logical expressions", () => {
+const DYNAMIC_TAG_MESSAGE =
+	"A dynamic tag expression must be an identifier, a member access such as `props.as` or `registry[name]`, or a string literal. Compute anything else before the element: `const Tag = c ? Child : Fallback;`, then `<{Tag} />`.";
+
+test("dynamic tags keep conditional and logical expressions while reporting them", () => {
 	for (const [source, type] of [
 		["const view = <{cond ? A : B}>x</{cond ? A : B}>;", "ConditionalExpression"],
 		["const view = <{a || B}>x</{a || B}>;", "LogicalExpression"],
 	] as const) {
 		const result = parse(source, { lang: "tsx" });
-		expect(result.diagnostics, source).toEqual([]);
+		// Reported once, at the opening tag's expression, with core's code.
+		const expression = source.slice(source.indexOf("{") + 1, source.indexOf("}"));
+		expect(result.diagnostics, source).toEqual([
+			{
+				severity: "error",
+				message: DYNAMIC_TAG_MESSAGE,
+				start: source.indexOf(expression),
+				end: source.indexOf(expression) + expression.length,
+				help: null,
+				labels: [],
+				code: "tsrx-dynamic-tag-expression",
+			},
+		]);
 		const element = result.program.body[0].declarations[0].init;
 		expect(element.openingElement.name.expression.type, source).toBe(type);
 		expect(element.closingElement.name.expression.type, source).toBe(type);
@@ -125,7 +140,8 @@ test("dynamic tags preserve conditional and logical expressions", () => {
 	const rejected = parse("const view = <{pick()} />;", { lang: "tsx" });
 	expect(rejected.diagnostics).toEqual([
 		expect.objectContaining({
-			message: "TSRX dynamic tag expression must resolve to an element name",
+			message: DYNAMIC_TAG_MESSAGE,
+			code: "tsrx-dynamic-tag-expression",
 		}),
 	]);
 });
@@ -171,8 +187,8 @@ test("script raw text and style sheets remain distinct in either fragment order"
 		const style = children.find(({ type }) => type === "JSXStyleElement");
 		expect(script, source).toMatchObject({
 			type: "JSXScriptElement",
-			raw: '{"a":1}',
-			children: [{ type: "JSXText", value: '{"a":1}', raw: '{"a":1}' }],
+			content: '{"a":1}',
+			children: [],
 		});
 		expect(style, source).toMatchObject({
 			type: "JSXStyleElement",
@@ -188,8 +204,8 @@ test("script raw text and style sheets remain distinct in either fragment order"
 	expect(empty.diagnostics).toEqual([]);
 	expect(empty.program.body[0].expression).toMatchObject({
 		type: "JSXScriptElement",
-		raw: "",
-		children: [{ type: "JSXText", value: "", raw: "" }],
+		content: "",
+		children: [],
 	});
 	const generated = generate(empty.program);
 	expect(generated.errors).toEqual([]);

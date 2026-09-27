@@ -16,6 +16,7 @@ const DEFAULTS = {
     semanticErrors: 'false',
     attachComments: 'false',
     loose: 'false',
+    tsrx: 'false',
   },
   ParseModuleOptions: {
     lang: 'from the filename: .tsrx and .tsx give "tsx", .jsx "jsx", .d.ts "dts", .ts "ts", anything else "js"',
@@ -23,6 +24,7 @@ const DEFAULTS = {
     semanticErrors: 'true',
     attachComments: 'true when comments is passed',
     loose: 'false',
+    tsrx: 'true for a .tsrx filename',
     collect: 'false: the first error is thrown as a SyntaxError',
     errors: 'none; filled only with collect or loose',
     comments: 'none',
@@ -86,7 +88,7 @@ const rows = @for (const item of items) {
 const rows = @for (const item of items; index i) {
   <li>{i}: {item}</li>
 };`,
-  duplicateBindings: `// duplicateBindings(program, source) reports the second "a"; the Diagnostics tab shows the same warning
+  duplicateBindings: `// duplicateBindings(program, source) reports the second "a"; the Diagnostics tab shows the same error
 let a = 1;
 let a = 2;
 var b;

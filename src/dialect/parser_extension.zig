@@ -110,6 +110,13 @@ pub const Store = struct {
 
 pub const LocalOptions = struct { loose: bool = false };
 
+/// `Options.extension_flags` bit: the source is a `.tsrx` file.
+pub const extension_flag_tsrx: u32 = 1;
+
+fn isTsrxSource(lexer: anytype) bool {
+    return lexer.extension_flags & extension_flag_tsrx != 0;
+}
+
 pub fn Container(comptime Parser: type) type {
     return struct {
         parser: Parser,
@@ -458,8 +465,11 @@ pub fn Host(comptime Parser: type) type {
                 .expression_statement => |value| expression = value.expression,
                 else => {},
             };
+            // An advisory diagnostic - a dynamic tag nested in this expression
+            // that isn't an allowed form - doesn't change the parse, so it
+            // doesn't make the expression fail; it is kept below.
             const parsed_exactly_one = expression != .null and
-                p.diagnostics.items.len == saved.diagnostics_len and
+                onlyAdvisory(p.diagnostics.items[saved.diagnostics_len..]) and
                 p.tree.span(expression).start == start and
                 p.tree.span(expression).end <= end;
             if (!parsed_exactly_one) {
@@ -475,6 +485,7 @@ pub fn Host(comptime Parser: type) type {
             var restore = saved;
             restore.nodes_len = p.tree.nodes.len;
             restore.extra_len = p.tree.extras.items.len;
+            restore.diagnostics_len = p.diagnostics.items.len;
             p.rewind(restore);
             p.lexer.rewindTo(end);
             p.current_token = TokenValue.eof(end);
@@ -1036,9 +1047,16 @@ pub fn jsx_text_boundary(source: anytype, cursor: u32) ?bool {
         .handled => |value| value,
     };
 }
+/// In a `.tsrx` file a comment in JSX text is skipped whole, so a `<`, `{` or
+/// `}` in it does not end the text run (`// <b>x</b>` on its own line comments
+/// the element out). In `.tsx` and `.jsx` it is text, as in TSX.
+pub fn jsx_text_skip(lexer: anytype, run_start: u32, cursor: u32) ?u32 {
+    if (!isTsrxSource(lexer)) return null;
+    return text.skip(lexer.source, run_start, cursor);
+}
 pub fn jsx_text_value(comptime Result: type, parser: anytype, span: anytype) Result {
     const H = Host(@TypeOf(parser.*));
-    return switch (try text.value(H, parser, span)) {
+    return switch (try text.value(H, parser, span, isTsrxSource(&parser.lexer))) {
         .unhandled => null,
         .handled => |value| value,
     };
@@ -1150,12 +1168,23 @@ fn literalLessThan(source: []const u8, at: u32) bool {
     return !canOpenJsxTag(next);
 }
 
+/// Diagnostics that report without changing the parse: an invalid dynamic
+/// tag expression, and a `</script` in a script body.
+fn onlyAdvisory(diagnostics: anytype) bool {
+    for (diagnostics) |diagnostic| {
+        const dynamic_tag = std.mem.eql(u8, diagnostic.message, jsx.dynamic_tag_message) and diagnostic.help == null;
+        if (!dynamic_tag and !script.isEndTagInBodyMessage(diagnostic.message)) return false;
+    }
+    return true;
+}
+
 /// Offset just past the closing tag of a raw-text element whose opening
 /// tag ended at `from`.
 fn rawTextElementEnd(source: []const u8, from: u32, tag: RawTextTag) ?u32 {
     const close = switch (tag) {
         .style => "</style>",
-        .script => "</script>",
+        // `</script`, optional HTML whitespace, `>`: see script.findBodyEnd.
+        .script => return script.bodyEnd(source, from),
         .none => return null,
     };
     const index = std.mem.indexOfPos(u8, source, from, close) orelse return null;
@@ -1336,7 +1365,7 @@ fn parseExtendedJsxChildren(
         const text_span: H.Span = .{ .start = text_start, .end = text_token.span.end };
         if (text_span.end > text_span.start) {
             var value = H.sourceSlice(parser, text_span.start, text_span.end);
-            switch (try text.value(H, parser, text_span)) {
+            switch (try text.value(H, parser, text_span, isTsrxSource(&parser.lexer))) {
                 .handled => |decoded| value = decoded,
                 .unhandled => {},
             }
@@ -1554,7 +1583,7 @@ pub fn parseLooseAncestorClose(
     if (text_token.span.end != closing_start) return null;
     if (text_token.len() > 0) {
         var value = H.sourceSlice(parser, text_token.span.start, text_token.span.end);
-        switch (try text.value(H, parser, text_token.span)) {
+        switch (try text.value(H, parser, text_token.span, isTsrxSource(&parser.lexer))) {
             .handled => |decoded| value = decoded,
             .unhandled => {},
         }

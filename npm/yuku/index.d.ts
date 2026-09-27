@@ -213,9 +213,11 @@ export interface JSXStyleElement extends Expression {
 export interface JSXScriptElement extends Expression {
 	type: "JSXScriptElement";
 	openingElement: TSRXJSXOpeningElement;
-	children: JSXText[];
+	/** Always empty: the body is `content`, raw text, as `@tsrx/core` 0.5.0 reads it. */
+	children: [];
 	closingElement: TSRXJSXClosingElement;
-	raw: string;
+	/** The body as written, `""` when empty, absent on a self-closing `<script />`. `{`, `<`, comments and character references in it are text. */
+	content?: string;
 }
 
 export interface DiagnosticLabel {
@@ -231,6 +233,11 @@ export interface Diagnostic {
 	end: number;
 	help: string | null;
 	labels: DiagnosticLabel[];
+	/**
+	 * The `@tsrx/core` diagnostic code, where core has one:
+	 * `tsrx-dynamic-tag-expression` or `tsrx-script-end-tag-in-body`.
+	 */
+	code?: string;
 }
 
 export interface Comment extends BaseNode {
@@ -251,6 +258,12 @@ export interface ParseOptions {
 	semanticErrors?: boolean;
 	attachComments?: boolean;
 	loose?: boolean;
+	/**
+	 * The source is a `.tsrx` file: a comment in JSX text is a comment, left out
+	 * of the text, as `@tsrx/core` reads it. In `.tsx` and `.jsx` it is text.
+	 * `parseModule` and `analyze` set it from the filename.
+	 */
+	tsrx?: boolean;
 }
 
 export interface ParseModuleOptions extends Omit<ParseOptions, "sourceType"> {

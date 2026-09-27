@@ -1,7 +1,7 @@
 // The figure's promise: every refused input remains available as a plain-language
 // chip, and selecting it updates the one source pane, underline, and readout.
-// The warning stays a warning, and the recovery switch only belongs to the one
-// case that loose mode can recover.
+// Every case is an error, the redeclaration included (as in @tsrx/core), and the
+// recovery switch only belongs to the one case that loose mode can recover.
 const CASES = [
   ['if-braces', '@if without braces', '@if (x) <b/>', 'error'],
   ['for-braces', '@for without braces', 'const before = 1; const view = @for (const item of items) <li/>; const after = 2;', 'error'],
@@ -15,7 +15,7 @@ const CASES = [
   ['for-tail', 'repeated loop index', 'const view = @for (const k in obj; index a; index b) { <b/> };', 'error'],
   ['unclosed-element', 'mismatched closing tag', '<a><b>text</a>', 'error'],
   ['fragment-open', 'unclosed fragment', '<>@if (x) { <b/> }', 'error'],
-  ['redeclared', 'redeclared name', 'const a = 1; const a = 2;', 'warning'],
+  ['redeclared', 'redeclared name', 'const a = 1; const a = 2;', 'error'],
   ['export-missing', 'missing export', 'export { nope };', 'error'],
 ]
 

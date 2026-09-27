@@ -51,7 +51,7 @@ A record introduces a new node type, such as `JSXForExpression`. An overlay adds
 | `import { x } from server` | `Identifier` for `server` | As an import source |
 | `<{tag}>...</{tag}>` | `JSXElement` with a `JSXExpressionContainer` name | Anywhere a JSX element can appear |
 | `<style>...</style>` | `JSXStyleElement` with a `StyleSheet` child | As a JSX child or a standalone JSX value |
-| `<script>...</script>` | `JSXScriptElement` with raw `JSXText` | Raw template contents, retained without parsing as JavaScript |
+| `<script>...</script>` | `JSXScriptElement` with the body on `content` | Raw text, retained without parsing as JavaScript. The body ends at `</script`, optional whitespace, and `>` |
 
 The generated [API reference](/reference/api) lists each node's fields.
 

@@ -1,22 +1,19 @@
 const std = @import("std");
 const parser = @import("parser");
 
-test "the recoverable early-error set is exactly the redeclaration family" {
-    // Kept tight on purpose: yuku carries no diagnostic codes, so the message
-    // is all there is to key on, and every extra entry is another module the
-    // bundler stops rejecting. See src/dialect/diagnostics.zig.
+test "the redeclaration family is recognized by message" {
     try std.testing.expect(
-        parser.diagnostics.isRecoverable("Identifier 'repeated' has already been declared"),
+        parser.diagnostics.isRedeclaration("Identifier 'repeated' has already been declared"),
     );
     try std.testing.expect(
-        parser.diagnostics.isRecoverable("Identifier '#a' has already been declared"),
+        parser.diagnostics.isRedeclaration("Identifier '#a' has already been declared"),
     );
-    try std.testing.expect(!parser.diagnostics.isRecoverable("Export 'a' is not defined"));
-    try std.testing.expect(!parser.diagnostics.isRecoverable("Duplicate export of 'n'"));
-    try std.testing.expect(!parser.diagnostics.isRecoverable("'with' in strict mode"));
+    try std.testing.expect(!parser.diagnostics.isRedeclaration("Export 'a' is not defined"));
+    try std.testing.expect(!parser.diagnostics.isRedeclaration("Duplicate export of 'n'"));
+    try std.testing.expect(!parser.diagnostics.isRedeclaration("'with' in strict mode"));
     // an empty name is not a message the checker emits
     try std.testing.expect(
-        !parser.diagnostics.isRecoverable("Identifier '' has already been declared"),
+        !parser.diagnostics.isRedeclaration("Identifier '' has already been declared"),
     );
 }
 
@@ -25,7 +22,7 @@ test "the recoverable early-error set is exactly the redeclaration family" {
 fn boundaryDiagnostics(
     tree: *parser.ParseResult,
 ) []const parser.ast.Diagnostic {
-    parser.diagnostics.analyzeWithBoundarySeverity(tree);
+    parser.diagnostics.analyzeEarlyErrors(tree);
     return tree.tree.diagnostics.items;
 }
 
@@ -37,6 +34,28 @@ fn findDiagnostic(
         if (std.mem.indexOf(u8, diagnostic.message, needle) != null) return diagnostic;
     }
     return null;
+}
+
+/// The early-error messages for `source`, analyzed as the FFI parse entry
+/// point does, in report order.
+fn earlyErrors(source: []const u8, messages: *std.ArrayList([]const u8)) !void {
+    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+    defer tree.deinit();
+    for (boundaryDiagnostics(&tree)) |diagnostic| {
+        try std.testing.expectEqual(parser.ast.Severity.@"error", diagnostic.severity);
+        try messages.append(std.testing.allocator, try std.testing.allocator.dupe(u8, diagnostic.message));
+    }
+}
+
+fn expectEarlyErrors(source: []const u8, expected: []const []const u8) !void {
+    var messages: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (messages.items) |message| std.testing.allocator.free(message);
+        messages.deinit(std.testing.allocator);
+    }
+    try earlyErrors(source, &messages);
+    try std.testing.expectEqual(expected.len, messages.items.len);
+    for (expected, messages.items) |want, got| try std.testing.expectEqualStrings(want, got);
 }
 
 test "an undeclared export stays a fatal early error" {
@@ -57,12 +76,9 @@ test "an undeclared export stays a fatal early error" {
     try std.testing.expect(tree.tree.hasErrors());
 }
 
-test "a duplicate binding stays a recoverable early error" {
-    // Markless re-reports redeclarations itself as recoverable `usage`
-    // diagnostics so a half-typed editor buffer still produces virtual code.
-    // Reporting them at `.@"error"` here makes the module boundary throw and
-    // closes those editor flows, so the checker's severity is lowered instead
-    // of the diagnostic being dropped -- `parse()` consumers still see it.
+test "a duplicate binding is an early error, as in @tsrx/core" {
+    // Core throws a redeclaration in a normal parse and records it under
+    // `collect`/`loose` (tsrx-org/oxc#113); 0.3.0 lowered it to a warning.
     const source =
         "export default function Duplicate() @{\n" ++
         "\tlet repeated = 1;\n" ++
@@ -78,12 +94,11 @@ test "a duplicate binding stays a recoverable early error" {
         diagnostics,
         "Identifier 'repeated' has already been declared",
     ) orelse return error.MissingDuplicateBindingDiagnostic;
-    try std.testing.expectEqual(parser.ast.Severity.warning, duplicate.severity);
-    // recoverable on its own: nothing here makes the module unusable
-    try std.testing.expect(!tree.tree.hasErrors());
+    try std.testing.expectEqual(parser.ast.Severity.@"error", duplicate.severity);
+    try std.testing.expect(tree.tree.hasErrors());
 }
 
-test "a duplicate binding does not mask a fatal export in the same module" {
+test "a duplicate binding and an undeclared export are both reported" {
     const source = "let a = 1;\nlet a = 2;\nexport{missing as gone};";
     var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .js });
     defer tree.deinit();
@@ -95,13 +110,13 @@ test "a duplicate binding does not mask a fatal export in the same module" {
     ) orelse return error.MissingDuplicateBindingDiagnostic;
     const undeclared = findDiagnostic(diagnostics, "Export 'missing' is not defined") orelse
         return error.MissingUndeclaredExportDiagnostic;
-    try std.testing.expectEqual(parser.ast.Severity.warning, duplicate.severity);
+    try std.testing.expectEqual(parser.ast.Severity.@"error", duplicate.severity);
     try std.testing.expectEqual(parser.ast.Severity.@"error", undeclared.severity);
     try std.testing.expect(tree.tree.hasErrors());
 }
 
-test "boundary severity survives a tree parsed under recovery" {
-    // The editor path parses broken buffers loosely; classification must not
+test "early errors survive a tree parsed under recovery" {
+    // The editor path parses broken buffers loosely; reporting must not
     // depend on analysis completing.
     const source = "export default function Broken() @{ <div>";
     var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx, .loose = true });
@@ -112,6 +127,45 @@ test "boundary severity survives a tree parsed under recovery" {
     const diagnostics = boundaryDiagnostics(&tree);
     try std.testing.expect(diagnostics.len >= parse_errors);
     try std.testing.expect(tree.tree.hasErrors());
+}
+
+test "scope errors match @tsrx/core's messages" {
+    const redeclared = "Identifier 'count' has already been declared";
+    try expectEarlyErrors("export function f() { let count = 0; let count = 1; }", &.{redeclared});
+    try expectEarlyErrors("export function f() { const count = 0; { var count = 1; } }", &.{redeclared});
+    // a `var` in a nested `@{ }` or an `@if` body belongs to the component
+    try expectEarlyErrors(
+        "export function App({ ready }) @{ const count = 0; <div>@{ if (ready) { var count = 1; } <span>{count}</span> }</div> }",
+        &.{redeclared},
+    );
+    try expectEarlyErrors(
+        "export function App({ ready }) @{ const count = 0; <div>@if (ready) { var count = 1; <span>{count}</span> }</div> }",
+        &.{redeclared},
+    );
+    // an import and a value declaration of one name
+    try expectEarlyErrors("import { a } from 'x';\nconst a = 1;", &.{"Identifier 'a' has already been declared"});
+    try expectEarlyErrors("import type { A } from 'x';\nconst A = 1;", &.{"Identifier 'A' has already been declared"});
+    // a duplicate parameter is acorn's clash, a body binding is not
+    try expectEarlyErrors("export function f(a, a) {}", &.{"Argument name clash"});
+    try expectEarlyErrors("const f = (a, b = (a) => { let a; }) => a;", &.{"Identifier 'a' has already been declared"});
+    try expectEarlyErrors("export function f(a) { let a = 1; }", &.{"Identifier 'a' has already been declared"});
+    try expectEarlyErrors("type A = 1;\ntype A = 2;", &.{"type 'A' has already been declared."});
+}
+
+test "scopes @tsrx/core accepts stay valid" {
+    for ([_][]const u8{
+        "function f() { var a; var a; }",
+        "import type { A } from 'x';\ninterface A {}",
+        "type A = 1;\ninterface A {}",
+        "interface A {}\ninterface A {}",
+        "declare function f(a, a): void;",
+        "function f(a, a): void;\nfunction f() {}",
+        "abstract class C { abstract m(a, a): void; }",
+        "export function App({ k }) @{ <div>@switch (k) { @case 1: { const x = 1; <b>{x}</b> } @case 2: { const x = 2; <i>{x}</i> } }</div> }",
+        "export function App({ a }) @{ <div>@if (a) { const x = 1; <b>{x}</b> } @else { const x = 2; <i>{x}</i> }</div> }",
+    }) |source| {
+        try expectEarlyErrors(source, &.{});
+    }
 }
 
 test "dialect children participate in semantic analysis" {
@@ -652,7 +706,7 @@ fn declaredJsxElement(tree: *const parser.ParseResult) parser.ast.NodeIndex {
     return element;
 }
 
-test "dynamic tags preserve conditional and logical expressions" {
+test "dynamic tags keep conditional and logical expressions while reporting them" {
     const Case = struct {
         source: []const u8,
         expression: std.meta.Tag(parser.ast.NodeData),
@@ -663,7 +717,9 @@ test "dynamic tags preserve conditional and logical expressions" {
     }) |case| {
         var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
         defer tree.deinit();
-        try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+        // Reported once, at the opening tag, without changing the parse.
+        try std.testing.expectEqual(@as(usize, 1), tree.diagnostics.items.len);
+        try std.testing.expectEqualStrings(dynamic_tag_message, tree.diagnostics.items[0].message);
 
         const element = tree.data(declaredJsxElement(&tree)).jsx_element;
         const open_name = openingName(&tree, element.opening_element);
@@ -681,10 +737,7 @@ test "dynamic tags preserve conditional and logical expressions" {
     const rejected = "const view = <{pick()} />;";
     var tree = try parser.parse(std.testing.allocator, rejected, .{ .lang = .tsx });
     defer tree.deinit();
-    try std.testing.expect(findDiagnostic(
-        tree.diagnostics.items,
-        "TSRX dynamic tag expression must resolve to an element name",
-    ) != null);
+    try std.testing.expect(findDiagnostic(tree.diagnostics.items, dynamic_tag_message) != null);
 }
 
 const DialectChildTags = struct {
@@ -1194,7 +1247,7 @@ test "a style sibling keeps its exact span and its CSS" {
     try std.testing.expectEqualStrings(" tail", tree.string(tree.data(nodes[3]).jsx_text.value));
 }
 
-test "script and style elements keep their distinct raw children in either order" {
+test "script and style elements keep their distinct raw bodies in either order" {
     const payload = "{\"a\":1}";
     for ([_][]const u8{
         "<><script>{\"a\":1}</script><style>.a{color:red}</style></>",
@@ -1218,12 +1271,10 @@ test "script and style elements keep their distinct raw children in either order
                     saw_script = true;
                     try std.testing.expectEqualStrings(
                         payload,
-                        source[script.raw.start..script.raw.end],
+                        source[script.content.start..script.content.end],
                     );
-                    const raw_children = tree.extra(.{ .start = script.children.start, .len = script.children.len });
-                    try std.testing.expectEqual(@as(usize, 1), raw_children.len);
-                    try std.testing.expectEqual(.jsx_text, std.meta.activeTag(tree.data(raw_children[0])));
-                    try std.testing.expectEqualStrings(payload, tree.string(tree.data(raw_children[0]).jsx_text.value));
+                    // The body is `content` only: no mirrored JSXText child.
+                    try std.testing.expectEqual(@as(u32, 0), script.children.len);
                 },
                 .jsx_style_element => |style_element| {
                     saw_style = true;
@@ -1240,7 +1291,7 @@ test "script and style elements keep their distinct raw children in either order
     }
 }
 
-test "an empty script still owns one empty raw text child" {
+test "an empty script has empty content and no children" {
     const source = "<script src=\"x\"></script>";
     var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
     defer tree.deinit();
@@ -1249,11 +1300,8 @@ test "an empty script still owns one empty raw text child" {
     const body = tree.extra(tree.data(tree.root).program.body);
     const script_node = tree.data(body[0]).expression_statement.expression;
     const script = tree.dialect_store.records.items[tree.dialectRecord(@intFromEnum(script_node)).?].jsx_script_element;
-    try std.testing.expectEqualStrings("", source[script.raw.start..script.raw.end]);
-    const children = tree.extra(.{ .start = script.children.start, .len = script.children.len });
-    try std.testing.expectEqual(@as(usize, 1), children.len);
-    try std.testing.expectEqual(.jsx_text, std.meta.activeTag(tree.data(children[0])));
-    try std.testing.expectEqualStrings("", tree.string(tree.data(children[0]).jsx_text.value));
+    try std.testing.expectEqualStrings("", source[script.content.start..script.content.end]);
+    try std.testing.expectEqual(@as(u32, 0), script.children.len);
 }
 
 test "style siblings round-trip through codegen" {
@@ -1645,4 +1693,210 @@ fn nodeOfKind(tree: *const parser.ParseResult, kind: std.meta.Tag(parser.ast.Nod
         if (std.meta.activeTag(data) == kind) return @enumFromInt(index);
     }
     return null;
+}
+
+fn onlyScript(tree: *parser.ParseResult) !parser.dialect_schema.JSXScriptElement {
+    for (tree.dialect_store.records.items) |record| switch (record) {
+        .jsx_script_element => |script| return script,
+        else => {},
+    };
+    return error.MissingScriptElement;
+}
+
+test "a script body ends at </script, HTML whitespace, and >" {
+    for ([_][]const u8{
+        "const view = <div><script>go();</script ></div>;",
+        "const view = <div><script>go();</script\n\t></div>;",
+        "const view = <div><script>go();</script\x0c></div>;",
+        "export function App() @{ <div><script>go();</script ></div> }",
+    }) |source| {
+        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+        const script = try onlyScript(&tree);
+        try std.testing.expectEqualStrings("go();", source[script.content.start..script.content.end]);
+        try std.testing.expectEqual(@as(u32, 0), script.children.len);
+        const closing = tree.span(@enumFromInt(script.closing_element.raw));
+        try std.testing.expectEqualStrings("</script", source[closing.start .. closing.start + 8]);
+        try std.testing.expectEqual(@as(u8, '>'), source[closing.end - 1]);
+    }
+}
+
+test "any other </script in a script body is reported over its 8 characters" {
+    for ([_][2][]const u8{
+        .{ "</SCRIPT>", "'</SCRIPT' can end a script in HTML, so a '<script>' body can't contain it. Write '<\\/SCRIPT' instead." },
+        .{ "</script/>", "'</script' can end a script in HTML, so a '<script>' body can't contain it. Write '<\\/script' instead." },
+        .{ "</scripts>", "'</script' can end a script in HTML, so a '<script>' body can't contain it. Write '<\\/script' instead." },
+        .{ "</Script >", "'</Script' can end a script in HTML, so a '<script>' body can't contain it. Write '<\\/Script' instead." },
+    }) |case| {
+        const prefix = "const view = <div><script>a = 1;";
+        const source = try std.mem.concat(std.testing.allocator, u8, &.{ prefix, case[0], "b = 2;</script></div>;" });
+        defer std.testing.allocator.free(source);
+        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expectEqual(@as(usize, 1), tree.diagnostics.items.len);
+        const diagnostic = tree.diagnostics.items[0];
+        try std.testing.expectEqualStrings(case[1], diagnostic.message);
+        try std.testing.expectEqual(@as(u32, prefix.len), diagnostic.span.start);
+        try std.testing.expectEqual(@as(u32, prefix.len + 8), diagnostic.span.end);
+        // the body goes on to the real closing tag
+        const script = try onlyScript(&tree);
+        const content = source[script.content.start..script.content.end];
+        try std.testing.expect(std.mem.endsWith(u8, content, "b = 2;"));
+    }
+}
+
+const dynamic_tag_message = "A dynamic tag expression must be an identifier, a member access such as `props.as` or `registry[name]`, or a string literal. Compute anything else before the element: `const Tag = c ? Child : Fallback;`, then `<{Tag} />`.";
+
+test "identifiers, member chains, and string literals are dynamic tags" {
+    for ([_][]const u8{ "tag", "props.as", "registry[name]", "'section'", "this.tag", "items[0]", "a.b[name][0].c", "this.#x" }) |tag| {
+        const source = try std.mem.concat(std.testing.allocator, u8, &.{ "class C { #x; m() { return <{", tag, "} />; } }" });
+        defer std.testing.allocator.free(source);
+        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
+    }
+}
+
+test "any other dynamic tag expression is reported once, at the part core reports" {
+    for ([_][2][]const u8{
+        .{ "c ? A : B", "c ? A : B" },
+        .{ "props.as ?? 'div'", "props.as ?? 'div'" },
+        .{ "(tag)", "(tag)" },
+        .{ "(a).b", "(a)" },
+        .{ "tag as any", "tag as any" },
+        .{ "tag!", "tag!" },
+        .{ "props?.as", "props?.as" },
+        .{ "registry[getName()]", "getName()" },
+        .{ "registry[(name)]", "(name)" },
+        .{ "undefined", "undefined" },
+        .{ "null", "null" },
+        .{ "`div`", "`div`" },
+        .{ "getTag()", "getTag()" },
+        .{ "'h' + level", "'h' + level" },
+    }) |case| {
+        const prefix = "const view = <div><{";
+        const source = try std.mem.concat(std.testing.allocator, u8, &.{ prefix, case[0], "}>x</{", case[0], "}></div>;" });
+        defer std.testing.allocator.free(source);
+        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expectEqual(@as(usize, 1), tree.diagnostics.items.len);
+        const diagnostic = tree.diagnostics.items[0];
+        try std.testing.expectEqualStrings(dynamic_tag_message, diagnostic.message);
+        try std.testing.expect(diagnostic.help == null);
+        try std.testing.expectEqualStrings(case[1], source[diagnostic.span.start..diagnostic.span.end]);
+        try std.testing.expect(diagnostic.span.start >= prefix.len);
+        try std.testing.expect(diagnostic.span.end <= prefix.len + case[0].len);
+    }
+}
+
+test "a spread or empty dynamic tag is no expression" {
+    for ([_][]const u8{ "const view = <{...a} />;", "const view = <{} />;" }) |source| {
+        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expectEqual(@as(usize, 1), tree.diagnostics.items.len);
+        try std.testing.expectEqualStrings(dynamic_tag_message, tree.diagnostics.items[0].message);
+        try std.testing.expect(tree.diagnostics.items[0].help != null);
+    }
+}
+
+fn jsxTexts(source: []const u8, tsrx: bool, texts: *std.ArrayList([]const u8)) !void {
+    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx, .tsrx = tsrx });
+    defer tree.deinit();
+    try std.testing.expect(!tree.hasErrors());
+    for (0..tree.nodes.len) |index| switch (tree.data(@enumFromInt(index))) {
+        .jsx_text => |text| {
+            const value = tree.string(text.value);
+            if (std.mem.trim(u8, value, " \t\r\n").len == 0) continue;
+            try texts.append(std.testing.allocator, try std.testing.allocator.dupe(u8, value));
+        },
+        else => {},
+    };
+}
+
+test "in a .tsrx file, comments in JSX text are left out of the text, and hide what they hold" {
+    for ([_]struct { []const u8, []const []const u8 }{
+        .{ "export function App() @{ <p>\n\ta\n\t// note\n\tb\n</p> }", &.{"\n\ta\n\t\n\tb\n"} },
+        .{ "const view = <p>\n\ta\n\t// note\n\tb\n</p>;", &.{"\n\ta\n\t\n\tb\n"} },
+        .{ "const view = <p>a /* note */ b</p>;", &.{"a  b"} },
+        .{ "export function App() @{ <p>a /* note */ b</p> }", &.{"a  b"} },
+        // a comment hides the markup in it
+        .{ "const view = <div>\n\t// <b>x</b>\n\t<i>y</i>\n</div>;", &.{"y"} },
+        .{ "export function App() @{ <div>\n\t/* {a} <b>x</b> */\n\t<i>y</i>\n</div> }", &.{"y"} },
+        .{ "const view = <div>a /* } */ b</div>;", &.{"a  b"} },
+        // `//` after text on its line, and an escaped opener, are text
+        .{ "const view = <p>see https://x.dev</p>;", &.{"see https://x.dev"} },
+        .{ "export function App() @{ <p>a // note</p> }", &.{"a // note"} },
+    }) |case| {
+        var texts: std.ArrayList([]const u8) = .empty;
+        defer {
+            for (texts.items) |text| std.testing.allocator.free(text);
+            texts.deinit(std.testing.allocator);
+        }
+        try jsxTexts(case[0], true, &texts);
+        try std.testing.expectEqual(case[1].len, texts.items.len);
+        for (case[1], texts.items) |want, got| try std.testing.expectEqualStrings(want, got);
+    }
+}
+
+test "in .tsx and .jsx, a comment in JSX text is text" {
+    for ([_]struct { []const u8, []const []const u8 }{
+        .{ "const view = <div>// x</div>;", &.{"// x"} },
+        .{ "const view = <p>a /* note */ b</p>;", &.{"a /* note */ b"} },
+        .{ "const view = <div>\n\t// <b>x</b>\n</div>;", &.{ "\n\t// ", "x" } },
+    }) |case| {
+        var texts: std.ArrayList([]const u8) = .empty;
+        defer {
+            for (texts.items) |text| std.testing.allocator.free(text);
+            texts.deinit(std.testing.allocator);
+        }
+        try jsxTexts(case[0], false, &texts);
+        try std.testing.expectEqual(case[1].len, texts.items.len);
+        for (case[1], texts.items) |want, got| try std.testing.expectEqualStrings(want, got);
+    }
+}
+
+test "redeclarations TypeScript merges but acorn reports are reported" {
+    try expectEarlyErrors("function g() {} function g() {}", &.{"Identifier 'g' has already been declared"});
+    try expectEarlyErrors("function g() {} var g;", &.{"Identifier 'g' has already been declared"});
+    try expectEarlyErrors("declare const a: number;\nlet a;", &.{"Identifier 'a' has already been declared"});
+    try expectEarlyErrors("declare class A {}\nclass A {}", &.{"Identifier 'A' has already been declared"});
+    try expectEarlyErrors("export function App() @{ <div>@try { <b /> } @catch (e, e) { <i /> }</div> }", &.{"Identifier 'e' has already been declared"});
+    try expectEarlyErrors("export function App() @{ const y = 1; <div>@try { <b /> } @pending { var y = 2; <p /> }</div> }", &.{"Identifier 'y' has already been declared"});
+    try expectEarlyErrors("function f(): void;\nexport { f };", &.{"Export 'f' is not defined"});
+    // inside a function body, functions are var-like
+    try expectEarlyErrors("function f() { function g() {} function g() {} var g; }", &.{});
+    try expectEarlyErrors("export function f(a: string): void;\nexport function f(a: any) {}", &.{});
+}
+
+test "early errors come in core's order" {
+    // a function's own name is declared after its body
+    try expectEarlyErrors("let f;\nfunction f() { let a; let a; }", &.{
+        "Identifier 'a' has already been declared",
+        "Identifier 'f' has already been declared",
+    });
+    // undefined exports come once the module is read
+    try expectEarlyErrors("export { m };\nlet a; let a;", &.{
+        "Identifier 'a' has already been declared",
+        "Export 'm' is not defined",
+    });
+}
+
+test "a dynamic tag nested in a tag expression is reported first" {
+    const source = "export function A() @{ const x=<{() => <{a()}/>}>x</{() => <{a()}/>}>; }";
+    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx, .tsrx = true });
+    defer tree.deinit();
+    var starts: [3]u32 = undefined;
+    try std.testing.expectEqual(@as(usize, 3), tree.diagnostics.items.len);
+    for (tree.diagnostics.items, &starts) |diagnostic, *start| {
+        try std.testing.expectEqualStrings(dynamic_tag_message, diagnostic.message);
+        start.* = diagnostic.span.start;
+    }
+    try std.testing.expectEqualSlices(u32, &.{ 41, 33, 61 }, &starts);
+    // the parse keeps the arrow function, not a placeholder
+    var arrows: usize = 0;
+    for (0..tree.nodes.len) |index| {
+        if (tree.data(@enumFromInt(index)) == .arrow_function_expression) arrows += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 2), arrows);
 }
