@@ -60,11 +60,12 @@ pub fn afterOpen(comptime Host: type, parser: anytype, opening: Host.NodeIndex, 
 /// Where a `<script>` body ends: at `</script`, optional HTML whitespace, then
 /// `>`. HTML ends a script at any `</script` followed by whitespace, `/` or
 /// `>`, in any letter case, so every other `</script` in the body is reported
-/// with code `tsrx-script-end-tag-in-body` over its 8 characters as written.
-/// Returns the closing tag's span, or null when the body is unclosed.
+/// with code `tsrx-script-end-tag-in-body` over its 8 characters as written,
+/// unclosed body or not. Returns the closing tag's span, or null when the body
+/// is unclosed.
 pub fn findBodyEnd(comptime Host: type, parser: anytype, source: []const u8, content_start: u32) Host.ErrorType!?Host.Span {
-    const end = bodyEnd(source, content_start) orelse return null;
-    const close: u32 = @intCast(std.mem.lastIndexOf(u8, source[0..end], end_tag).?);
+    const end = bodyEnd(source, content_start);
+    const close: u32 = if (end) |at| @intCast(std.mem.lastIndexOf(u8, source[0..at], end_tag).?) else @intCast(source.len -| (end_tag.len - 1));
     var cursor: usize = content_start;
     while (cursor < close) : (cursor += 1) {
         const written = source[cursor..][0..end_tag.len];
@@ -73,7 +74,7 @@ pub fn findBodyEnd(comptime Host: type, parser: anytype, source: []const u8, con
         try Host.report(parser, span, try endTagInBodyMessage(Host.allocator(parser), written));
         cursor += end_tag.len - 1;
     }
-    return .{ .start = close, .end = end };
+    return .{ .start = close, .end = end orelse return null };
 }
 
 const end_tag = "</script";

@@ -1446,14 +1446,33 @@ fn addCommentChild(comptime H: type, parser: anytype, span: anytype) H.ErrorType
     return H.addNode(parser, H.NodeData{ .jsx_expression_container = .{ .expression = empty } }, .{ .start = span.start, .end = span.end });
 }
 
-/// When the block or the source ended before an owned element's closing tag,
-/// as when a comment ran over it (`<p>// c</p>`), reports the element
-/// unclosed, as `@tsrx/core` does, and returns where its children end.
-fn reportUnclosed(comptime H: type, parser: anytype, name: []const u8, opening_end: u32, children: []const H.NodeIndex) H.ErrorType!?u32 {
-    if (H.currentToken(parser) != .right_brace and H.currentToken(parser) != .eof) return null;
-    const message = "Unclosed tag '<{s}>'. Expected '</{s}>' before end of template.";
-    try H.report(parser, H.currentSpan(parser), try std.fmt.allocPrint(H.allocator(parser), message, .{ name, name }));
-    return if (children.len > 0) H.nodeSpan(parser, children[children.len - 1]).end else opening_end;
+/// Where an owned element's children end when it has no closing tag of its
+/// own, which is reported, as in `@tsrx/core`; null when it has one, or when
+/// the host can parse it instead. The block or the source can end first, as
+/// when a comment ran over the closing tag (`<p>// c</p>`), or the next
+/// closing tag can be an ancestor's (`<div><p>// c</p></div>`): the host
+/// would read that comment as text, so the element isn't handed back.
+fn unclosedEnd(comptime H: type, parser: anytype, name: []const u8, opening_end: u32, children: []const H.NodeIndex, closed: bool) H.ErrorType!?u32 {
+    const end = if (children.len > 0) H.nodeSpan(parser, children[children.len - 1]).end else opening_end;
+    if (!closed) {
+        if (H.currentToken(parser) != .right_brace and H.currentToken(parser) != .eof) return null;
+        const message = "Unclosed tag '<{s}>'. Expected '</{s}>' before end of template.";
+        try H.report(parser, H.currentSpan(parser), try std.fmt.allocPrint(H.allocator(parser), message, .{ name, name }));
+        return end;
+    }
+    const source = H.source(parser);
+    const at = H.currentSpan(parser).start;
+    const tag = scanJsxTag(source, at) orelse return null;
+    const closing = std.mem.trim(u8, source[at + 2 .. tag.end - 1], " \t\r\n");
+    if (std.mem.eql(u8, std.mem.trim(u8, name, " \t\r\n"), closing)) return null;
+    for (children) |child| switch (H.data(parser, child)) {
+        // a comment's container starts where its expression does; `{}`'s doesn't
+        .jsx_expression_container => |value| if (H.nodeSpan(parser, value.expression).start == H.nodeSpan(parser, child).start) break,
+        else => {},
+    } else return null;
+    const message = "Expected closing tag for '<{s}>' but found '</{s}>'";
+    try H.report(parser, .{ .start = at, .end = tag.end }, try std.fmt.allocPrint(H.allocator(parser), message, .{ name, closing }));
+    return end;
 }
 
 fn ClosingElementName(comptime H: type) type {
@@ -1519,8 +1538,8 @@ fn parseExtendedJsxElement(comptime H: type, parser: anytype, opening: H.NodeInd
 
     var children: std.ArrayList(H.NodeIndex) = .empty;
     defer children.deinit(H.allocator(parser));
-    if (!try parseExtendedJsxChildren(H, parser, &children, opening_span.end)) {
-        const end = try reportUnclosed(H, parser, name, opening_span.end, children.items) orelse return null;
+    const closed = try parseExtendedJsxChildren(H, parser, &children, opening_span.end);
+    if (try unclosedEnd(H, parser, name, opening_span.end, children.items, closed)) |end| {
         owned = true;
         return @as(?H.NodeIndex, try H.addNode(parser, H.NodeData{ .jsx_element = .{
             .opening_element = opening,
@@ -1528,6 +1547,7 @@ fn parseExtendedJsxElement(comptime H: type, parser: anytype, opening: H.NodeInd
             .closing_element = .null,
         } }, .{ .start = opening_span.start, .end = end }));
     }
+    if (!closed) return null;
 
     const closing_start = H.currentSpan(parser).start;
     H.setLexerMode(parser, .jsx_tag);
@@ -1586,8 +1606,8 @@ fn parseExtendedJsxFragment(comptime H: type, parser: anytype, opening: H.NodeIn
 
     var children: std.ArrayList(H.NodeIndex) = .empty;
     defer children.deinit(H.allocator(parser));
-    if (!try parseExtendedJsxChildren(H, parser, &children, opening_span.end)) {
-        const end = try reportUnclosed(H, parser, "", opening_span.end, children.items) orelse return null;
+    const closed = try parseExtendedJsxChildren(H, parser, &children, opening_span.end);
+    if (try unclosedEnd(H, parser, "", opening_span.end, children.items, closed)) |end| {
         owned = true;
         return @as(?H.NodeIndex, try H.addNode(parser, H.NodeData{ .jsx_fragment = .{
             .opening_fragment = opening,
@@ -1595,6 +1615,7 @@ fn parseExtendedJsxFragment(comptime H: type, parser: anytype, opening: H.NodeIn
             .closing_fragment = .null,
         } }, .{ .start = opening_span.start, .end = end }));
     }
+    if (!closed) return null;
 
     const closing_start = H.currentSpan(parser).start;
     H.setLexerMode(parser, .jsx_tag);
