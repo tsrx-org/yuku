@@ -208,6 +208,16 @@ test("#118: a comment is a {} child whichever parser reads the element", () => {
 			"export function A({ x }) @{\n\t<p>\n\t\t@if (x) {\n\t\t\t<i />\n\t\t} // a\u2028<b />\n\t</p>\n}",
 			["\n\t\t", "JSXIfExpression", " ", "{}", "<b>", "\n\t"],
 		],
+		// ... and core reads what follows the block as code only up to a tag
+		[
+			"export function A({ x }) @{\n\t<p>@if (x) { <i /> } \u2028// c\n\tz</p>\n}",
+			["JSXIfExpression", " \u2028// c\n\tz"],
+		],
+		// ... which the scan of a parent's children reads the same way
+		[
+			"export function A({ x, y }) @{\n\t<div>\n\t\t@if (x) { <i /> }\n\t\t<p>@if (y) { <b /> } // c\u2028</p>\n\t</div>\n}",
+			["\n\t\t", "JSXIfExpression", "\n\t\t", "<p>", "\n\t"],
+		],
 	];
 	for (const [source, expected] of cases) {
 		expect(children(source), source).toEqual(expected);
@@ -232,6 +242,11 @@ test("#118: a comment is a {} child whichever parser reads the element", () => {
 		],
 		[[" d", 49, { line: 1, column: 49 }]],
 	]);
+	expect(
+		inner("export function A({ x }) @{\n\t<p>@if (x) { <i /> } // c\u2028/* d */<b /></p>\n}").map(
+			(comments) => comments.map(([value]) => value),
+		),
+	).toEqual([[" c", " d "]]);
 	expect(
 		inner("export const A = <p>\r\n/* a */\u2028/* b */\r/* c */\u2029/* d */</p>;").map(
 			([[, , start]]) => start,

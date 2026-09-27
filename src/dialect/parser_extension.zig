@@ -1055,8 +1055,8 @@ pub fn jsx_text_child(comptime Result: type, parser: anytype, span: anytype) Res
     if (!container(parser).options.tsrx) return .null;
     const source = H.source(parser);
     const run_start = if (span.start > 0 and source[span.start - 1] == '/') std.math.maxInt(u32) else span.start;
-    const comment = firstComment(source, span.start, span.end, run_start, false) orelse return .null;
-    return addCommentChild(H, parser, comment);
+    const comment = firstComment(source, span.start, span.end, run_start, 0) orelse return .null;
+    return addCommentChild(H, parser, comment, false);
 }
 pub fn jsx_text_value(comptime Result: type, parser: anytype, span: anytype) Result {
     const H = Host(@TypeOf(parser.*));
@@ -1268,6 +1268,8 @@ fn scanJsxChildren(source: []const u8, from: u32, depth: u32, comptime comments:
     var cursor: usize = from;
     var run_start: usize = from;
     var owned = false;
+    // a directive's body is next
+    var block = false;
     while (std.mem.indexOfAnyPos(u8, source, cursor, if (comments) "<{@/>" else "<{@")) |at| {
         cursor = at;
         switch (source[cursor]) {
@@ -1292,11 +1294,19 @@ fn scanJsxChildren(source: []const u8, from: u32, depth: u32, comptime comments:
             '{' => {
                 cursor = @as(usize, skipBracedRegion(source, @intCast(cursor)) orelse return null) + 1;
                 run_start = cursor;
+                // core reads the whitespace and comments after a block as code
+                const code_end = if (comments and block) text.codeAfterBlock(source, cursor) else 0;
+                if (code_end > 0) {
+                    owned = owned or std.mem.indexOfScalarPos(u8, source[0..code_end], cursor, '/') != null;
+                    cursor = code_end;
+                }
             },
             '@' => {
                 if (text.startsDirective(source, @intCast(cursor))) {
                     owned = true;
                     cursor = skipDirectiveHeader(source, @intCast(cursor));
+                    block = true;
+                    continue;
                 } else {
                     cursor += 1;
                 }
@@ -1307,11 +1317,12 @@ fn scanJsxChildren(source: []const u8, from: u32, depth: u32, comptime comments:
                 cursor += 1;
             },
             else => {
-                const end = text.commentEnd(source, cursor, run_start, false);
+                const end = text.commentEnd(source, cursor, run_start);
                 owned = owned or end != null;
                 cursor = end orelse cursor + 1;
             },
         }
+        block = false;
     }
     // no closing tag: an owned element reports itself unclosed
     return if (owned) .{ .close = @intCast(source.len), .owned = true } else null;
@@ -1367,7 +1378,8 @@ fn parseExtendedJsxChildren(
     // where a `//` starts a comment without whitespace before it: not right
     // after another comment (`/* a */// b` is text)
     var run_start = from;
-    var after_block = false;
+    // where the text after a block that core reads as code ends
+    var code_end: u32 = 0;
     while (true) {
         H.setLexerMode(parser, .normal);
         const text_start = scan_from;
@@ -1386,7 +1398,7 @@ fn parseExtendedJsxChildren(
         // reads a comment's bytes as text, `<` and `{` included, so it is
         // found in the source.
         const comment = if (container(parser).options.tsrx)
-            firstComment(H.source(parser), rescan_from, text_token.span.end, run_start, after_block)
+            firstComment(H.source(parser), rescan_from, text_token.span.end, run_start, code_end)
         else
             null;
         const text_span: H.Span = .{ .start = text_start, .end = if (comment) |c| c.start else text_token.span.end };
@@ -1400,12 +1412,11 @@ fn parseExtendedJsxChildren(
             try children.append(H.allocator(parser), text_node);
         }
         if (comment) |span| {
-            const child = try addCommentChild(H, parser, span);
+            const child = try addCommentChild(H, parser, span, span.start < code_end);
             try children.append(H.allocator(parser), child);
             scan_from = H.nodeSpan(parser, child).end;
             rescan_from = scan_from;
             run_start = std.math.maxInt(u32);
-            after_block = after_block and std.mem.trim(u8, H.sourceText(parser, text_span), " \t\r\n").len == 0;
             continue;
         }
         if (!try H.advanceWithRescannedToken(parser, text_token)) return false;
@@ -1440,46 +1451,54 @@ fn parseExtendedJsxChildren(
         scan_from = H.nodeSpan(parser, child).end;
         rescan_from = scan_from;
         run_start = scan_from;
-        after_block = block;
+        code_end = if (block) text.codeAfterBlock(H.source(parser), scan_from) else 0;
     }
 }
 
 /// The first comment that starts in `[from, to)` of a text run that began at
 /// `run_start`, or null.
-fn firstComment(source: []const u8, from: u32, to: u32, run_start: u32, after_block: bool) ?struct { start: u32, end: u32 } {
+fn firstComment(source: []const u8, from: u32, to: u32, run_start: u32, code_end: u32) ?struct { start: u32, end: u32 } {
     var cursor = from;
     while (std.mem.indexOfScalarPos(u8, source[0..to], cursor, '/')) |slash| : (cursor = @intCast(slash + 1)) {
-        // core reads the whitespace and comments right after a block as code
-        const js = after_block and std.mem.trim(u8, source[from..slash], " \t\r\n").len == 0;
-        if (text.commentEnd(source, slash, run_start, js)) |end| return .{ .start = @intCast(slash), .end = end };
+        // In the code after a block a line comment ends at U+2028 too, but its
+        // `{}`, as core reads that text, runs on to the line break or the code's
+        // end, with any comments there.
+        if (slash < code_end) return .{ .start = @intCast(slash), .end = if (source[slash + 1] == '*')
+            text.codeCommentEnd(source, slash).?
+        else
+            @min(code_end, text.commentEnd(source, slash, slash).?) };
+        if (text.commentEnd(source, slash, run_start)) |end| return .{ .start = @intCast(slash), .end = end };
     }
     return null;
 }
 
 /// A comment between children as TSX has it: an empty `{}` whose container
-/// and expression both span the comment, which is the expression's inner
-/// comment. The comment joins the lexer's list, in source order, replacing
-/// any copy a lookahead past a control-flow block's `}` recorded.
-fn addCommentChild(comptime H: type, parser: anytype, span: anytype) H.ErrorType!H.NodeIndex {
+/// and expression both span it. Its comments, read as code after a block
+/// (`code`), join the lexer's list, in source order, replacing any copy a
+/// lookahead past a control-flow block's `}` recorded.
+fn addCommentChild(comptime H: type, parser: anytype, span: anytype, code: bool) H.ErrorType!H.NodeIndex {
     const lexer = &parser.lexer;
     if (lexer.collect_comments) {
         while (lexer.comments.items.len > 0 and lexer.comments.items[lexer.comments.items.len - 1].span.start >= span.start)
             _ = lexer.comments.pop();
-        const block = parser.source[span.start + 1] == '*';
-        const value_end = if (block and std.mem.endsWith(u8, parser.source[span.start + 2 .. span.end], "*/")) span.end - 2 else span.end;
-        try lexer.comments.append(lexer.allocator, .{
-            .type = if (block) .block else .line,
-            .value = .{ .start = span.start + 2, .end = value_end },
-            .span = .{ .start = span.start, .end = span.end },
-        });
+        var at = span.start;
+        while (at < span.end) {
+            const end = if (!code) span.end else text.codeCommentEnd(parser.source, at) orelse {
+                at += 1;
+                continue;
+            };
+            const block = parser.source[at + 1] == '*';
+            const value_end = if (block and std.mem.endsWith(u8, parser.source[at + 2 .. end], "*/")) end - 2 else end;
+            try lexer.comments.append(lexer.allocator, .{
+                .type = if (block) .block else .line,
+                .value = .{ .start = at + 2, .end = value_end },
+                .span = .{ .start = at, .end = end },
+            });
+            at = end;
+        }
     }
-    // as core, a `{}` spans a U+2028 or U+2029 that ended its line comment
-    const rest = parser.source[span.end..];
-    const separator = parser.source[span.start + 1] == '/' and
-        (std.mem.startsWith(u8, rest, "\u{2028}") or std.mem.startsWith(u8, rest, "\u{2029}"));
-    const node_span: H.Span = .{ .start = span.start, .end = if (separator) span.end + 3 else span.end };
-    const empty = try H.addNode(parser, H.NodeData{ .jsx_empty_expression = .{} }, node_span);
-    return H.addNode(parser, H.NodeData{ .jsx_expression_container = .{ .expression = empty } }, node_span);
+    const empty = try H.addNode(parser, H.NodeData{ .jsx_empty_expression = .{} }, .{ .start = span.start, .end = span.end });
+    return H.addNode(parser, H.NodeData{ .jsx_expression_container = .{ .expression = empty } }, .{ .start = span.start, .end = span.end });
 }
 
 /// Where an owned element ends when it has no closing tag of its own, which is
