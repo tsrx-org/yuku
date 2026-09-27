@@ -235,7 +235,7 @@ export interface Diagnostic {
 	labels: DiagnosticLabel[];
 	/**
 	 * The `@tsrx/core` diagnostic code, where core has one:
-	 * `tsrx-dynamic-tag-expression` or `tsrx-script-end-tag-in-body`.
+	 * `tsrx-dynamic-tag-expression`, `tsrx-script-end-tag-in-body` or `tsrx-unclosed-tag`.
 	 */
 	code?: string;
 }
@@ -259,8 +259,8 @@ export interface ParseOptions {
 	attachComments?: boolean;
 	loose?: boolean;
 	/**
-	 * The source is a `.tsrx` file: a comment in JSX text is a comment, left out
-	 * of the text, as `@tsrx/core` reads it. In `.tsx` and `.jsx` it is text.
+	 * The source is a `.tsrx` file: a comment between JSX children is an empty
+	 * `{}` child of its own, as `@tsrx/core` reads it. In `.tsx` and `.jsx` it is text.
 	 * `analyze` sets it from the filename. `parseModule` defaults it to `true`
 	 * for every filename, as `@tsrx/core` does.
 	 */

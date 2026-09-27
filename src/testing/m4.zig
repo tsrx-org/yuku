@@ -1800,59 +1800,29 @@ test "a spread or empty dynamic tag is no expression" {
     }
 }
 
-fn jsxTexts(source: []const u8, tsrx: bool, texts: *std.ArrayList([]const u8)) !void {
-    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx, .tsrx = tsrx });
-    defer tree.deinit();
-    try std.testing.expect(!tree.hasErrors());
-    for (0..tree.nodes.len) |index| switch (tree.data(@enumFromInt(index))) {
-        .jsx_text => |text| {
-            const value = tree.string(text.value);
-            if (std.mem.trim(u8, value, " \t\r\n").len == 0) continue;
-            try texts.append(std.testing.allocator, try std.testing.allocator.dupe(u8, value));
-        },
-        else => {},
-    };
-}
-
-test "in a .tsrx file, comments in JSX text are left out of the text, and hide what they hold" {
-    for ([_]struct { []const u8, []const []const u8 }{
-        .{ "export function App() @{ <p>\n\ta\n\t// note\n\tb\n</p> }", &.{"\n\ta\n\t\n\tb\n"} },
-        .{ "const view = <p>\n\ta\n\t// note\n\tb\n</p>;", &.{"\n\ta\n\t\n\tb\n"} },
-        .{ "const view = <p>a /* note */ b</p>;", &.{"a  b"} },
-        .{ "export function App() @{ <p>a /* note */ b</p> }", &.{"a  b"} },
-        // a comment hides the markup in it
-        .{ "const view = <div>\n\t// <b>x</b>\n\t<i>y</i>\n</div>;", &.{"y"} },
-        .{ "export function App() @{ <div>\n\t/* {a} <b>x</b> */\n\t<i>y</i>\n</div> }", &.{"y"} },
-        .{ "const view = <div>a /* } */ b</div>;", &.{"a  b"} },
-        // `//` after text on its line, and an escaped opener, are text
-        .{ "const view = <p>see https://x.dev</p>;", &.{"see https://x.dev"} },
-        .{ "export function App() @{ <p>a // note</p> }", &.{"a // note"} },
+test "in a .tsrx file a comment between JSX children is a {} of its own; in .tsx and .jsx it is text" {
+    for ([_]struct { bool, []const u8, []const []const u8 }{
+        .{ true, "const view = <p>a /* note */ b</p>;", &.{ "a ", "{}", " b" } },
+        .{ true, "export function App() @{ <p>\n\ta\n\t// note\n\tb\n</p> }", &.{ "\n\ta\n\t", "{}", "\n\tb\n" } },
+        // a comment hides the markup in it; `//` touching text is text
+        .{ true, "const view = <div>\n\t// <b>x</b>\n\t<i>y</i>\n</div>;", &.{ "\n\t", "{}", "\n\t", "y", "\n" } },
+        .{ true, "export function App() @{ <p>a//b https://x.dev</p> }", &.{"a//b https://x.dev"} },
+        .{ false, "const view = <p>a /* note */ b // c</p>;", &.{"a /* note */ b // c"} },
     }) |case| {
-        var texts: std.ArrayList([]const u8) = .empty;
-        defer {
-            for (texts.items) |text| std.testing.allocator.free(text);
-            texts.deinit(std.testing.allocator);
+        var tree = try parser.parse(std.testing.allocator, case[1], .{ .lang = .tsx, .tsrx = case[0] });
+        defer tree.deinit();
+        try std.testing.expect(!tree.hasErrors());
+        var children: usize = 0;
+        for (0..tree.nodes.len) |index| {
+            const got = switch (tree.data(@enumFromInt(index))) {
+                .jsx_text => |text| tree.string(text.value),
+                .jsx_empty_expression => "{}",
+                else => continue,
+            };
+            try std.testing.expectEqualStrings(case[2][children], got);
+            children += 1;
         }
-        try jsxTexts(case[0], true, &texts);
-        try std.testing.expectEqual(case[1].len, texts.items.len);
-        for (case[1], texts.items) |want, got| try std.testing.expectEqualStrings(want, got);
-    }
-}
-
-test "in .tsx and .jsx, a comment in JSX text is text" {
-    for ([_]struct { []const u8, []const []const u8 }{
-        .{ "const view = <div>// x</div>;", &.{"// x"} },
-        .{ "const view = <p>a /* note */ b</p>;", &.{"a /* note */ b"} },
-        .{ "const view = <div>\n\t// <b>x</b>\n</div>;", &.{ "\n\t// ", "x" } },
-    }) |case| {
-        var texts: std.ArrayList([]const u8) = .empty;
-        defer {
-            for (texts.items) |text| std.testing.allocator.free(text);
-            texts.deinit(std.testing.allocator);
-        }
-        try jsxTexts(case[0], false, &texts);
-        try std.testing.expectEqual(case[1].len, texts.items.len);
-        for (case[1], texts.items) |want, got| try std.testing.expectEqualStrings(want, got);
+        try std.testing.expectEqual(case[2].len, children);
     }
 }
 

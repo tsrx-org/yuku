@@ -77,6 +77,6 @@ Pass these options as the second argument to `parse`.
 | `semanticErrors` | `false` | Run scope-dependent early-error checks, such as invalid redeclarations and exports without a local binding. This does not return the semantic tables. |
 | `attachComments` | `false` | Attach comments to nodes so the printer can keep them. The flat `comments` list is returned either way. |
 | `loose` | `false` | Recover some unfinished markup in an editor. |
-| `tsrx` | `false` | Set to `true` for a `.tsrx` file, so a comment in JSX text is a comment, as in `@tsrx/core`. In `.tsx` and `.jsx` it stays text. `analyze` sets it from the filename. `parseModule` turns it on for every filename, as `@tsrx/core`'s `parseModule` does; pass `tsrx: false` to read standard JSX there. |
+| `tsrx` | `false` | Set to `true` for a `.tsrx` file, so a comment between JSX children is an empty `{}` child of its own, as in `@tsrx/core` and TSX. In `.tsx` and `.jsx` it stays text. `analyze` sets it from the filename. `parseModule` turns it on for every filename, as `@tsrx/core`'s `parseModule` does; pass `tsrx: false` to read standard JSX there. |
 
 For error collection and recovery examples, continue to [Diagnostics](/guide/diagnostics). Detailed signatures, including the low-level `parseWire`, `decode`, and `encode` functions, live in the [API reference](/reference/api).

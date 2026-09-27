@@ -16,7 +16,7 @@ Clone this repository and its Yuku dependency side by side:
 ```sh
 git clone https://github.com/tsrx-org/yuku.git yuku
 git clone https://github.com/thejackshelton/yuku.git yuku-minimal-seam
-git -C yuku-minimal-seam checkout 721de7fbfb5c5c6b89b3218298263651110b9324
+git -C yuku-minimal-seam checkout 09012bd9a77b037688baf632797312fcf2a798dc
 cd yuku
 pnpm install --frozen-lockfile --ignore-scripts
 ```

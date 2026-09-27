@@ -60,54 +60,33 @@ pub fn afterOpen(comptime Host: type, parser: anytype, opening: Host.NodeIndex, 
 /// Where a `<script>` body ends: at `</script`, optional HTML whitespace, then
 /// `>`. HTML ends a script at any `</script` followed by whitespace, `/` or
 /// `>`, in any letter case, so every other `</script` in the body is reported
-/// with code `tsrx-script-end-tag-in-body` over its 8 characters as written,
-/// and the scan goes on to the real closing tag. Returns the closing tag's
-/// span, or null when the body is unclosed.
+/// with code `tsrx-script-end-tag-in-body` over its 8 characters as written.
+/// Returns the closing tag's span, or null when the body is unclosed.
 pub fn findBodyEnd(comptime Host: type, parser: anytype, source: []const u8, content_start: u32) Host.ErrorType!?Host.Span {
+    const end = bodyEnd(source, content_start) orelse return null;
+    const close: u32 = @intCast(std.mem.lastIndexOf(u8, source[0..end], end_tag).?);
     var cursor: usize = content_start;
-    while (endTagAt(source, cursor)) |written| : (cursor += 1) {
-        if (written.len == 0) continue;
-        if (closingTagEnd(source, cursor)) |end| return .{ .start = @intCast(cursor), .end = end };
-        try Host.report(
-            parser,
-            .{ .start = @intCast(cursor), .end = @intCast(cursor + end_tag.len) },
-            try endTagInBodyMessage(Host.allocator(parser), written),
-        );
+    while (cursor < close) : (cursor += 1) {
+        const written = source[cursor..][0..end_tag.len];
+        if (!std.ascii.eqlIgnoreCase(written, end_tag)) continue;
+        const span: Host.Span = .{ .start = @intCast(cursor), .end = @intCast(cursor + end_tag.len) };
+        try Host.report(parser, span, try endTagInBodyMessage(Host.allocator(parser), written));
         cursor += end_tag.len - 1;
     }
-    return null;
+    return .{ .start = close, .end = end };
 }
 
 const end_tag = "</script";
 
-/// At `cursor`: the `</script` written there in any letter case, an empty
-/// slice when there is none, or null past the last place one could start.
-fn endTagAt(source: []const u8, cursor: usize) ?[]const u8 {
-    if (cursor + end_tag.len > source.len) return null;
-    const written = source[cursor .. cursor + end_tag.len];
-    return if (std.ascii.eqlIgnoreCase(written, end_tag)) written else written[0..0];
-}
-
-/// When the script's closing tag starts at `cursor` -- `</script`, optional
-/// HTML whitespace, `>` -- the offset just past its `>`.
-fn closingTagEnd(source: []const u8, cursor: usize) ?u32 {
-    if (cursor + end_tag.len > source.len) return null;
-    if (!std.mem.eql(u8, source[cursor .. cursor + end_tag.len], end_tag)) return null;
-    var index = cursor + end_tag.len;
-    while (index < source.len and isHtmlWhitespace(source[index])) index += 1;
-    if (index >= source.len or source[index] != '>') return null;
-    return @intCast(index + 1);
-}
-
-/// Offset just past the closing tag of a script body that starts at `from`,
-/// found by the same rule as `findBodyEnd`, without reporting anything.
+/// Offset just past the closing tag of a script body that starts at `from`:
+/// `</script`, optional HTML whitespace (tab, LF, FF, CR, space), `>`.
 pub fn bodyEnd(source: []const u8, from: u32) ?u32 {
-    var cursor: usize = from;
-    while (cursor < source.len) : (cursor += 1) {
-        if (source[cursor] != '<') continue;
-        if (closingTagEnd(source, cursor)) |end| return end;
+    var cursor = std.mem.indexOfPos(u8, source, from, end_tag) orelse return null;
+    while (true) : (cursor = std.mem.indexOfPos(u8, source, cursor + 1, end_tag) orelse return null) {
+        var index = cursor + end_tag.len;
+        while (index < source.len and std.mem.indexOfScalar(u8, "\t\n\x0c\r ", source[index]) != null) index += 1;
+        if (index < source.len and source[index] == '>') return @intCast(index + 1);
     }
-    return null;
 }
 
 /// `@tsrx/core`'s message for a `</script` inside a script body, naming the
@@ -125,12 +104,4 @@ pub fn isEndTagInBodyMessage(message: []const u8) bool {
         std.ascii.eqlIgnoreCase(message[1 .. 1 + end_tag.len], end_tag) and
         std.mem.endsWith(u8, message, "' instead.") and
         std.mem.indexOf(u8, message, " can end a script in HTML, ") != null;
-}
-
-/// HTML's whitespace: tab, line feed, form feed, carriage return, and space.
-fn isHtmlWhitespace(byte: u8) bool {
-    return switch (byte) {
-        '\t', '\n', 0x0c, '\r', ' ' => true,
-        else => false,
-    };
 }
