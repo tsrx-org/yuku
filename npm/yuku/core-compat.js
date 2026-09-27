@@ -116,40 +116,34 @@ export function withSelfClosingScriptContent(program, callback) {
  */
 export function addInnerComments(program, text, comments) {
   if (comments.length === 0) return;
-  // The index of the first of the sorted `list` at or after `offset`. The
-  // walk asks in source order, mostly, so it steps from its last answer first.
-  const seeker = (list) => {
-    let last = 0;
-    return (offset) => {
-      let low = last > 0 && list[last - 1] < offset ? last : 0;
-      let high = list.length;
-      for (let step = 0; step < 4 && low < high && list[low] < offset; step++) low++;
-      while (low < high) {
-        const middle = (low + high) >> 1;
-        if (list[middle] < offset) low = middle + 1;
-        else high = middle;
-      }
-      return (last = low);
-    };
+  // the index of the first of the sorted `list` at or after `offset`
+  const seek = (list, offset) => {
+    let low = 0;
+    let high = list.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (list[middle] < offset) low = middle + 1;
+      else high = middle;
+    }
+    return low;
   };
-  const firstComment = seeker(comments.map((comment) => comment.start));
+  const starts = comments.map((comment) => comment.start);
   // where each line starts, with core's line breaks (\r\n, \r, \n, U+2028, U+2029)
-  let lines, lineAfter;
+  let lines;
   const position = (offset) => {
     if (lines === undefined) {
       lines = [
         0,
         ...Array.from(text.matchAll(/\r\n?|[\n\u2028\u2029]/g), (m) => m.index + m[0].length),
       ];
-      lineAfter = seeker(lines);
     }
-    const line = lineAfter(offset + 1) - 1;
+    const line = seek(lines, offset + 1) - 1;
     return { line: line + 1, column: offset - lines[line] };
   };
   const visit = (node) => {
     if (Array.isArray(node)) return node.forEach(visit);
     if (typeof node?.start !== "number") return;
-    let index = firstComment(node.start);
+    let index = seek(starts, node.start);
     if (!(comments[index]?.end <= node.end)) return;
     if (node.type !== "JSXEmptyExpression") {
       for (const key in node) if (key !== "comments") visit(node[key]);
