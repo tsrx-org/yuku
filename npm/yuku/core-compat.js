@@ -44,12 +44,18 @@ function isSelfClosingScript(node) {
   return node.type === "JSXScriptElement" && node.closingElement == null;
 }
 
-/** Calls `visit` on every self-closing `<script />` in `program`. */
+/**
+ * Calls `visit` once on every self-closing `<script />` in `program`. Each
+ * object is walked once, so a back-edge a caller added (a `parent`, say) ends
+ * the walk instead of looping.
+ */
 function forEachSelfClosingScript(program, visit) {
+  const seen = new Set();
   const pending = [program];
   while (pending.length > 0) {
     const value = pending.pop();
-    if (value === null || typeof value !== "object") continue;
+    if (value === null || typeof value !== "object" || seen.has(value)) continue;
+    seen.add(value);
     if (Array.isArray(value)) {
       for (const item of value) pending.push(item);
       continue;

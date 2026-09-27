@@ -218,6 +218,27 @@ test("#114: a self-closing <script /> without content prints from a cloned or ha
 	expect(script.content).toBe("");
 });
 
+test("#114: a tree with parent back-edges still encodes a self-closing <script />", () => {
+	const source = 'export function App() @{\n\t<script src="x" />\n}';
+	const expected = generate(parseModule(source, "App.tsrx")).code;
+	const program = structuredClone(parseModule(source, "App.tsrx"));
+	const [script] = findAll(program, (node) => node.type === "JSXScriptElement");
+	// Give every node a `parent`, as a transform that walks upward might.
+	const link = (value: unknown, parent: unknown) => {
+		if (value === null || typeof value !== "object") return;
+		if (Array.isArray(value)) {
+			for (const item of value) link(item, parent);
+			return;
+		}
+		for (const child of Object.values(value)) link(child, value);
+		Object.assign(value, { parent });
+	};
+	link(program, null);
+	expect(script.parent).toBeTypeOf("object");
+	expect(generate(program).code).toBe(expected);
+	expect("content" in script).toBe(false);
+});
+
 test("#114: parse and analyze programs encode directly with no content on <script />", () => {
 	const source = 'export function App() @{\n\t<script src="x" />\n}';
 	for (const result of [parse(source, { lang: "tsx", tsrx: true }), analyze(source, "App.tsrx")]) {
