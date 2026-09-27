@@ -403,11 +403,11 @@ fn parseSwitch(comptime Host: type, parser: anytype) Host.ErrorType!?Host.NodeIn
         }
         if (!try consume(Host, parser, .colon, "Expected ':' after TSRX switch clause", null)) return null;
         const body = try templateBlock(Host, parser, true) orelse return null;
-        const body_data = Host.data(parser, body).block_statement;
-        try validateSwitch(Host, parser, body_data.body, false, 0);
+        try validateSwitch(Host, parser, Host.data(parser, body).block_statement.body, false, 0);
+        // the arm's `{ ... }` is its consequent, a block with its own scope, as in core
         const case_node = try Host.addNode(parser, Host.NodeData{ .switch_case = .{
             .@"test" = case_test,
-            .consequent = body_data.body,
+            .consequent = try Host.addExtra(parser, &.{body}),
         } }, .{ .start = case_start, .end = Host.nodeSpan(parser, body).end });
         try cases.append(Host.allocator(parser), case_node);
     }
