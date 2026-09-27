@@ -1,9 +1,13 @@
 import binding from "./binding.js";
-import { applyCoreShape, DYNAMIC_TAG_EXPRESSION_MESSAGE } from "./core-compat.js";
+import {
+  applyCoreShape,
+  DYNAMIC_TAG_EXPRESSION_MESSAGE,
+  withSelfClosingScriptContent,
+} from "./core-compat.js";
 import { authoredDiagnosticSpan } from "./diagnostic-spans.js";
 import { decode } from "./decode.js";
 import { decode as decodeAnalyzer } from "./decode-analyzer.js";
-import { encode } from "./encode.js";
+import { encode as encodeWire } from "./encode.js";
 import { walk } from "./walk.js";
 
 const encoder = new TextEncoder();
@@ -35,18 +39,19 @@ export function parseWire(source, options = {}) {
   return binding.parse(bytes, options);
 }
 
-// A self-closing `<script />` has no body, and core gives it no `content`. The
-// wire format carries an empty string there, so it is removed after decoding
-// and put back for the encoder, which needs one.
-const SELF_CLOSING_SCRIPTS = new WeakMap();
-
-function rememberSelfClosingScripts(program, scripts) {
-  SELF_CLOSING_SCRIPTS.set(program, scripts);
-}
-
 export function parse(source, options = {}) {
   const text = sourceText(source);
-  return applyCoreShape(decode(parseWire(source, options), text), text, rememberSelfClosingScripts);
+  return applyCoreShape(decode(parseWire(source, options), text), text);
+}
+
+/**
+ * Encodes `program` for the code generator. A self-closing `<script />` has no
+ * body, and core gives it no `content`, where the wire format carries an empty
+ * string; a missing `content` there encodes as that empty string, whatever
+ * built the tree.
+ */
+export function encode(program) {
+  return withSelfClosingScriptContent(program, () => encodeWire(program));
 }
 
 // acorn reports these at one position, and core's error spans the one
@@ -144,11 +149,7 @@ export function analyze(source, filename, options) {
   }
   const text = sourceText(source);
   const bytes = typeof source === "string" ? encoder.encode(source) : source;
-  return applyCoreShape(
-    decodeAnalyzer(binding.analyze(bytes, analyzeOptions), text),
-    text,
-    rememberSelfClosingScripts,
-  );
+  return applyCoreShape(decodeAnalyzer(binding.analyze(bytes, analyzeOptions), text), text);
 }
 
 const QUOTES_SHORTEST_UNSUPPORTED =
@@ -189,13 +190,7 @@ export function generate(program, options) {
   if (!program || program.type !== "Program") {
     throw new TypeError("Expected a Program node from yuku-tsrx");
   }
-  const scripts = SELF_CLOSING_SCRIPTS.get(program) ?? [];
-  for (const script of scripts) script.content ??= "";
-  try {
-    return binding.generate(encode(program), normalizeGenerateOptions(options));
-  } finally {
-    for (const script of scripts) if (script.content === "") delete script.content;
-  }
+  return binding.generate(encode(program), normalizeGenerateOptions(options));
 }
 
 export function parseModule(source, filename, options = {}) {
@@ -520,4 +515,4 @@ export function duplicateBindingDiagnostics(program, source) {
   }));
 }
 
-export { authoredDiagnosticSpan, decode, decodeAnalyzer, encode, walk };
+export { authoredDiagnosticSpan, decode, decodeAnalyzer, walk };
