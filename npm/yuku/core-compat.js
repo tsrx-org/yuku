@@ -7,6 +7,8 @@
 export const DYNAMIC_TAG_EXPRESSION_MESSAGE =
   "A dynamic tag expression must be an identifier, a member access such as `props.as` or `registry[name]`, or a string literal. Compute anything else before the element: `const Tag = c ? Child : Fallback;`, then `<{Tag} />`.";
 
+const UNCLOSED_TAG_MESSAGE = /^Unclosed tag '<.*>'\. Expected '<\/.*>' before end of template\.$/;
+
 const SCRIPT_END_TAG_IN_BODY_MESSAGE =
   /^'<\/script' can end a script in HTML, so a '<script>' body can't contain it\. Write '<\\\/script' instead\.$/i;
 
@@ -30,6 +32,7 @@ export function diagnosticCode(diagnostic) {
   if (SCRIPT_END_TAG_IN_BODY_MESSAGE.test(diagnostic.message)) {
     return "tsrx-script-end-tag-in-body";
   }
+  if (UNCLOSED_TAG_MESSAGE.test(diagnostic.message)) return "tsrx-unclosed-tag";
   return undefined;
 }
 

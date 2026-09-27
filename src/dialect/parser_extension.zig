@@ -108,14 +108,8 @@ pub const Store = struct {
     }
 };
 
-pub const LocalOptions = struct { loose: bool = false };
-
-/// `Options.extension_flags` bit: the source is a `.tsrx` file.
-pub const extension_flag_tsrx: u32 = 1;
-
-fn isTsrxSource(lexer: anytype) bool {
-    return lexer.extension_flags & extension_flag_tsrx != 0;
-}
+/// `tsrx`: a comment in JSX text is a comment, as `@tsrx/core` reads it.
+pub const LocalOptions = struct { loose: bool = false, tsrx: bool = false };
 
 pub fn Container(comptime Parser: type) type {
     return struct {
@@ -512,7 +506,7 @@ pub fn Host(comptime Parser: type) type {
         pub fn parseJsxChildElement(p: *P) ErrorType!?NodeIndex {
             if (p.current_token.tag != .less_than) return null;
             const start = p.current_token.span.start;
-            const end = jsxElementEnd(p.source, start, 0) orelse return null;
+            const end = (if (container(p).options.tsrx) jsxElementEnd(p.source, start, 0, true) else jsxElementEnd(p.source, start, 0, false)) orelse return null;
             if (end <= start or end > p.source.len) return null;
 
             const saved = p.checkpoint();
@@ -545,7 +539,7 @@ pub fn Host(comptime Parser: type) type {
                 else => {},
             };
             const parsed_exactly_one = child != .null and
-                p.diagnostics.items.len == saved.diagnostics_len and
+                onlyAdvisory(p.diagnostics.items[saved.diagnostics_len..]) and
                 p.tree.span(child).start == start and
                 p.tree.span(child).end == end;
             if (!parsed_exactly_one) {
@@ -560,6 +554,8 @@ pub fn Host(comptime Parser: type) type {
             var restore = saved;
             restore.nodes_len = p.tree.nodes.len;
             restore.extra_len = p.tree.extras.items.len;
+            restore.lexer_comments_len = p.lexer.comments.items.len;
+            restore.diagnostics_len = p.diagnostics.items.len;
             p.rewind(restore);
             if (!try resumeAfterRawSpan(p, end, .child)) return null;
             return @as(?NodeIndex, child);
@@ -643,6 +639,7 @@ pub fn Host(comptime Parser: type) type {
             var restore = saved;
             restore.nodes_len = p.tree.nodes.len;
             restore.extra_len = p.tree.extras.items.len;
+            restore.lexer_comments_len = p.lexer.comments.items.len;
             p.rewind(restore);
 
             const node = try p.tree.addNode(.{ .jsx_expression_container = .{
@@ -1047,17 +1044,9 @@ pub fn jsx_text_boundary(source: anytype, cursor: u32) ?bool {
         .handled => |value| value,
     };
 }
-/// In a `.tsrx` file a comment in JSX text is skipped whole, so a `<`, `{` or
-/// `}` in it does not end the text run (`// <b>x</b>` on its own line comments
-/// the element out). In `.tsx` and `.jsx` it is text, as in TSX.
-pub fn jsx_text_skip(lexer: anytype, run_start: u32, cursor: u32) ?u32 {
-    // called once per text byte: only a `/` can open a comment
-    if (lexer.source[cursor] != '/' or !isTsrxSource(lexer)) return null;
-    return text.skip(lexer.source, run_start, cursor);
-}
 pub fn jsx_text_value(comptime Result: type, parser: anytype, span: anytype) Result {
     const H = Host(@TypeOf(parser.*));
-    return switch (try text.value(H, parser, span, isTsrxSource(&parser.lexer))) {
+    return switch (try text.value(H, parser, span)) {
         .unhandled => null,
         .handled => |value| value,
     };
@@ -1248,62 +1237,63 @@ fn scanJsxTag(source: []const u8, start: u32) ?TagScan {
 const ChildrenScan = struct {
     /// offset of the `<` that opens the enclosing element's closing tag
     close: u32,
-    /// a `@` appeared in child position of this very region, rather than
-    /// inside one of its child elements
-    directive: bool,
-    /// a `<` that cannot open a tag appeared in child position of this very
-    /// region; the host children loop would reject it, so the dialect owns
-    /// the element and reads that `<` as text
-    literal_lt: bool,
+    /// this very region, rather than one of its child elements, holds what the
+    /// host children loop can't read, so the dialect owns the element: a TSRX
+    /// directive, a `<` that cannot open a tag (text in TSRX), or, with
+    /// `comments`, a comment (a `{}` child of its own)
+    owned: bool,
 };
 
 /// Walk a JSX children region from `from` to the closing tag of the element
-/// that encloses it, reporting whether that region holds a TSRX directive or a
-/// literal `<` of its own.
-fn scanJsxChildren(source: []const u8, from: u32, depth: u32) ?ChildrenScan {
+/// that encloses it, stepping over child elements, containers, directive
+/// headers and, with `comments` (`.tsrx`), comments.
+fn scanJsxChildren(source: []const u8, from: u32, depth: u32, comptime comments: bool) ?ChildrenScan {
     if (depth > max_jsx_scan_depth) return null;
     var cursor: usize = from;
-    var directive = false;
-    var literal_lt = false;
-    while (cursor < source.len) {
+    var run_start: usize = from;
+    var owned = false;
+    while (std.mem.indexOfAnyPos(u8, source, cursor, if (comments) "<{@/" else "<{@")) |at| {
+        cursor = at;
         switch (source[cursor]) {
             '<' => {
                 if (literalLessThan(source, @intCast(cursor))) {
-                    literal_lt = true;
+                    owned = true;
                     cursor += 1;
                     continue;
                 }
                 const tag = scanJsxTag(source, @intCast(cursor)) orelse return null;
-                if (tag.closing) return .{
-                    .close = @intCast(cursor),
-                    .directive = directive,
-                    .literal_lt = literal_lt,
-                };
+                if (tag.closing) return .{ .close = @intCast(cursor), .owned = owned };
                 if (tag.self_closing) {
                     cursor = tag.end;
-                    continue;
-                }
-                if (tag.raw_text != .none) {
+                } else if (tag.raw_text != .none) {
                     cursor = rawTextElementEnd(source, tag.end, tag.raw_text) orelse return null;
-                    continue;
+                } else {
+                    const inner = scanJsxChildren(source, tag.end, depth + 1, comments) orelse return null;
+                    cursor = (scanJsxTag(source, inner.close) orelse return null).end;
                 }
-                const inner = scanJsxChildren(source, tag.end, depth + 1) orelse return null;
-                const inner_close = scanJsxTag(source, inner.close) orelse return null;
-                cursor = inner_close.end;
+                run_start = cursor;
             },
-            '{' => cursor = @as(usize, skipBracedRegion(source, @intCast(cursor)) orelse return null) + 1,
+            '{' => {
+                cursor = @as(usize, skipBracedRegion(source, @intCast(cursor)) orelse return null) + 1;
+                run_start = cursor;
+            },
             '@' => {
                 if (text.startsDirective(source, @intCast(cursor))) {
-                    directive = true;
+                    owned = true;
                     cursor = skipDirectiveHeader(source, @intCast(cursor));
                 } else {
                     cursor += 1;
                 }
             },
-            else => cursor += 1,
+            else => {
+                const end = text.commentEnd(source, cursor, run_start);
+                owned = owned or end != null;
+                cursor = end orelse cursor + 1;
+            },
         }
     }
-    return null;
+    // no closing tag: an owned element reports itself unclosed
+    return if (owned) .{ .close = @intCast(source.len), .owned = true } else null;
 }
 
 /// Step past `@name (...)` so a header's own `<`, `{` or `>` - as in
@@ -1321,13 +1311,13 @@ fn skipDirectiveHeader(source: []const u8, at: u32) usize {
 }
 
 /// Offset just past the JSX element or fragment that starts at `start`.
-fn jsxElementEnd(source: []const u8, start: u32, depth: u32) ?u32 {
+fn jsxElementEnd(source: []const u8, start: u32, depth: u32, comptime comments: bool) ?u32 {
     if (depth > max_jsx_scan_depth) return null;
     const tag = scanJsxTag(source, start) orelse return null;
     if (tag.closing) return null;
     if (tag.self_closing) return tag.end;
     if (tag.raw_text != .none) return rawTextElementEnd(source, tag.end, tag.raw_text);
-    const children = scanJsxChildren(source, tag.end, depth + 1) orelse return null;
+    const children = scanJsxChildren(source, tag.end, depth + 1, comments) orelse return null;
     const closing = scanJsxTag(source, children.close) orelse return null;
     if (!closing.closing) return null;
     return closing.end;
@@ -1353,6 +1343,9 @@ fn parseExtendedJsxChildren(
 ) H.ErrorType!bool {
     var scan_from = from;
     var rescan_from = from;
+    // where a `//` starts a comment without whitespace before it: not right
+    // after another comment (`/* a */// b` is text)
+    var run_start = from;
     while (true) {
         H.setLexerMode(parser, .normal);
         const text_start = scan_from;
@@ -1363,15 +1356,30 @@ fn parseExtendedJsxChildren(
         while (literalLessThan(H.source(parser), text_token.span.end)) {
             text_token = H.reScanJsxText(parser, text_token.span.end + 1);
         }
-        const text_span: H.Span = .{ .start = text_start, .end = text_token.span.end };
+        // In `.tsrx` a comment ends the text and is a `{}` child of its own, as
+        // in TSX: `a /* c */ b` is `"a "`, `{/* c */}`, `" b"`. The host lexer
+        // reads a comment's bytes as text, `<` and `{` included, so it is
+        // found in the source.
+        const comment = if (container(parser).options.tsrx)
+            firstComment(H.source(parser), rescan_from, text_token.span.end, run_start)
+        else
+            null;
+        const text_span: H.Span = .{ .start = text_start, .end = if (comment) |c| c.start else text_token.span.end };
         if (text_span.end > text_span.start) {
             var value = H.sourceSlice(parser, text_span.start, text_span.end);
-            switch (try text.value(H, parser, text_span, isTsrxSource(&parser.lexer))) {
+            switch (try text.value(H, parser, text_span)) {
                 .handled => |decoded| value = decoded,
                 .unhandled => {},
             }
             const text_node = try H.addNode(parser, H.NodeData{ .jsx_text = .{ .value = value } }, text_span);
             try children.append(H.allocator(parser), text_node);
+        }
+        if (comment) |span| {
+            try children.append(H.allocator(parser), try addCommentChild(H, parser, span));
+            scan_from = span.end;
+            rescan_from = span.end;
+            run_start = std.math.maxInt(u32);
+            continue;
         }
         if (!try H.advanceWithRescannedToken(parser, text_token)) return false;
 
@@ -1403,7 +1411,49 @@ fn parseExtendedJsxChildren(
         // that misreports it truncates each sibling that follows
         scan_from = H.nodeSpan(parser, child).end;
         rescan_from = scan_from;
+        run_start = scan_from;
     }
+}
+
+/// The first comment that starts in `[from, to)` of a text run that began at
+/// `run_start`, or null.
+fn firstComment(source: []const u8, from: u32, to: u32, run_start: u32) ?struct { start: u32, end: u32 } {
+    var cursor = from;
+    while (std.mem.indexOfScalarPos(u8, source[0..to], cursor, '/')) |slash| : (cursor = @intCast(slash + 1)) {
+        if (text.commentEnd(source, slash, run_start)) |end| return .{ .start = @intCast(slash), .end = end };
+    }
+    return null;
+}
+
+/// A comment between children as TSX has it: an empty `{}` whose container
+/// and expression both span the comment, which is the expression's inner
+/// comment. The comment joins the lexer's list, in source order, replacing
+/// any copy a lookahead past a control-flow block's `}` recorded.
+fn addCommentChild(comptime H: type, parser: anytype, span: anytype) H.ErrorType!H.NodeIndex {
+    const lexer = &parser.lexer;
+    if (lexer.collect_comments) {
+        while (lexer.comments.items.len > 0 and lexer.comments.items[lexer.comments.items.len - 1].span.start >= span.start)
+            _ = lexer.comments.pop();
+        const block = parser.source[span.start + 1] == '*';
+        const value_end = if (block and std.mem.endsWith(u8, parser.source[span.start + 2 .. span.end], "*/")) span.end - 2 else span.end;
+        try lexer.comments.append(lexer.allocator, .{
+            .type = if (block) .block else .line,
+            .value = .{ .start = span.start + 2, .end = value_end },
+            .span = .{ .start = span.start, .end = span.end },
+        });
+    }
+    const empty = try H.addNode(parser, H.NodeData{ .jsx_empty_expression = .{} }, .{ .start = span.start, .end = span.end });
+    return H.addNode(parser, H.NodeData{ .jsx_expression_container = .{ .expression = empty } }, .{ .start = span.start, .end = span.end });
+}
+
+/// When the block or the source ended before an owned element's closing tag,
+/// as when a comment ran over it (`<p>// c</p>`), reports the element
+/// unclosed, as `@tsrx/core` does, and returns where its children end.
+fn reportUnclosed(comptime H: type, parser: anytype, name: []const u8, opening_end: u32, children: []const H.NodeIndex) H.ErrorType!?u32 {
+    if (H.currentToken(parser) != .right_brace and H.currentToken(parser) != .eof) return null;
+    const message = "Unclosed tag '<{s}>'. Expected '</{s}>' before end of template.";
+    try H.report(parser, H.currentSpan(parser), try std.fmt.allocPrint(H.allocator(parser), message, .{ name, name }));
+    return if (children.len > 0) H.nodeSpan(parser, children[children.len - 1]).end else opening_end;
 }
 
 fn ClosingElementName(comptime H: type) type {
@@ -1450,12 +1500,12 @@ fn parseExtendedJsxElement(comptime H: type, parser: anytype, opening: H.NodeInd
     const name_span = H.nodeSpan(parser, opening_data.name);
     const name = H.sourceText(parser, name_span);
     const source = H.source(parser);
-    // Own this element only when a directive - or a `<` the host would reject
-    // and TSRX keeps as text - sits directly among its own children: one nested
-    // inside a child element belongs to that child, which re-enters this hook
-    // when the host parses it.
-    const region = scanJsxChildren(source, opening_span.end, 0) orelse return null;
-    if (!region.directive and !region.literal_lt) return null;
+    // Own this element only when a directive, a `<` the host would reject and
+    // TSRX keeps as text, or a `.tsrx` comment sits directly among its own
+    // children: one nested inside a child element belongs to that child, which
+    // re-enters this hook when the host parses it.
+    const region = (if (container(parser).options.tsrx) scanJsxChildren(source, opening_span.end, 0, true) else scanJsxChildren(source, opening_span.end, 0, false)) orelse return null;
+    if (!region.owned) return null;
 
     // Declining halfway through leaves the host holding a parser that has
     // already consumed children, so every failure below rewinds to entry.
@@ -1469,7 +1519,15 @@ fn parseExtendedJsxElement(comptime H: type, parser: anytype, opening: H.NodeInd
 
     var children: std.ArrayList(H.NodeIndex) = .empty;
     defer children.deinit(H.allocator(parser));
-    if (!try parseExtendedJsxChildren(H, parser, &children, opening_span.end)) return null;
+    if (!try parseExtendedJsxChildren(H, parser, &children, opening_span.end)) {
+        const end = try reportUnclosed(H, parser, name, opening_span.end, children.items) orelse return null;
+        owned = true;
+        return @as(?H.NodeIndex, try H.addNode(parser, H.NodeData{ .jsx_element = .{
+            .opening_element = opening,
+            .children = try H.addExtra(parser, children.items),
+            .closing_element = .null,
+        } }, .{ .start = opening_span.start, .end = end }));
+    }
 
     const closing_start = H.currentSpan(parser).start;
     H.setLexerMode(parser, .jsx_tag);
@@ -1515,8 +1573,8 @@ fn parseExtendedJsxFragment(comptime H: type, parser: anytype, opening: H.NodeIn
     }
     const opening_span = H.nodeSpan(parser, opening);
     const source = H.source(parser);
-    const region = scanJsxChildren(source, opening_span.end, 0) orelse return null;
-    if (!region.directive and !region.literal_lt) return null;
+    const region = (if (container(parser).options.tsrx) scanJsxChildren(source, opening_span.end, 0, true) else scanJsxChildren(source, opening_span.end, 0, false)) orelse return null;
+    if (!region.owned) return null;
 
     const entry_parser = parser.checkpoint();
     const entry_store = container(parser).store.checkpoint();
@@ -1528,7 +1586,15 @@ fn parseExtendedJsxFragment(comptime H: type, parser: anytype, opening: H.NodeIn
 
     var children: std.ArrayList(H.NodeIndex) = .empty;
     defer children.deinit(H.allocator(parser));
-    if (!try parseExtendedJsxChildren(H, parser, &children, opening_span.end)) return null;
+    if (!try parseExtendedJsxChildren(H, parser, &children, opening_span.end)) {
+        const end = try reportUnclosed(H, parser, "", opening_span.end, children.items) orelse return null;
+        owned = true;
+        return @as(?H.NodeIndex, try H.addNode(parser, H.NodeData{ .jsx_fragment = .{
+            .opening_fragment = opening,
+            .children = try H.addExtra(parser, children.items),
+            .closing_fragment = .null,
+        } }, .{ .start = opening_span.start, .end = end }));
+    }
 
     const closing_start = H.currentSpan(parser).start;
     H.setLexerMode(parser, .jsx_tag);
@@ -1584,7 +1650,7 @@ pub fn parseLooseAncestorClose(
     if (text_token.span.end != closing_start) return null;
     if (text_token.len() > 0) {
         var value = H.sourceSlice(parser, text_token.span.start, text_token.span.end);
-        switch (try text.value(H, parser, text_token.span, isTsrxSource(&parser.lexer))) {
+        switch (try text.value(H, parser, text_token.span)) {
             .handled => |decoded| value = decoded,
             .unhandled => {},
         }

@@ -92,9 +92,8 @@ fn parseLocal(allocator: std.mem.Allocator, source: []const u8, options: Options
             .lang = options.lang,
             .preserve_parens = options.preserve_parens,
             .comments = options.comments,
-            .extension_flags = if (options.tsrx) extension.extension_flag_tsrx else 0,
         }),
-        .options = .{ .loose = options.loose },
+        .options = .{ .loose = options.loose, .tsrx = options.tsrx },
     };
     var tree = try state.parser.parse();
     normalizeJsxTypeArguments(&tree);

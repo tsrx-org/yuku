@@ -2,10 +2,10 @@ import { expect, test } from "vitest";
 import { analyze, encode, generate, parse, parseModule } from "@tsrx/yuku";
 
 // Regression tests for the @tsrx/core 0.5.0 rules reported against tsrx-org/oxc
-// (#110, #112, #113, #114, #115, #116). Every expected value below is what
-// @tsrx/core 0.5.0 (tsrx main at c70964d) returns for the same source, so a
-// difference here is a difference from the reference parser. Offsets are
-// yuku's `start`/`end`, which core calls `pos`/`end`.
+// (#110, #112, #113, #114, #115, #116, #118). Every expected value below is what
+// @tsrx/core (tsrx main at f78fada) returns for the same source, so a difference
+// here is a difference from the reference parser. Offsets are yuku's
+// `start`/`end`, which core calls `pos`/`end`.
 
 type Node = { type?: string; [key: string]: unknown };
 type Diagnostic = { message: string; start: number; pos: number; end: number; code?: string };
@@ -30,7 +30,7 @@ function findAll(root: unknown, predicate: (node: Node) => boolean): Node[] {
 	return found;
 }
 
-// yuku keeps layout-only text that core drops, so compare the rest.
+// The text that isn't only ASCII whitespace.
 const texts = (ast: unknown) =>
 	findAll(ast, (node) => node.type === "JSXText")
 		.filter(({ value }) => String(value).trim() !== "" || String(value).includes("\u00a0"))
@@ -62,69 +62,75 @@ function thrown(source: string, options?: object): CoreError | null {
 const recorded = (source: string, mode: "collect" | "loose" = "collect") =>
 	collected(source, mode).map(({ message, pos, end }) => [message, pos, end]);
 
-test("#110: a // line and a block comment in JSX text are left out of value and raw", () => {
-	const cases: [string, object[]][] = [
+// The children of the first element or fragment: text by value, `{}` for a
+// comment, `<tag>` for an element, and the type of anything else.
+function children(source: string, filename = "App.tsrx", options?: object): string[] {
+	const [first] = findAll(
+		parseModule(source, filename, options),
+		(node) => node.type === "JSXElement" || node.type === "JSXFragment",
+	);
+	return (first.children as Node[]).map((child) =>
+		child.type === "JSXText"
+			? String(child.value)
+			: child.type === "JSXElement"
+				? `<${(child.openingElement as { name: { name: string } }).name.name}>`
+				: (child.expression as Node | undefined)?.type === "JSXEmptyExpression"
+					? "{}"
+					: String(child.type),
+	);
+}
+
+test("#110, #118: every comment between children is a {} of its own, and all text is kept", () => {
+	const cases: [string, string[]][] = [
 		[
-			"export function App() @{\n\t<p>\n\t\ta\n\t\t// note\n\t\tb\n\t</p>\n}",
-			[{ value: "\n\t\ta\n\t\t\n\t\tb\n\t", raw: "\n\t\ta\n\t\t\n\t\tb\n\t", start: 29, end: 49 }],
-		],
-		[
-			"export function App({ c }) @{\n\t<main>{c && <b>\n\t\ta\n\t\t// note\n\t\tb\n\t</b>}</main>\n}",
-			[{ value: "\n\t\ta\n\t\t\n\t\tb\n\t", raw: "\n\t\ta\n\t\t\n\t\tb\n\t", start: 46, end: 66 }],
-		],
-		[
-			"export function App() {\n\treturn (\n\t\t<p>\n\t\t\ta\n\t\t\t// note\n\t\t\tb\n\t\t</p>\n\t);\n}",
+			"export function App({ x }) @{\n\t<div>\n\t\ta /* c */ b\n\t\t<b />\n\t\t// d\n\t\t@if (x) {\n\t\t\t<i />\n\t\t} // e\n\t</div>\n}",
 			[
-				{
-					value: "\n\t\t\ta\n\t\t\t\n\t\t\tb\n\t\t",
-					raw: "\n\t\t\ta\n\t\t\t\n\t\t\tb\n\t\t",
-					start: 39,
-					end: 63,
-				},
+				"\n\t\ta ",
+				"{}",
+				" b\n\t\t",
+				"<b>",
+				"\n\t\t",
+				"{}",
+				"\n\t\t",
+				"JSXIfExpression",
+				" ",
+				"{}",
+				"\n\t",
 			],
 		],
+		// a `//` touching text, or right after a comment, is text
 		[
-			"export function App() {\n\treturn <p>a /* note */ b</p>;\n}",
-			[{ value: "a  b", raw: "a  b", start: 35, end: 49 }],
+			"export function App() {\n\treturn <p>a//b https://x.dev /* */// c\n</p>;\n}",
+			["a//b https://x.dev ", "{}", "// c\n"],
 		],
+		// a comment hides the markup in it
 		[
-			"export function App() @{\n\t<p>a /* note */ b</p>\n}",
-			[{ value: "a  b", raw: "a  b", start: 29, end: 43 }],
+			"export function App({ a }) {\n\treturn <div>/* <b>x</b> {a} } */<i>y</i></div>;\n}",
+			["{}", "<i>"],
 		],
-		// A `//` after other text on its line is text.
-		[
-			"export function App() @{\n\t<p>a // note</p>\n}",
-			[{ value: "a // note", raw: "a // note", start: 29, end: 38 }],
-		],
-		[
-			"export function App() {\n\treturn <p>a // note\n b</p>;\n}",
-			[{ value: "a // note\n b", raw: "a // note\n b", start: 35, end: 47 }],
-		],
-		// A comment hides the markup in it.
-		[
-			"export function App({ a }) @{\n\t<div>\n\t\t// <b>x</b> {a}\n\t\t<i>y</i>\n\t</div>\n}",
-			[{ value: "y", raw: "y", start: 60, end: 61 }],
-		],
-		[
-			"export function App({ a }) {\n\treturn <div>\n\t\t/* <b>x</b>\n\t\t{a} */\n\t\t<i>y</i>\n\t</div>;\n}",
-			[{ value: "y", raw: "y", start: 71, end: 72 }],
-		],
-		[
-			"export function App() {\n\treturn <div>a /* } */ b</div>;\n}",
-			[{ value: "a  b", raw: "a  b", start: 37, end: 48 }],
-		],
+		["export function App() @{\n\t<>\n\t\t// <b>x</b>\n\t</>\n}", ["\n\t\t", "{}", "\n\t"]],
 	];
-	for (const [source, expected] of cases) {
-		expect(texts(parseModule(source, "App.tsrx")), source).toEqual(expected);
-	}
+	for (const [source, expected] of cases) expect(children(source), source).toEqual(expected);
 
-	// An escaped opener is text, not a comment. (Its entities are decoded, which
-	// is #111's change and not core 0.5.0's.)
-	const escaped = parseModule(
-		"export function App() @{\n\t<p>a &#47;* note *&#47; b</p>\n}",
-		"App.tsrx",
+	// the container and its expression span the comment, which joins the comment list
+	const comments: { value: string }[] = [];
+	const source = "export function App() {\n\treturn <p>a /* c */ b</p>;\n}";
+	const [comment] = findAll(
+		parseModule(source, "App.tsrx", { comments }),
+		(node) => node.type === "JSXExpressionContainer",
 	);
-	expect(texts(escaped).map(({ start, end }) => [start, end])).toEqual([[29, 51]]);
+	const expression = comment.expression as Node;
+	expect([comment.start, comment.end, expression.start, expression.end]).toEqual([37, 44, 37, 44]);
+	expect(comments.map(({ value }) => value)).toEqual([" c "]);
+
+	// a line comment runs over the closing tag on its line
+	const unclosed = "export function App() @{\n\t<p>// c</p>\n}";
+	expect(thrown(unclosed)?.message).toBe(
+		"Unclosed tag '<p>'. Expected '</p>' before end of template. (38:39)",
+	);
+	expect(collected(unclosed).map(({ code, pos }) => [code, pos])).toEqual([
+		["tsrx-unclosed-tag", 38],
+	]);
 });
 
 test("#112: a non-breaking space next to a line break is text, not layout", () => {
@@ -259,7 +265,7 @@ test("#110: parseModule reads comments in JSX text for every filename; parse and
 			.filter(Boolean);
 	// @tsrx/core's parseModule applies the comment rule whatever the extension
 	for (const filename of ["App.tsrx", "App.tsx", "App.jsx"]) {
-		expect(values(filename), filename).toEqual(["a  b"]);
+		expect(values(filename), filename).toEqual(["a", "b"]);
 	}
 	// `tsrx: false` reads standard JSX
 	const standard = findAll(
@@ -276,7 +282,7 @@ test("#110: parseModule reads comments in JSX text for every filename; parse and
 		findAll(analyze(source, filename).program, (node) => node.type === "JSXText")
 			.map(({ value }) => String(value).trim())
 			.filter(Boolean);
-	expect(analyzed("App.tsrx")).toEqual(["a  b"]);
+	expect(analyzed("App.tsrx")).toEqual(["a", "b"]);
 	expect(analyzed("App.tsx")).toEqual(["// x", "y", "a /* c */ b"]);
 	// `parse` reads standard JSX unless `tsrx` is set
 	const plain = (options: object) =>
