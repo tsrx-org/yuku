@@ -49,10 +49,23 @@ export function validateUpstreamDecoder(
 	}
 }
 
+// Git exports these to hooks, and in a linked worktree `GIT_DIR` names that
+// worktree's own Git directory. Passed on, they would make `git -C <seam>`
+// read this repository instead of the seam checkout, so the pre-commit hook's
+// `check:generated` could not find the pinned seam revision.
+const REPOSITORY_ENV = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"] as const;
+
+/** `env` without the variables that pin Git to another repository. */
+export function seamGitEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+	const next: NodeJS.ProcessEnv = { ...env, GIT_NO_LAZY_FETCH: "1" };
+	for (const name of REPOSITORY_ENV) delete next[name];
+	return next;
+}
+
 export function loadUpstreamGitObject(repository: string, reference = UPSTREAM_REF): Buffer {
 	const result = spawnSync("git", ["-C", repository, "show", `${reference}:${UPSTREAM_PATH}`], {
 		encoding: null,
-		env: { ...process.env, GIT_NO_LAZY_FETCH: "1" },
+		env: seamGitEnv(),
 		maxBuffer: 16 * 1024 * 1024,
 	});
 	if (result.error !== undefined || result.status !== 0 || result.stdout === null) {
