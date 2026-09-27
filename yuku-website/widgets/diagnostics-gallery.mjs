@@ -15,7 +15,7 @@ const CASES = [
   { id: 'style-open', label: 'unclosed <style>', source: '<s><style>.a{}</s>', expect: 'Unclosed TSRX style element' },
   { id: 'for-tail', label: 'repeated loop index', source: 'const view = @for (const k in obj; index a; index b) { <b/> };', expect: "Expected unique 'index' then 'key' clauses in for-of expression" },
   { id: 'unclosed-element', label: 'mismatched closing tag', source: '<a><b>text</a>', expect: "Expected closing tag for '<b>' but found '</a>'", loose: true },
-  { id: 'fragment-open', label: 'unclosed fragment', source: '<>@if (x) { <b/> }', expect: "Expected '/' in JSX closing fragment, but found 'if'" },
+  { id: 'fragment-open', label: 'unclosed fragment', source: '<>@if (x) { <b/> }', expect: "Unclosed tag '<>'. Expected '</>' before end of template." },
   { id: 'redeclared', label: 'redeclared name', source: 'const a = 1; const a = 2;', semanticErrors: true, expect: "Identifier 'a' has already been declared" },
   { id: 'export-missing', label: 'missing export', source: 'export { nope };', semanticErrors: true, expect: "Export 'nope' is not defined" },
 ]
