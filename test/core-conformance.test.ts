@@ -215,7 +215,7 @@ test("#118: a comment is a {} child whichever parser reads the element", () => {
 		],
 		// ... which the scan of a parent's children reads the same way
 		[
-			"export function A({ x, y }) @{\n\t<div>\n\t\t@if (x) { <i /> }\n\t\t<p>@if (y) { <b /> } // c\u2028</p>\n\t</div>\n}",
+			"export function A({ x, y }) @{\n\t<div>\n\t\t@if (x) { <i /> }\n\t\t<p>@if (y) /* h */ { <b /> } // c\u2028</p>\n\t</div>\n}",
 			["\n\t\t", "JSXIfExpression", "\n\t\t", "<p>", "\n\t"],
 		],
 	];
