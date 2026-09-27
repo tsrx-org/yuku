@@ -3912,5 +3912,9 @@ fn printSwitchCase(comptime Host: type, host: *Host, raw: u32) !void {
         try host.dialectWrite("@default");
     }
     try host.dialectWrite(": ");
-    try host.dialectEmitBlock(case.consequent.start, case.consequent.len);
+    const body = host.tree.extra(case.consequent);
+    if (body.len == 1 and host.tree.data(body[0]) == .block_statement)
+        try host.dialectEmit(@intFromEnum(body[0]))
+    else
+        try host.dialectEmitBlock(case.consequent.start, case.consequent.len);
 }

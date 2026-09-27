@@ -55,37 +55,6 @@ pub fn analyze(tree: anytype) AnalyzeResult {
         });
         replaced = index + 1;
     }
-
-    // A `@case` body is written in braces, and each is its own block scope, as
-    // in `@tsrx/core`: `@case 1: { const x = 1; } @case 2: { const x = 2; }` is
-    // valid. The tree keeps a case's statements as its consequent, so each
-    // case is analyzed through a block wrapping them, and restored after.
-    var cases: std.ArrayList(CaseConsequent) = .empty;
-    defer for (cases.items) |case| {
-        const case_data = tree.tree.data(case.node).switch_case;
-        tree.tree.setData(case.node, .{ .switch_case = .{ .@"test" = case_data.@"test", .consequent = case.consequent } });
-    };
-    for (tree.dialect_store.associations.items) |association| {
-        const record = tree.dialect_store.records.items[association.record_index];
-        if (record != .jsx_switch_expression) continue;
-        const statement: parser.ast.NodeIndex = @enumFromInt(record.jsx_switch_expression.statement.raw);
-        const range = switch (tree.tree.data(statement)) {
-            .switch_statement => |data| data.cases,
-            else => continue,
-        };
-        for (0..range.len) |offset| {
-            const case_node = tree.tree.extras.items[range.start + offset];
-            const case_data = tree.tree.data(case_node).switch_case;
-            if (case_data.consequent.len == 0) continue;
-            const block = try tree.tree.addNode(
-                .{ .block_statement = .{ .body = case_data.consequent } },
-                tree.tree.span(case_node),
-            );
-            const consequent = try semanticRange(tree, 0, 0, @intFromEnum(block));
-            try cases.append(tree.tree.allocator(), .{ .node = case_node, .consequent = case_data.consequent });
-            tree.tree.setData(case_node, .{ .switch_case = .{ .@"test" = case_data.@"test", .consequent = consequent } });
-        }
-    }
     return parser.semantic.analyze(&tree.tree);
 }
 
@@ -107,8 +76,3 @@ fn semanticRange(tree: anytype, start: u32, len: u32, tail: u32) !parser.ast.Ind
     if (tail != std.math.maxInt(u32)) try tree.tree.extras.append(tree.tree.allocator(), @enumFromInt(tail));
     return .{ .start = first, .len = len + @intFromBool(tail != std.math.maxInt(u32)) };
 }
-
-const CaseConsequent = struct {
-    node: parser.ast.NodeIndex,
-    consequent: parser.ast.IndexRange,
-};

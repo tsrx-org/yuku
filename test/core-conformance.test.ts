@@ -825,3 +825,59 @@ test("sloppy-mode scripts keep Annex B function declarations", () => {
 		/^Identifier 'g' has already been declared/,
 	);
 });
+
+// tsrx-org/oxc#125, #127, #128: the shapes of @tsrx/core 0.5.0
+test("an @case or @default arm's consequent is its { ... } block", () => {
+	const source =
+		"export function A({ x }) @{\n\t@switch (x) {\n\t\t@case 1: /* c */ {\n\t\t\tconst y = 1;\n\t\t\t<b>{y}</b>\n\t\t}\n\t\t@default: {\n\t\t\t// only a comment\n\t\t}\n\t}\n}\n";
+	const cases = findAll(parseModule(source, "A.tsrx"), (node) => node.type === "SwitchCase");
+	const blocks = cases.map(({ consequent }) => consequent as Node[]);
+	expect(blocks.map((consequent) => consequent.map(({ type }) => type))).toEqual([
+		["BlockStatement"],
+		["BlockStatement"],
+	]);
+	const [[first], [fallback]] = blocks;
+	expect([first.start, first.end]).toEqual([
+		source.indexOf("{\n\t\t\tconst"),
+		source.indexOf("}", source.indexOf("</b>")) + 1,
+	]);
+	expect((first.body as Node[]).map(({ type }) => type)).toEqual([
+		"VariableDeclaration",
+		"JSXElement",
+	]);
+	expect(source.slice(fallback.start as number, fallback.end as number)).toBe(
+		"{\n\t\t\t// only a comment\n\t\t}",
+	);
+});
+
+test("a type parameter's name is an Identifier, and an enum's members are in a TSEnumBody", () => {
+	for (const [source, name] of [
+		["function f<const T extends string>(x: T) {}", "T"],
+		["class A<in /* c */ out T> {}", "T"],
+		["type I = X extends Array<infer U> ? U : never;", "U"],
+	]) {
+		const [parameter] = findAll(
+			parseModule(source, "a.ts"),
+			(node) => node.type === "TSTypeParameter",
+		);
+		const start = source.lastIndexOf(name, source.indexOf(name === "T" ? ">" : " ?"));
+		expect(parameter.name, source).toMatchObject({
+			type: "Identifier",
+			name,
+			start,
+			end: start + 1,
+		});
+	}
+	const source = "enum E /* c */ { A, B = 2 }";
+	const [declaration] = findAll(
+		parseModule(source, "a.ts"),
+		(node) => node.type === "TSEnumDeclaration",
+	);
+	expect(declaration.body).toMatchObject({
+		type: "TSEnumBody",
+		start: source.indexOf("{"),
+		end: source.length,
+	});
+	expect(((declaration.body as Node).members as Node[]).length).toBe(2);
+	expect("members" in declaration).toBe(false);
+});
