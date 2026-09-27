@@ -7,33 +7,85 @@
 export const DYNAMIC_TAG_EXPRESSION_MESSAGE =
   "A dynamic tag expression must be an identifier, a member access such as `props.as` or `registry[name]`, or a string literal. Compute anything else before the element: `const Tag = c ? Child : Fallback;`, then `<{Tag} />`.";
 
-const UNCLOSED_TAG_MESSAGE = /^Unclosed tag '<.*>'\. Expected '<\/.*>' before end of template\.$/;
-
-const SCRIPT_END_TAG_IN_BODY_MESSAGE =
-  /^'<\/script' can end a script in HTML, so a '<script>' body can't contain it\. Write '<\\\/script' instead\.$/i;
+// The `@tsrx/core` code of each native message: TSRX's own code for a mistake
+// only TSRX reports, and TypeScript's for one TypeScript also reports, the
+// code core gives the same mistake. A message that could be more than one
+// mistake (a `return` in any template block, an `'export'` in a function or a
+// block) has none.
+const MESSAGE_CODES = [
+  [
+    /^Unclosed tag '<.*>'\. Expected '<\/.*>' before end of template\.$|^Expected '<\/' to close the JSX element, but found 'end of file'$/,
+    "TSRX1001",
+  ],
+  [/^Expected closing tag for '<[^']*>' but found '<\/[^']*>'$/, "TSRX1002"],
+  [/^'<\/script' can end a script in HTML, /i, "TSRX1004"],
+  [/^Expected '\{' after TSRX control-flow directive$/, "TSRX1008"],
+  [/^TSRX try directive requires /, "TSRX1010"],
+  [/^Expected unique 'index' then 'key' clauses /, "TSRX1011"],
+  [/^`break` is invalid inside `@switch` cases\.$/, "TSRX2008"],
+  [/^`return` is invalid inside `@switch` cases\.$/, "TSRX2009"],
+  [/^A dynamic tag expression must be /, "TSRX2014"],
+  [/^Duplicate import attribute key /, "TSRX4003"],
+  [/^(?:Identifier|type) '[^']+' has already been declared\.?$|^Argument name clash$/, "TS2300"],
+  [/^Duplicate (?:private name|export of) '/, "TS2300"],
+  [/^Export '[^']+' is not defined$/, "TS2304"],
+  // a missing token, but not a TSRX directive's or an element's closing tag
+  [
+    /^Expected (?!.*(?:TSRX|'@|for-of))(?:'[^'<]*'(?: or '[^']*')? (?:to close|in|after) |a semicolon or an implicit )/,
+    "TS1005",
+  ],
+  [/^Unexpected token\b/, "TS1012"],
+  [/^Unexpected '\}' in JSX text$/, "TS1381"],
+  [/^Unexpected '>' in JSX text$/, "TS1382"],
+  [/^'import' declaration may only appear at the top level$/, "TS1232"],
+  [/^'export \*' declaration may only appear at the top level$/, "TS1233"],
+  [/^'return' statement is only valid inside a function$/, "TS1108"],
+  [/^Private field '#[^']*' must be declared in an enclosing class$/, "TS1111"],
+  [/^'(?:const|using|await using)' declarations must be initialized$/, "TS1155"],
+  [/^Destructuring declaration must have an initializer$/, "TS1182"],
+  [/^Rest parameter (?:must be last formal parameter|may not have a trailing comma)$/, "TS1013"],
+  [/^Getter must have no parameters$/, "TS1054"],
+  [/^Setter must have exactly one parameter$/, "TS1049"],
+  [/^A class can only have one constructor$/, "TS2392"],
+  [/^An abstract method cannot have an implementation$/, "TS1245"],
+  [/^'super\(\)' is only valid in a constructor of a derived class$/, "TS2337"],
+  [/^Optional chaining is not allowed in assignment pattern$/, "TS2779"],
+  [/^Optional chaining is not allowed in new expression$/, "TS1209"],
+  [/^Private fields cannot be deleted$/, "TS18011"],
+  [/^Duplicate '__proto__' property in object literal$/, "TS1117"],
+  [/^Logical expressions and nullish coalescing cannot be mixed$/, "TS5076"],
+  [/^Try statement requires catch or finally clause$/, "TS1472"],
+  [/^A switch statement can only have one default clause$/, "TS1113"],
+  [/^Duplicate label '/, "TS1114"],
+  [/^Illegal break statement$/, "TS1105"],
+  [/^Illegal continue statement$/, "TS1104"],
+  [/^Illegal newline after throw$/, "TS1142"],
+  [/^'with' statements are not allowed in strict mode$/, "TS1101"],
+  [/^'(?:eval|arguments)' is not allowed as a binding identifier in strict mode$/, "TS1100"],
+  [/^'await' is reserved in an async\/module context /, "TS1262"],
+  [/^Import attribute value must be a string literal$/, "TS2858"],
+  [/^Unterminated string literal$/, "TS1002"],
+  [/^Unterminated multi-line comment$/, "TS1010"],
+  [/^Unterminated template literal$/, "TS1160"],
+  [/^Unterminated regular expression(?: literal)?$/, "TS1161"],
+  [/^Invalid regular expression flag$/, "TS1499"],
+  [/^Duplicate regular expression flag$/, "TS1500"],
+  [/^Octal literals are not allowed in strict mode$/, "TS1124"],
+  [/^Identifier cannot immediately follow a numeric literal$/, "TS1351"],
+  [/^Hexadecimal literal must contain at least one hex digit$/, "TS1125"],
+  [/^Numeric separator cannot appear at the end of a numeric literal$/, "TS6188"],
+];
 
 /**
- * The `@tsrx/core` code for a diagnostic, or `undefined` when core has none.
- * The native diagnostic record carries no code field, so it is assigned from
- * core's exact messages; each is one the native parser reports only for that
- * code.
+ * The `@tsrx/core` code for a diagnostic, or `undefined` when core has none
+ * or the message doesn't say which it is. The native diagnostic record carries
+ * no code field, so it is assigned from the message, as core assigns its own.
  *
- * A spread or empty dynamic tag (`<{...a} />`, `<{} />`) shares the dynamic
- * tag message, but core raises it as a plain syntax error without a code; the
- * native parser marks it with help text, which the coded diagnostic never has.
- *
- * @param {{ message: string, help: string | null }} diagnostic
+ * @param {{ message: string }} diagnostic
  * @returns {string | undefined}
  */
 export function diagnosticCode(diagnostic) {
-  if (diagnostic.message === DYNAMIC_TAG_EXPRESSION_MESSAGE && diagnostic.help === null) {
-    return "tsrx-dynamic-tag-expression";
-  }
-  if (SCRIPT_END_TAG_IN_BODY_MESSAGE.test(diagnostic.message)) {
-    return "tsrx-script-end-tag-in-body";
-  }
-  if (UNCLOSED_TAG_MESSAGE.test(diagnostic.message)) return "tsrx-unclosed-tag";
-  return undefined;
+  return MESSAGE_CODES.find(([pattern]) => pattern.test(diagnostic.message))?.[1];
 }
 
 /** `diagnostic` with its core `code`, when it has one. */

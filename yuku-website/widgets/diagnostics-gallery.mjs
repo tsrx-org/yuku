@@ -4,20 +4,20 @@
 // engine in the tab.
 
 const CASES = [
-  { id: 'if-braces', label: '@if without braces', source: '@if (x) <b/>', expect: "Expected '{' after TSRX control-flow directive" },
-  { id: 'for-braces', label: '@for without braces', source: 'const before = 1; const view = @for (const item of items) <li/>; const after = 2;', expect: "Expected '{' after TSRX control-flow directive" },
+  { id: 'if-braces', label: '@if without braces', source: '@if (x) <b/>', expect: "Expected '{' after TSRX control-flow directive", code: 'TSRX1008' },
+  { id: 'for-braces', label: '@for without braces', source: 'const before = 1; const view = @for (const item of items) <li/>; const after = 2;', expect: "Expected '{' after TSRX control-flow directive", code: 'TSRX1008' },
   { id: 'unknown-directive', label: 'unknown directive', source: '@iffy (x) { <b/> }', expect: "Expected 'if' after '@'" },
   { id: 'switch-open', label: 'unclosed @switch', source: '@switch (x) { @case 1: { <b/> }', expect: "Expected '}' to close TSRX switch body" },
-  { id: 'switch-break', label: 'break in @case', source: '@switch (x) { @case 1: { break; } }', expect: '`break` is invalid inside `@switch` cases.' },
+  { id: 'switch-break', label: 'break in @case', source: '@switch (x) { @case 1: { break; } }', expect: '`break` is invalid inside `@switch` cases.', code: 'TSRX2008' },
   { id: 'block-return', label: 'return in template block', source: '<s>@{ return <b/>; }</s>', expect: '`return` is invalid inside TSRX template blocks' },
-  { id: 'try-alone', label: '@try without fallback', source: '@try { <b/> }', expect: "TSRX try directive requires '@pending' or '@catch'" },
-  { id: 'dynamic-call', label: 'dynamic tag call', source: '<{getTag()} />', expect: 'A dynamic tag expression must be an identifier, a member access' },
+  { id: 'try-alone', label: '@try without fallback', source: '@try { <b/> }', expect: "TSRX try directive requires '@pending' or '@catch'", code: 'TSRX1010' },
+  { id: 'dynamic-call', label: 'dynamic tag call', source: '<{getTag()} />', expect: 'A dynamic tag expression must be an identifier, a member access', code: 'TSRX2014' },
   { id: 'style-open', label: 'unclosed <style>', source: '<s><style>.a{}</s>', expect: 'Unclosed TSRX style element' },
-  { id: 'for-tail', label: 'repeated loop index', source: 'const view = @for (const k in obj; index a; index b) { <b/> };', expect: "Expected unique 'index' then 'key' clauses in for-of expression" },
-  { id: 'unclosed-element', label: 'mismatched closing tag', source: '<a><b>text</a>', expect: "Expected closing tag for '<b>' but found '</a>'", loose: true },
-  { id: 'fragment-open', label: 'unclosed fragment', source: '<>@if (x) { <b/> }', expect: "Unclosed tag '<>'. Expected '</>' before end of template." },
-  { id: 'redeclared', label: 'redeclared name', source: 'const a = 1; const a = 2;', semanticErrors: true, expect: "Identifier 'a' has already been declared" },
-  { id: 'export-missing', label: 'missing export', source: 'export { nope };', semanticErrors: true, expect: "Export 'nope' is not defined" },
+  { id: 'for-tail', label: 'repeated loop index', source: 'const view = @for (const k in obj; index a; index b) { <b/> };', expect: "Expected unique 'index' then 'key' clauses in for-of expression", code: 'TSRX1011' },
+  { id: 'unclosed-element', label: 'mismatched closing tag', source: '<a><b>text</a>', expect: "Expected closing tag for '<b>' but found '</a>'", code: 'TSRX1002', loose: true },
+  { id: 'fragment-open', label: 'unclosed fragment', source: '<>@if (x) { <b/> }', expect: "Unclosed tag '<>'. Expected '</>' before end of template.", code: 'TSRX1001' },
+  { id: 'redeclared', label: 'redeclared name', source: 'const a = 1; const a = 2;', semanticErrors: true, expect: "Identifier 'a' has already been declared", code: 'TS2300' },
+  { id: 'export-missing', label: 'missing export', source: 'export { nope };', semanticErrors: true, expect: "Export 'nope' is not defined", code: 'TS2304' },
 ]
 
 export const className = 'explorer ex-figure'
@@ -28,6 +28,9 @@ export default async function render({ ctx }) {
     const hit = result.diagnostics.find((diagnostic) => diagnostic.message.includes(item.expect))
     if (!hit) {
       throw new Error(`diagnostics-gallery: ${item.id} no longer reports "${item.expect}" (got ${result.diagnostics.map((d) => d.message).join('; ') || 'nothing'})`)
+    }
+    if (hit.code !== item.code) {
+      throw new Error(`diagnostics-gallery: ${item.id} has code ${hit.code} now, expected ${item.code}`)
     }
     if (hit.severity !== (item.severity ?? 'error')) {
       throw new Error(`diagnostics-gallery: ${item.id} is a ${hit.severity} now, expected ${item.severity ?? 'error'}`)

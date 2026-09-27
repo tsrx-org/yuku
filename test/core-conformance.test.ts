@@ -163,9 +163,8 @@ test("#110, #118: every comment between children is a {} of its own, and all tex
 	expect(thrown(unclosed)?.message).toBe(
 		"Unclosed tag '<p>'. Expected '</p>' before end of template. (38:39)",
 	);
-	expect(collected(unclosed).map(({ code, pos }) => [code, pos])).toEqual([
-		["tsrx-unclosed-tag", 38],
-	]);
+	expect(thrown(unclosed)?.code).toBe("TSRX1001");
+	expect(collected(unclosed).map(({ code, pos }) => [code, pos])).toEqual([["TSRX1001", 38]]);
 	// ... and the next closing tag is an ancestor's, so it is reported, not read as text
 	for (const source of [
 		"export function App() {\n\treturn <div><p>// c</p>\n</div>;\n}",
@@ -450,7 +449,7 @@ test("#116: a script body ends at </script, HTML whitespace, and >", () => {
 	}
 });
 
-test("#116: any other </script in a script body is tsrx-script-end-tag-in-body", () => {
+test("#116: any other </script in a script body is TSRX1004", () => {
 	const message = (written: string) =>
 		`'${written}' can end a script in HTML, so a '<script>' body can't contain it. Write '<\\/${written.slice(2)}' instead.`;
 	const cases: [string, string][] = [
@@ -464,7 +463,7 @@ test("#116: any other </script in a script body is tsrx-script-end-tag-in-body",
 
 		const error = thrown(source);
 		expect(error?.message, source).toBe(`${message(written)} (45:53)`);
-		expect(error?.code, source).toBe("tsrx-script-end-tag-in-body");
+		expect(error?.code, source).toBe("TSRX1004");
 
 		for (const mode of ["collect", "loose"] as const) {
 			const errors: Diagnostic[] = [];
@@ -474,15 +473,13 @@ test("#116: any other </script in a script body is tsrx-script-end-tag-in-body",
 			expect(
 				errors.map(({ message, code, start, end }) => ({ message, code, start, end })),
 				`${mode}: ${source}`,
-			).toEqual([
-				{ message: message(written), code: "tsrx-script-end-tag-in-body", start: 45, end: 53 },
-			]);
+			).toEqual([{ message: message(written), code: "TSRX1004", start: 45, end: 53 }]);
 		}
 	}
 
 	// An unclosed body still reports the `</script` in it.
 	expect(collected("export function App() @{\n\t<div><script>a</SCRIPT>b\n}")[0]?.code).toBe(
-		"tsrx-script-end-tag-in-body",
+		"TSRX1004",
 	);
 
 	// A `</script` outside a script body is not reported.
@@ -493,7 +490,7 @@ test("#116: any other </script in a script body is tsrx-script-end-tag-in-body",
 
 const DYNAMIC_TAG_MESSAGE =
 	"A dynamic tag expression must be an identifier, a member access such as `props.as` or `registry[name]`, or a string literal. Compute anything else before the element: `const Tag = c ? Child : Fallback;`, then `<{Tag} />`.";
-const DYNAMIC_TAG_CODE = "tsrx-dynamic-tag-expression";
+const DYNAMIC_TAG_CODE = "TSRX2014";
 
 const dynamicTagSource = (tag: string) =>
 	`export function App({ tag, props, registry, name, c, A, B, Tag, getTag, getName, level, items, a }) @{\n\t<div>\n\t\t<{${tag}} />\n\t</div>\n}`;
@@ -564,12 +561,12 @@ test("#115: a spread or an empty dynamic tag is no expression", () => {
 		["export function App() @{\n\t<div><{} /></div>\n}", 33],
 	];
 	for (const [source, pos] of cases) {
-		// Core raises these as plain syntax errors, without the code, in every mode.
+		// Core raises these as syntax errors in every mode.
 		for (const options of [undefined, { collect: true, errors: [] }, { loose: true, errors: [] }]) {
 			const error = thrown(source, options);
 			expect(error, source).toBeInstanceOf(SyntaxError);
 			expect(error?.message.startsWith(DYNAMIC_TAG_MESSAGE), source).toBe(true);
-			expect(error?.code, source).toBeUndefined();
+			expect(error?.code, source).toBe(DYNAMIC_TAG_CODE);
 			expect(error?.pos, source).toBe(pos);
 			expect(options?.errors ?? [], source).toEqual([]);
 		}
@@ -816,10 +813,49 @@ test("#113: merging, shadowing, overloads, and template scopes core accepts stay
 	}
 });
 
+test("#117: errors carry the TS or TSRX code @tsrx/core gives the same mistake", () => {
+	// [source, the code @tsrx/core (tsrx-org/tsrx#888) throws and records for it]
+	const cases: [string, string | undefined][] = [
+		["export function App() @{\n\t<p>a< /p>\n}", "TSRX1001"],
+		["const a = <div><b>text</b>;", "TSRX1001"],
+		["export function App() @{\n\t<div><script>a</SCRIPT>b</script></div>\n}", "TSRX1004"],
+		["export function App() @{\n\t@if (x) <b />\n}", "TSRX1008"],
+		["function App() @{\n\t@switch (x) {\n\t\t@case 1: {\n\t\t\tbreak;\n\t\t}\n\t}\n}", "TSRX2008"],
+		[
+			"function App() @{\n\t@switch (x) {\n\t\t@case 1: {\n\t\t\treturn;\n\t\t}\n\t}\n}",
+			"TSRX2009",
+		],
+		["export function App({ getTag }) @{\n\t<{getTag()} />\n}", "TSRX2014"],
+		["let a = 1; let a = 2;", "TS2300"],
+		["type A = 1;\ntype A = 2;", "TS2300"],
+		["export function f(a, a) {}", "TS2300"],
+		["export { missing };", "TS2304"],
+		["if (a) {", "TS1005"],
+		["a ?? b || c;", "TS5076"],
+		["try {}", "TS1472"],
+		["throw\na;", "TS1142"],
+		["const re = /a/gg;", "TS1500"],
+		["class A { m() { return this.#x; } }", "TS1111"],
+		["function f() { continue; }", "TS1104"],
+		// the message doesn't say which block the `return` is in, so no code
+		["function App() @{\n\t@try {\n\t\treturn;\n\t} @catch (e) {\n\t\t<p />\n\t}\n}", undefined],
+	];
+	for (const [source, code] of cases) {
+		const error = thrown(source);
+		expect(error, source).toBeInstanceOf(SyntaxError);
+		expect(error?.code, source).toBe(code);
+		expect(collected(source)[0]?.code, source).toBe(code);
+	}
+	// core throws a mismatched closing tag as one; it records `Unexpected closing tag`, TSRX1003
+	expect(thrown("const a = <div></span>;")?.code).toBe("TSRX1002");
+	// `parse` gives its diagnostics the same codes
+	expect(parse("let a; let a;", { semanticErrors: true }).diagnostics[0]?.code).toBe("TS2300");
+});
+
 test("parse and analyze give the core shape too: diagnostic codes, no content on <script />", () => {
 	const source = "export function App() @{\n\t<script />\n\t<{a()} />\n}";
 	for (const result of [parse(source, { lang: "tsx" }), analyze(source, "App.tsrx")]) {
-		expect(result.diagnostics.map(({ code }) => code)).toEqual(["tsrx-dynamic-tag-expression"]);
+		expect(result.diagnostics.map(({ code }) => code)).toEqual(["TSRX2014"]);
 		const [script] = findAll(result.program, (node) => node.type === "JSXScriptElement");
 		expect("content" in script).toBe(false);
 	}

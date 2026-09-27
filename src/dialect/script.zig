@@ -60,7 +60,7 @@ pub fn afterOpen(comptime Host: type, parser: anytype, opening: Host.NodeIndex, 
 /// Where a `<script>` body ends: at `</script`, optional HTML whitespace, then
 /// `>`. HTML ends a script at any `</script` followed by whitespace, `/` or
 /// `>`, in any letter case, so every other `</script` in the body is reported
-/// with code `tsrx-script-end-tag-in-body` over its 8 characters as written,
+/// with code `TSRX1004` over its 8 characters as written,
 /// unclosed body or not. Returns the closing tag's span, or null when the body
 /// is unclosed.
 pub fn findBodyEnd(comptime Host: type, parser: anytype, source: []const u8, content_start: u32) Host.ErrorType!?Host.Span {

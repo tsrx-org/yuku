@@ -45,7 +45,7 @@ The browser generator reparses the source string; it does not print an edited Ja
 
 Lazy `&{ ... }` and `&[ ... ]` patterns were removed in 0.3.0 to match tsrx: `&` directly before `{` or `[` is a syntax error, as in TypeScript, while `a & { b: 1 }` and `x & [1]` remain bitwise AND.
 
-A dynamic tag name must be an identifier (`tag`), a member access (`props.as`, `this.tag`, `registry[name]`, `items[0]`), or a string literal, as in `@tsrx/core` 0.5.0. Anything else, such as `<{c ? A : B} />`, `<{(tag)} />` or `<{makeTag()} />`, is reported with code `tsrx-dynamic-tag-expression`. The tree keeps the expression. Compute the tag first: `const Tag = makeTag(); const view = <{Tag} />;`.
+A dynamic tag name must be an identifier (`tag`), a member access (`props.as`, `this.tag`, `registry[name]`, `items[0]`), or a string literal, as in `@tsrx/core` 0.5.0. Anything else, such as `<{c ? A : B} />`, `<{(tag)} />` or `<{makeTag()} />`, is reported with code `TSRX2014`, as in `@tsrx/core`. The tree keeps the expression. Compute the tag first: `const Tag = makeTag(); const view = <{Tag} />;`.
 
 Recovery may produce an incomplete tree. Check diagnostics before transforming. With `semanticErrors: true`, redeclarations such as `Identifier 'count' has already been declared` are errors, as in `@tsrx/core`. Legal repeated `var` declarations are accepted. See [Diagnostics and recovery](/guide/diagnostics).
 

@@ -3,7 +3,7 @@ const abi = @import("dialect_abi");
 
 /// `@tsrx/core` 0.5.0's message for a dynamic tag expression that isn't an
 /// identifier, a member access, or a string literal (code
-/// `tsrx-dynamic-tag-expression`), and for a spread or empty dynamic tag.
+/// `TSRX2014`), and for a spread or empty dynamic tag.
 pub const dynamic_tag_message = "A dynamic tag expression must be an identifier, a member access such as `props.as` or `registry[name]`, or a string literal. Compute anything else before the element: `const Tag = c ? Child : Fallback;`, then `<{Tag} />`.";
 
 pub const dynamic_tag_placeholder_help = "Write the tag's expression between the braces; a spread or an empty '{}' is no expression.";
@@ -23,8 +23,8 @@ pub fn validateElementName(comptime Host: type, parser: anytype, node: Host.Node
     };
     // A spread or an empty container is no expression at all: the container
     // parser stood a placeholder in for it. Core raises these as syntax
-    // errors with no code; the help text is what keeps them apart from the
-    // coded diagnostic below (see npm/yuku/index.js diagnosticCode).
+    // errors that end the parse; the help text is what keeps them apart from
+    // the recorded diagnostic below (see npm/yuku/index.js endsTheParse).
     const container_span = Host.nodeSpan(parser, node);
     const inner = std.mem.trim(u8, Host.sourceText(parser, .{
         .start = container_span.start + 1,

@@ -118,7 +118,7 @@ test("dynamic tags keep conditional and logical expressions while reporting them
 				end: source.indexOf(expression) + expression.length,
 				help: null,
 				labels: [],
-				code: "tsrx-dynamic-tag-expression",
+				code: "TSRX2014",
 			},
 		]);
 		const element = result.program.body[0].declarations[0].init;
@@ -141,7 +141,7 @@ test("dynamic tags keep conditional and logical expressions while reporting them
 	expect(rejected.diagnostics).toEqual([
 		expect.objectContaining({
 			message: DYNAMIC_TAG_MESSAGE,
-			code: "tsrx-dynamic-tag-expression",
+			code: "TSRX2014",
 		}),
 	]);
 });
