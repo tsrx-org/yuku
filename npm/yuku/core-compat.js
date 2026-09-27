@@ -110,41 +110,70 @@ export function withSelfClosingScriptContent(program, callback) {
 }
 
 /**
- * Gives every `{}` whose source is exactly one comment the `innerComments`
- * `@tsrx/core`'s parseModule gives it. `comments` is the file's comment list,
+ * Gives every `{}` that holds comments, braced or a comment between
+ * children, the `innerComments` `@tsrx/core`'s parseModule gives it. `comments` is the file's comment list,
  * in source order: only the nodes around a comment are walked.
- * `loc(text, start, end)` is the comment's ESTree `loc`.
  */
-export function addInnerComments(program, text, comments, loc) {
-  // the first comment at or after `offset`
-  const firstFrom = (offset) => {
-    let [low, high] = [0, comments.length];
-    while (low < high) {
-      const middle = (low + high) >> 1;
-      if (comments[middle].start < offset) low = middle + 1;
-      else high = middle;
+export function addInnerComments(program, text, comments) {
+  if (comments.length === 0) return;
+  // The index of the first of the sorted `list` at or after `offset`. The
+  // walk asks in source order, mostly, so it steps from its last answer first.
+  const seeker = (list) => {
+    let last = 0;
+    return (offset) => {
+      let low = last > 0 && list[last - 1] < offset ? last : 0;
+      let high = list.length;
+      for (let step = 0; step < 4 && low < high && list[low] < offset; step++) low++;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if (list[middle] < offset) low = middle + 1;
+        else high = middle;
+      }
+      return (last = low);
+    };
+  };
+  const firstComment = seeker(comments.map((comment) => comment.start));
+  // where each line starts, with core's line breaks (\r\n, \r, \n, U+2028, U+2029)
+  let lines, lineAfter;
+  const position = (offset) => {
+    if (lines === undefined) {
+      lines = [
+        0,
+        ...Array.from(text.matchAll(/\r\n?|[\n\u2028\u2029]/g), (m) => m.index + m[0].length),
+      ];
+      lineAfter = seeker(lines);
     }
-    return comments[low];
+    const line = lineAfter(offset + 1) - 1;
+    return { line: line + 1, column: offset - lines[line] };
   };
   const visit = (node) => {
     if (Array.isArray(node)) return node.forEach(visit);
-    if (typeof node?.start !== "number" || !(firstFrom(node.start)?.start < node.end)) return;
+    if (typeof node?.start !== "number") return;
+    let index = firstComment(node.start);
+    if (!(comments[index]?.end <= node.end)) return;
     if (node.type !== "JSXEmptyExpression") {
       for (const key in node) if (key !== "comments") visit(node[key]);
       return;
     }
-    const comment = firstFrom(node.start);
-    if (comment.start !== node.start || comment.end !== node.end) return;
-    const { type, start, end } = comment;
-    // as core, a block comment's lines lose the indentation of its first line
-    const indent = /[ \t]*/.exec(text.slice(text.lastIndexOf("\n", start - 1) + 1, start))[0];
-    const multiline = type === "Block" && comment.value.includes("\n");
-    const value = multiline
-      ? comment.value.replace(new RegExp(`^${indent}`, "gm"), "")
-      : comment.value;
-    node.innerComments = [{ type, value, start, end, loc: loc(text, start, end) }];
+    node.innerComments = [];
+    for (; comments[index]?.end <= node.end; index++) {
+      const { type, start, end } = comments[index];
+      let { value } = comments[index];
+      if (type === "Block" && value.includes("\n")) {
+        // as core, a block comment's lines lose the indentation of its first line
+        const indent = /[ \t]*/.exec(text.slice(text.lastIndexOf("\n", start - 1) + 1, start))[0];
+        value = value.replace(new RegExp(`^${indent}`, "gm"), "");
+      }
+      node.innerComments.push({
+        type,
+        value,
+        start,
+        end,
+        loc: { start: position(start), end: position(end) },
+      });
+    }
   };
-  if (comments.length > 0) visit(program);
+  visit(program);
 }
 
 /**

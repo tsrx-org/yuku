@@ -84,7 +84,7 @@ jobs:
     continue-on-error: true
     env:
       SEAM_REPOSITORY: thejackshelton/yuku
-      SEAM_REF: 09012bd9a77b037688baf632797312fcf2a798dc
+      SEAM_REF: 35d544468e1f9e4656e14bd112e1306f7c328cae
     steps:
       - name: Check out the exact source revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0

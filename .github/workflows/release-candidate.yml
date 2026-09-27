@@ -24,7 +24,7 @@ env:
   # branch on the thejackshelton/yuku fork, pinned to a SHA because a release
   # must ship the seam it was proven against and a branch moves.
   SEAM_REPOSITORY: thejackshelton/yuku
-  SEAM_REF: 09012bd9a77b037688baf632797312fcf2a798dc
+  SEAM_REF: 35d544468e1f9e4656e14bd112e1306f7c328cae
 
 jobs:
   build:
