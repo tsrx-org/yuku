@@ -1316,10 +1316,13 @@ fn scanJsxChildren(source: []const u8, from: u32, depth: u32, comptime comments:
                 owned = true;
                 cursor += 1;
             },
-            else => {
-                const end = text.commentEnd(source, cursor, run_start);
-                owned = owned or end != null;
-                cursor = end orelse cursor + 1;
+            else => if (text.commentEnd(source, cursor, run_start)) |end| {
+                // a comment between a directive's header and its body keeps it next
+                owned = true;
+                cursor = end;
+                continue;
+            } else {
+                cursor += 1;
             },
         }
         block = false;
