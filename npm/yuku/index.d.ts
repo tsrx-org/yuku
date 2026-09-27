@@ -261,7 +261,8 @@ export interface ParseOptions {
 	/**
 	 * The source is a `.tsrx` file: a comment in JSX text is a comment, left out
 	 * of the text, as `@tsrx/core` reads it. In `.tsx` and `.jsx` it is text.
-	 * `parseModule` and `analyze` set it from the filename.
+	 * `analyze` sets it from the filename. `parseModule` defaults it to `true`
+	 * for every filename, as `@tsrx/core` does.
 	 */
 	tsrx?: boolean;
 }
