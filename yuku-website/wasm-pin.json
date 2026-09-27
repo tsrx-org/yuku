@@ -1,7 +1,7 @@
 {
   "release": "docs-wasm",
-  "asset": "yuku-tsrx-b67e635f79ed.wasm",
+  "asset": "yuku-tsrx-c8b5401b033e.wasm",
   "sha256": "a259569462956926cdb8a63ec94d8131bc062066600add96967e58675f8418c9",
-  "srcTree": "b67e635f79edbb341e9932d6749321131ba8ff20",
+  "srcTree": "c8b5401b033e1575ca868a766c42e2399b05d13d",
   "sizeBytes": 1297643
 }
