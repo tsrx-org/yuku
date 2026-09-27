@@ -1526,8 +1526,9 @@ fn unclosedEnd(comptime H: type, parser: anytype, name: []const u8, opening_end:
     const source = H.source(parser);
     const at = H.currentSpan(parser).start;
     const tag = scanJsxTag(source, at) orelse return null;
-    // a comment after the name is no part of it: `</p /* c */>`
-    const inner = source[at + 2 .. tag.end - 1];
+    // the name runs from the closer's `/` (`< /p>` after a block) to any comment: `</p /* c */>`
+    const slash = std.mem.indexOfScalarPos(u8, source[0..tag.end], at, '/') orelse return null;
+    const inner = source[slash + 1 .. tag.end - 1];
     const closing = std.mem.trim(u8, inner[0 .. std.mem.indexOfScalar(u8, inner, '/') orelse inner.len], " \t\r\n");
     if (!container(parser).options.tsrx or std.mem.eql(u8, std.mem.trim(u8, name, " \t\r\n"), closing)) return null;
     const message = "Expected closing tag for '<{s}>' but found '</{s}>'";
