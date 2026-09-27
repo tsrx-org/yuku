@@ -598,9 +598,11 @@ pub fn Host(comptime Parser: type) type {
 
             p.setLexerMode(.normal);
             try p.advance() orelse return null;
+            const spread = p.current_token.tag == .spread;
+            if (spread) try p.advance() orelse return null;
 
             var expression = NodeIndex.null;
-            if (p.current_token.tag == .right_brace and p.current_token.span.start == close) {
+            if (!spread and p.current_token.tag == .right_brace and p.current_token.span.start == close) {
                 // `{}` - and `{ }`, and a container holding only comments -
                 // carries no expression at all.
                 expression = try p.tree.addNode(.{ .jsx_empty_expression = .{} }, .{
@@ -642,9 +644,10 @@ pub fn Host(comptime Parser: type) type {
             restore.lexer_comments_len = p.lexer.comments.items.len;
             p.rewind(restore);
 
-            const node = try p.tree.addNode(.{ .jsx_expression_container = .{
-                .expression = expression,
-            } }, .{ .start = start, .end = end });
+            const node = try p.tree.addNode(if (spread)
+                .{ .jsx_spread_child = .{ .expression = expression } }
+            else
+                .{ .jsx_expression_container = .{ .expression = expression } }, .{ .start = start, .end = end });
             if (!try resumeAfterRawSpan(p, end, .child)) return null;
             owned = true;
             return @as(?NodeIndex, node);
@@ -1044,6 +1047,17 @@ pub fn jsx_text_boundary(source: anytype, cursor: u32) ?bool {
         .handled => |value| value,
     };
 }
+/// In `.tsrx` a comment in text the host parser reads, as in an element the
+/// dialect declined, is a `{}` child of its own too. A `/` before the text
+/// ends a block comment: `/* a */// b` is text.
+pub fn jsx_text_child(comptime Result: type, parser: anytype, span: anytype) Result {
+    const H = Host(@TypeOf(parser.*));
+    if (!container(parser).options.tsrx) return .null;
+    const source = H.source(parser);
+    const run_start = if (span.start > 0 and source[span.start - 1] == '/') std.math.maxInt(u32) else span.start;
+    const comment = firstComment(source, span.start, span.end, run_start, false) orelse return .null;
+    return addCommentChild(H, parser, comment);
+}
 pub fn jsx_text_value(comptime Result: type, parser: anytype, span: anytype) Result {
     const H = Host(@TypeOf(parser.*));
     return switch (try text.value(H, parser, span)) {
@@ -1144,10 +1158,11 @@ fn isJsxTagNameByte(byte: u8) bool {
 /// True when `byte` - the one directly after a `<` in child position - can begin
 /// a tag: a name start, `/` for a closing tag, `>` for a fragment, `{` for a
 /// TSRX dynamic tag name, or whitespace, which the tag lexer skips before the
-/// name. A byte >= 0x80 starts a non-ASCII identifier and counts as a name.
+/// name. A byte >= 0x80 starts a non-ASCII identifier and counts as a name. An
+/// `@` is no text either: `<@tag>` is an error, as in core.
 fn canOpenJsxTag(byte: u8) bool {
     return std.ascii.isAlphabetic(byte) or byte == '_' or byte == '$' or byte >= 0x80 or
-        byte == '/' or byte == '>' or byte == '{' or isJsxSpace(byte);
+        byte == '/' or byte == '>' or byte == '{' or byte == '@' or isJsxSpace(byte);
 }
 
 /// True when the byte at `at` is a `<` that cannot open a tag, so TSRX - like
@@ -1253,7 +1268,7 @@ fn scanJsxChildren(source: []const u8, from: u32, depth: u32, comptime comments:
     var cursor: usize = from;
     var run_start: usize = from;
     var owned = false;
-    while (std.mem.indexOfAnyPos(u8, source, cursor, if (comments) "<{@/" else "<{@")) |at| {
+    while (std.mem.indexOfAnyPos(u8, source, cursor, if (comments) "<{@/>" else "<{@")) |at| {
         cursor = at;
         switch (source[cursor]) {
             '<' => {
@@ -1286,8 +1301,13 @@ fn scanJsxChildren(source: []const u8, from: u32, depth: u32, comptime comments:
                     cursor += 1;
                 }
             },
+            // in `.tsrx` a `>` is text, as in core, where the host reports it
+            '>' => {
+                owned = true;
+                cursor += 1;
+            },
             else => {
-                const end = text.commentEnd(source, cursor, run_start);
+                const end = text.commentEnd(source, cursor, run_start, false);
                 owned = owned or end != null;
                 cursor = end orelse cursor + 1;
             },
@@ -1347,6 +1367,7 @@ fn parseExtendedJsxChildren(
     // where a `//` starts a comment without whitespace before it: not right
     // after another comment (`/* a */// b` is text)
     var run_start = from;
+    var after_block = false;
     while (true) {
         H.setLexerMode(parser, .normal);
         const text_start = scan_from;
@@ -1356,9 +1377,8 @@ fn parseExtendedJsxChildren(
         // is stepped over and the surrounding run stays a single text child, as
         // is a `>` in `.tsrx` (`< /p>`).
         const tsrx = container(parser).options.tsrx;
-        while (literalLessThan(H.source(parser), text_token.span.end, tsrx) or
-            (tsrx and H.source(parser)[text_token.span.end..].len > 0 and H.source(parser)[text_token.span.end] == '>'))
-        {
+        const source = H.source(parser);
+        while (literalLessThan(source, text_token.span.end, tsrx) or (tsrx and std.mem.startsWith(u8, source[text_token.span.end..], ">"))) {
             text_token = H.reScanJsxText(parser, text_token.span.end + 1);
         }
         // In `.tsrx` a comment ends the text and is a `{}` child of its own, as
@@ -1366,7 +1386,7 @@ fn parseExtendedJsxChildren(
         // reads a comment's bytes as text, `<` and `{` included, so it is
         // found in the source.
         const comment = if (container(parser).options.tsrx)
-            firstComment(H.source(parser), rescan_from, text_token.span.end, run_start)
+            firstComment(H.source(parser), rescan_from, text_token.span.end, run_start, after_block)
         else
             null;
         const text_span: H.Span = .{ .start = text_start, .end = if (comment) |c| c.start else text_token.span.end };
@@ -1380,14 +1400,17 @@ fn parseExtendedJsxChildren(
             try children.append(H.allocator(parser), text_node);
         }
         if (comment) |span| {
-            try children.append(H.allocator(parser), try addCommentChild(H, parser, span));
-            scan_from = span.end;
-            rescan_from = span.end;
+            const child = try addCommentChild(H, parser, span);
+            try children.append(H.allocator(parser), child);
+            scan_from = H.nodeSpan(parser, child).end;
+            rescan_from = scan_from;
             run_start = std.math.maxInt(u32);
+            after_block = after_block and std.mem.trim(u8, H.sourceText(parser, text_span), " \t\r\n").len == 0;
             continue;
         }
         if (!try H.advanceWithRescannedToken(parser, text_token)) return false;
 
+        const block = H.currentToken(parser) == .at;
         const child = switch (H.currentToken(parser)) {
             .less_than => blk: {
                 if (closesJsxElement(H.source(parser), H.currentSpan(parser).start)) return true;
@@ -1417,15 +1440,18 @@ fn parseExtendedJsxChildren(
         scan_from = H.nodeSpan(parser, child).end;
         rescan_from = scan_from;
         run_start = scan_from;
+        after_block = block;
     }
 }
 
 /// The first comment that starts in `[from, to)` of a text run that began at
 /// `run_start`, or null.
-fn firstComment(source: []const u8, from: u32, to: u32, run_start: u32) ?struct { start: u32, end: u32 } {
+fn firstComment(source: []const u8, from: u32, to: u32, run_start: u32, after_block: bool) ?struct { start: u32, end: u32 } {
     var cursor = from;
     while (std.mem.indexOfScalarPos(u8, source[0..to], cursor, '/')) |slash| : (cursor = @intCast(slash + 1)) {
-        if (text.commentEnd(source, slash, run_start)) |end| return .{ .start = @intCast(slash), .end = end };
+        // core reads the whitespace and comments right after a block as code
+        const js = after_block and std.mem.trim(u8, source[from..slash], " \t\r\n").len == 0;
+        if (text.commentEnd(source, slash, run_start, js)) |end| return .{ .start = @intCast(slash), .end = end };
     }
     return null;
 }
@@ -1447,15 +1473,20 @@ fn addCommentChild(comptime H: type, parser: anytype, span: anytype) H.ErrorType
             .span = .{ .start = span.start, .end = span.end },
         });
     }
-    const empty = try H.addNode(parser, H.NodeData{ .jsx_empty_expression = .{} }, .{ .start = span.start, .end = span.end });
-    return H.addNode(parser, H.NodeData{ .jsx_expression_container = .{ .expression = empty } }, .{ .start = span.start, .end = span.end });
+    // as core, a `{}` spans a U+2028 or U+2029 that ended its line comment
+    const rest = parser.source[span.end..];
+    const separator = parser.source[span.start + 1] == '/' and
+        (std.mem.startsWith(u8, rest, "\u{2028}") or std.mem.startsWith(u8, rest, "\u{2029}"));
+    const node_span: H.Span = .{ .start = span.start, .end = if (separator) span.end + 3 else span.end };
+    const empty = try H.addNode(parser, H.NodeData{ .jsx_empty_expression = .{} }, node_span);
+    return H.addNode(parser, H.NodeData{ .jsx_expression_container = .{ .expression = empty } }, node_span);
 }
 
-/// Where an owned element's children end when it has no closing tag of its
-/// own, which is reported, as in `@tsrx/core`; null when it has one, or when
-/// the host can parse it instead. The block or the source can end first, as
-/// when a comment ran over the closing tag (`<p>// c</p>`), or the next
-/// closing tag can be an ancestor's (`<div><p>// c</p></div>`). In `.tsrx` the
+/// Where an owned element ends when it has no closing tag of its own, which is
+/// reported, as in `@tsrx/core`; null when it has one, or when the host can
+/// parse it instead. The block or the source can end first, as when a comment
+/// ran over the closing tag (`<p>// c</p>`), or the next closing tag can be
+/// another element's (`<div><p>// c</p></div>`), which it takes. In `.tsrx` the
 /// element isn't handed back to the host, which would read a comment as text
 /// and `< /p>` as a closing tag.
 fn unclosedEnd(comptime H: type, parser: anytype, name: []const u8, opening_end: u32, children: []const H.NodeIndex, closed: bool) H.ErrorType!?u32 {
@@ -1473,7 +1504,8 @@ fn unclosedEnd(comptime H: type, parser: anytype, name: []const u8, opening_end:
     if (!container(parser).options.tsrx or std.mem.eql(u8, std.mem.trim(u8, name, " \t\r\n"), closing)) return null;
     const message = "Expected closing tag for '<{s}>' but found '</{s}>'";
     try H.report(parser, .{ .start = at, .end = tag.end }, try std.fmt.allocPrint(H.allocator(parser), message, .{ name, closing }));
-    return end;
+    // the element takes the closing tag it reported, so the parse goes on past it
+    return tag.end;
 }
 
 fn ClosingElementName(comptime H: type) type {
@@ -1541,6 +1573,7 @@ fn parseExtendedJsxElement(comptime H: type, parser: anytype, opening: H.NodeInd
     defer children.deinit(H.allocator(parser));
     const closed = try parseExtendedJsxChildren(H, parser, &children, opening_span.end);
     if (try unclosedEnd(H, parser, name, opening_span.end, children.items, closed)) |end| {
+        if (closed and !try H.resumeAfterRawSpan(parser, end, context)) return null;
         owned = true;
         return @as(?H.NodeIndex, try H.addNode(parser, H.NodeData{ .jsx_element = .{
             .opening_element = opening,
@@ -1609,6 +1642,7 @@ fn parseExtendedJsxFragment(comptime H: type, parser: anytype, opening: H.NodeIn
     defer children.deinit(H.allocator(parser));
     const closed = try parseExtendedJsxChildren(H, parser, &children, opening_span.end);
     if (try unclosedEnd(H, parser, "", opening_span.end, children.items, closed)) |end| {
+        if (closed and !try H.resumeAfterRawSpan(parser, end, .other)) return null;
         owned = true;
         return @as(?H.NodeIndex, try H.addNode(parser, H.NodeData{ .jsx_fragment = .{
             .opening_fragment = opening,

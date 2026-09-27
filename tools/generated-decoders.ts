@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 
 const artifacts = ["decode.js", "decode-analyzer.js", "encode.js"] as const;
 const UPSTREAM_PATH = "npm/yuku-parser/decode.js";
-const UPSTREAM_REF = "09012bd9a77b037688baf632797312fcf2a798dc";
+const UPSTREAM_REF = "35d544468e1f9e4656e14bd112e1306f7c328cae";
 export const UPSTREAM_SHA256 = "78c9a9624749aa34785f7ff2a9289aa9eb00381b844a5eac1a847cc288213087";
 export const generationSteps = [
 	"gen-parser-decoder",

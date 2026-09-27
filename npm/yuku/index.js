@@ -219,7 +219,7 @@ export function parseModule(source, filename, options = {}) {
   // on `collect || loose` meant a caller who passed only a `comments` array
   // paid for comment attachment and got an empty array back.
   if (comments) comments.push(...result.comments);
-  addInnerComments(result.program, text, result.comments, sourceLocation);
+  addInnerComments(result.program, text, result.comments);
   // Only `error` severity makes a module unusable. Every early error is one,
   // redeclarations included, as in `@tsrx/core`: a normal parse throws it and
   // `collect`/`loose` record it. See src/dialect/diagnostics.zig.

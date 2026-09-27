@@ -10,7 +10,7 @@ permissions:
 
 env:
   SEAM_REPOSITORY: thejackshelton/yuku
-  SEAM_REF: 09012bd9a77b037688baf632797312fcf2a798dc
+  SEAM_REF: 35d544468e1f9e4656e14bd112e1306f7c328cae
 
 jobs:
   checks:

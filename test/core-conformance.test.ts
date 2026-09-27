@@ -182,6 +182,63 @@ test("#110, #118: every comment between children is a {} of its own, and all tex
 	}
 });
 
+test("#118: a comment is a {} child whichever parser reads the element", () => {
+	const cases: [string, string[]][] = [
+		// shapes the dialect's own children scan declines, read by the host parser
+		[
+			"export const A = <div>\n\t// a\n\t<Slot content=<span>x</span> />\n</div>;",
+			["\n\t", "{}", "\n\t", "<Slot>", "\n"],
+		],
+		[
+			"export const A = <div>\n\t// a\n\t<Foo<string> x={1} />\n</div>;",
+			["\n\t", "{}", "\n\t", "<Foo>", "\n"],
+		],
+		[
+			"export const A = <div>\n\t// a\n\t{/}/.test(x) ? 1 : 2}\n</div>;",
+			["\n\t", "{}", "\n\t", "JSXExpressionContainer", "\n"],
+		],
+		["export const A = <p>{...a}// c\n</p>;", ["JSXSpreadChild", "{}", "\n"]],
+		// a `>` in text is text (tsrx-org/tsrx tests/shared/runtime/jsx-text-whitespace-components.tsrx)
+		[
+			"export const A = <div>\n\t// a\n\t<b>a > b</b>\n</div>;",
+			["\n\t", "{}", "\n\t", "<b>", "\n"],
+		],
+		// after a block's `}` a line comment ends at U+2028, which its `{}` takes
+		[
+			"export function A({ x }) @{\n\t<p>\n\t\t@if (x) {\n\t\t\t<i />\n\t\t} // a\u2028<b />\n\t</p>\n}",
+			["\n\t\t", "JSXIfExpression", " ", "{}", "<b>", "\n\t"],
+		],
+	];
+	for (const [source, expected] of cases) {
+		expect(children(source), source).toEqual(expected);
+		expect(collected(source), source).toEqual([]);
+	}
+	// `<@tag>` is one error, not a regular expression after it
+	expect(collected("export function A() @{\n\t<div><@tag>// c\n</@tag></div>\n}").length).toBe(1);
+
+	// every braced `{}` gets its comments, with core's lines (\r\n, \r, U+2028, U+2029)
+	const inner = (source: string) =>
+		findAll(parseModule(source, "App.tsrx"), (node) => node.type === "JSXEmptyExpression").map(
+			({ innerComments }) =>
+				(innerComments as { value: string; start: number; loc: { start: object } }[]).map(
+					({ value, start, loc }) => [value, start, loc.start],
+				),
+		);
+	expect(inner("export const A = <p>{ /* a */ }{/* b */ /* c */}{// d\n}</p>;")).toEqual([
+		[[" a ", 22, { line: 1, column: 22 }]],
+		[
+			[" b ", 32, { line: 1, column: 32 }],
+			[" c ", 40, { line: 1, column: 40 }],
+		],
+		[[" d", 49, { line: 1, column: 49 }]],
+	]);
+	expect(
+		inner("export const A = <p>\r\n/* a */\u2028/* b */\r/* c */\u2029/* d */</p>;").map(
+			([[, , start]]) => start,
+		),
+	).toEqual([2, 3, 4, 5].map((line) => ({ line, column: 0 })));
+});
+
 test("#112: a non-breaking space next to a line break is text, not layout", () => {
 	const cases: [string, object[]][] = [
 		[

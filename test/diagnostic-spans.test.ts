@@ -104,9 +104,8 @@ test("parseModule leaves the shapes neither rule covers alone", () => {
 	expect(selfClosing.start).toBe(35);
 	expect(selfClosing.end).toBe(36);
 
-	const [strayText] = collect(JSX_TEXT_STRAY_ANGLE, "stray-text.tsrx");
-	expect(strayText.start).toBe(36);
-	expect(strayText.end).toBe(37);
+	// a `>` in text is text, as in @tsrx/core
+	expect(collect(JSX_TEXT_STRAY_ANGLE, "stray-text.tsrx")).toEqual([]);
 });
 
 test("parseModule keeps everything about a diagnostic except its span", () => {
