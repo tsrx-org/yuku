@@ -1151,11 +1151,12 @@ fn canOpenJsxTag(byte: u8) bool {
 }
 
 /// True when the byte at `at` is a `<` that cannot open a tag, so TSRX - like
-/// HTML, and like @tsrx/core - reads it as literal text: `<3`, `<= arrow`.
-fn literalLessThan(source: []const u8, at: u32) bool {
+/// HTML, and like @tsrx/core - reads it as literal text: `<3`, `<= arrow`, and
+/// in `.tsrx` a `<` before whitespace (`a < b`, `< /p>`).
+fn literalLessThan(source: []const u8, at: u32, tsrx: bool) bool {
     if (at >= source.len or source[at] != '<') return false;
     const next: u8 = if (@as(usize, at) + 1 < source.len) source[@as(usize, at) + 1] else 0;
-    return !canOpenJsxTag(next);
+    return !canOpenJsxTag(next) or (tsrx and isJsxSpace(next));
 }
 
 /// Diagnostics that report without changing the parse: an invalid dynamic
@@ -1256,7 +1257,7 @@ fn scanJsxChildren(source: []const u8, from: u32, depth: u32, comptime comments:
         cursor = at;
         switch (source[cursor]) {
             '<' => {
-                if (literalLessThan(source, @intCast(cursor))) {
+                if (literalLessThan(source, @intCast(cursor), comments)) {
                     owned = true;
                     cursor += 1;
                     continue;
@@ -1350,10 +1351,14 @@ fn parseExtendedJsxChildren(
         H.setLexerMode(parser, .normal);
         const text_start = scan_from;
         var text_token = H.reScanJsxText(parser, rescan_from);
-        // The host lexer ends a text run at every `<`. TSRX only ends it at a
-        // `<` that can open a tag, so one that cannot - `<3`, `<= arrow` - is
-        // stepped over and the surrounding run stays a single text child.
-        while (literalLessThan(H.source(parser), text_token.span.end)) {
+        // The host lexer ends a text run at every `<` and `>`. TSRX only ends it
+        // at a `<` that can open a tag, so one that cannot - `<3`, `<= arrow` -
+        // is stepped over and the surrounding run stays a single text child, as
+        // is a `>` in `.tsrx` (`< /p>`).
+        const tsrx = container(parser).options.tsrx;
+        while (literalLessThan(H.source(parser), text_token.span.end, tsrx) or
+            (tsrx and H.source(parser)[text_token.span.end..].len > 0 and H.source(parser)[text_token.span.end] == '>'))
+        {
             text_token = H.reScanJsxText(parser, text_token.span.end + 1);
         }
         // In `.tsrx` a comment ends the text and is a `{}` child of its own, as
@@ -1450,8 +1455,9 @@ fn addCommentChild(comptime H: type, parser: anytype, span: anytype) H.ErrorType
 /// own, which is reported, as in `@tsrx/core`; null when it has one, or when
 /// the host can parse it instead. The block or the source can end first, as
 /// when a comment ran over the closing tag (`<p>// c</p>`), or the next
-/// closing tag can be an ancestor's (`<div><p>// c</p></div>`): the host
-/// would read that comment as text, so the element isn't handed back.
+/// closing tag can be an ancestor's (`<div><p>// c</p></div>`). In `.tsrx` the
+/// element isn't handed back to the host, which would read a comment as text
+/// and `< /p>` as a closing tag.
 fn unclosedEnd(comptime H: type, parser: anytype, name: []const u8, opening_end: u32, children: []const H.NodeIndex, closed: bool) H.ErrorType!?u32 {
     const end = if (children.len > 0) H.nodeSpan(parser, children[children.len - 1]).end else opening_end;
     if (!closed) {
@@ -1463,14 +1469,8 @@ fn unclosedEnd(comptime H: type, parser: anytype, name: []const u8, opening_end:
     const source = H.source(parser);
     const at = H.currentSpan(parser).start;
     const tag = scanJsxTag(source, at) orelse return null;
-    // `</p>`, `< / p >`: the name between the `<`, the `/` and the `>`
-    const closing = std.mem.trim(u8, source[at + 1 .. tag.end - 1], " \t\r\n/");
-    if (std.mem.eql(u8, std.mem.trim(u8, name, " \t\r\n"), closing)) return null;
-    for (children) |child| switch (H.data(parser, child)) {
-        // a comment's container starts where its expression does; `{}`'s doesn't
-        .jsx_expression_container => |value| if (H.nodeSpan(parser, value.expression).start == H.nodeSpan(parser, child).start) break,
-        else => {},
-    } else return null;
+    const closing = std.mem.trim(u8, source[at + 2 .. tag.end - 1], " \t\r\n");
+    if (!container(parser).options.tsrx or std.mem.eql(u8, std.mem.trim(u8, name, " \t\r\n"), closing)) return null;
     const message = "Expected closing tag for '<{s}>' but found '</{s}>'";
     try H.report(parser, .{ .start = at, .end = tag.end }, try std.fmt.allocPrint(H.allocator(parser), message, .{ name, closing }));
     return end;

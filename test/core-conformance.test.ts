@@ -122,6 +122,41 @@ test("#110, #118: every comment between children is a {} of its own, and all tex
 	const expression = comment.expression as Node;
 	expect([comment.start, comment.end, expression.start, expression.end]).toEqual([37, 44, 37, 44]);
 	expect(comments.map(({ value }) => value)).toEqual([" c "]);
+	// ... and is the empty expression's innerComments, as in core, with `{/* e */}`'s
+	const inner = "export function App() {\n\treturn <p>a /* c */ b\n// d\n{/* e */}</p>;\n}";
+	expect(
+		findAll(parseModule(inner, "App.tsrx"), (node) => node.type === "JSXEmptyExpression").map(
+			({ innerComments }) => innerComments,
+		),
+	).toEqual([
+		[
+			{
+				type: "Block",
+				value: " c ",
+				start: 37,
+				end: 44,
+				loc: { start: { line: 2, column: 13 }, end: { line: 2, column: 20 } },
+			},
+		],
+		[
+			{
+				type: "Line",
+				value: " d",
+				start: 47,
+				end: 51,
+				loc: { start: { line: 3, column: 0 }, end: { line: 3, column: 4 } },
+			},
+		],
+		[
+			{
+				type: "Block",
+				value: " e ",
+				start: 53,
+				end: 60,
+				loc: { start: { line: 4, column: 1 }, end: { line: 4, column: 8 } },
+			},
+		],
+	]);
 
 	// a line comment runs over the closing tag on its line
 	const unclosed = "export function App() @{\n\t<p>// c</p>\n}";
@@ -138,8 +173,13 @@ test("#110, #118: every comment between children is a {} of its own, and all tex
 	]) {
 		expect(thrown(source)?.message, source).toMatch(/^Expected closing tag for '<p?>' but found/);
 	}
-	// ... but a closing tag yuku reads as the element's own still closes it (`< /p>`)
-	expect(children("export function App() {\n\treturn <p>/* c */< /p>;\n}")).toEqual(["{}"]);
+	// a `<` before whitespace is text, so `< /p>` closes nothing
+	for (const source of [
+		"export function App() {\n\treturn <p>/* c */< /p>;\n}",
+		"export function App() @{\n\t<p>a< /p>\n}",
+	]) {
+		expect(thrown(source)?.message, source).toMatch(/^Unclosed tag '<p>'/);
+	}
 });
 
 test("#112: a non-breaking space next to a line break is text, not layout", () => {
