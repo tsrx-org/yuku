@@ -116,9 +116,7 @@ function syntaxError(diagnostic, source) {
   error.pos = reported.pos;
   error.end = reported.end;
   error.loc = sourcePosition(source, reported.pos);
-  // core records an unclosed tag with its code, and throws it without one
-  if (reported.code !== undefined && reported.code !== "tsrx-unclosed-tag")
-    error.code = reported.code;
+  if (reported.code !== undefined) error.code = reported.code;
   return error;
 }
 

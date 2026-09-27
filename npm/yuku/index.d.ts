@@ -234,8 +234,9 @@ export interface Diagnostic {
 	help: string | null;
 	labels: DiagnosticLabel[];
 	/**
-	 * The `@tsrx/core` diagnostic code, where core has one:
-	 * `tsrx-dynamic-tag-expression`, `tsrx-script-end-tag-in-body` or `tsrx-unclosed-tag`.
+	 * The `@tsrx/core` diagnostic code, where core has one: a `TSRX` code for a
+	 * mistake only TSRX reports (`TSRX2014`), or TypeScript's code for one
+	 * TypeScript also reports (`TS2300`).
 	 */
 	code?: string;
 }

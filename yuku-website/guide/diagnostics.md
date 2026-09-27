@@ -37,7 +37,7 @@ The returned program may be incomplete. Collecting errors is useful for an edito
 
 Warnings don't make `parseModule` throw. Scope errors such as `Identifier 'count' has already been declared` are errors, as in `@tsrx/core`: a normal `parseModule` throws them, and `collect` or `loose` records them and returns the tree. Up to 0.3.0, `parse` reported redeclarations as warnings, so `parseModule` let them through.
 
-Some diagnostics carry a `code`, the same one `@tsrx/core` uses, so a tool can match on it instead of on the message: `tsrx-dynamic-tag-expression` for a dynamic tag like `<{c ? A : B} />`, and `tsrx-script-end-tag-in-body` for a `</script` inside a `<script>` body. The thrown `SyntaxError` carries the same `code`.
+Most errors carry a `code`, the same one `@tsrx/core` gives the same mistake, so a tool can match on it instead of on the message. A mistake only TSRX reports gets a `TSRX` code: `TSRX1001` for an unclosed tag, `TSRX1004` for a `</script` inside a `<script>` body, and `TSRX2014` for a dynamic tag like `<{c ? A : B} />`. A mistake TypeScript also reports gets TypeScript's code: `TS2300` for a name declared twice, `TS2304` for `export { missing }`, and `TS1005` for a missing `}`. The thrown `SyntaxError` carries the same `code`. When a message could mean more than one mistake, the `code` is left out rather than guessed.
 
 ## Parsing errors and semantic early errors
 
