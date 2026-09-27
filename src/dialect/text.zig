@@ -57,9 +57,8 @@ pub fn value(comptime Host: type, parser: anytype, span: anytype) Host.ErrorType
 /// starts there, as `@tsrx/core` reads it: `/*` anywhere, running past `*/` or
 /// to the end of the source, and `//` at the start of a text run (`run_start`)
 /// or after whitespace, running to the line break. `a//b` and `https://x` are
-/// text. With `js`, where core reads the text as code (right after a block's
-/// `}`), U+2028 and U+2029 end a line comment too.
-pub fn commentEnd(source: []const u8, index: usize, run_start: usize, js: bool) ?u32 {
+/// text.
+pub fn commentEnd(source: []const u8, index: usize, run_start: usize) ?u32 {
     if (index + 1 >= source.len or source[index] != '/') return null;
     if (source[index + 1] == '*') {
         const close = std.mem.indexOfPos(u8, source, index + 2, "*/") orelse return @intCast(source.len);
@@ -67,9 +66,36 @@ pub fn commentEnd(source: []const u8, index: usize, run_start: usize, js: bool) 
     }
     if (source[index + 1] != '/') return null;
     if (index != run_start and std.mem.indexOfScalar(u8, " \t\r\n", source[index - 1]) == null) return null;
+    return @intCast(std.mem.indexOfAnyPos(u8, source, index, "\r\n") orelse source.len);
+}
+
+/// Where the JavaScript comment at `index` ends, or null when none starts there:
+/// past `*/`, or at a line terminator, U+2028 and U+2029 included.
+pub fn codeCommentEnd(source: []const u8, index: usize) ?u32 {
+    if (index + 1 >= source.len or source[index] != '/') return null;
+    if (source[index + 1] == '*') return commentEnd(source, index, index);
+    if (source[index + 1] != '/') return null;
     var end = std.mem.indexOfAnyPos(u8, source, index, "\r\n") orelse source.len;
-    if (js) for ([_][]const u8{ "\u{2028}", "\u{2029}" }) |separator| {
+    for ([_][]const u8{ "\u{2028}", "\u{2029}" }) |separator| {
         end = std.mem.indexOfPos(u8, source[0..end], index, separator) orelse end;
-    };
+    }
     return @intCast(end);
+}
+
+/// Where the text after a block's `}` at `from` ends when `@tsrx/core` reads it
+/// as code: JavaScript's whitespace and comments, up to a child or closing tag.
+/// 0 when something else follows them, and it is text.
+pub fn codeAfterBlock(source: []const u8, from: usize) u32 {
+    var at = from;
+    while (at < source.len) {
+        const rest = source[at..];
+        if (std.mem.indexOfScalar(u8, " \t\r\n\x0b\x0c", rest[0]) != null) {
+            at += 1;
+        } else if (std.mem.startsWith(u8, rest, "\u{2028}") or std.mem.startsWith(u8, rest, "\u{2029}")) {
+            at += 3;
+        } else if (std.mem.startsWith(u8, rest, "\u{a0}")) {
+            at += 2;
+        } else at = codeCommentEnd(source, at) orelse break;
+    }
+    return if (at < source.len and std.mem.indexOfScalar(u8, "<{@", source[at]) != null) @intCast(at) else 0;
 }
