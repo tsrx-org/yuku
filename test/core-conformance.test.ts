@@ -131,6 +131,13 @@ test("#110, #118: every comment between children is a {} of its own, and all tex
 	expect(collected(unclosed).map(({ code, pos }) => [code, pos])).toEqual([
 		["tsrx-unclosed-tag", 38],
 	]);
+	// ... and the next closing tag is an ancestor's, so it is reported, not read as text
+	for (const source of [
+		"export function App() {\n\treturn <div><p>// c</p>\n</div>;\n}",
+		"export function App() {\n\treturn <p><>// c</>\n</p>;\n}",
+	]) {
+		expect(thrown(source)?.message, source).toMatch(/^Expected closing tag for '<p?>' but found/);
+	}
 });
 
 test("#112: a non-breaking space next to a line break is text, not layout", () => {
@@ -344,6 +351,11 @@ test("#116: any other </script in a script body is tsrx-script-end-tag-in-body",
 			]);
 		}
 	}
+
+	// An unclosed body still reports the `</script` in it.
+	expect(collected("export function App() @{\n\t<div><script>a</SCRIPT>b\n}")[0]?.code).toBe(
+		"tsrx-script-end-tag-in-body",
+	);
 
 	// A `</script` outside a script body is not reported.
 	const outside =
