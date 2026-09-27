@@ -8,6 +8,7 @@ import {
 	UPSTREAM_SHA256,
 	generationSteps,
 	loadUpstreamGitObject,
+	seamGitEnv,
 	validateUpstreamDecoder,
 } from "../tools/generated-decoders.ts";
 
@@ -107,6 +108,28 @@ test("upstream validation rejects byte drift, hash drift, and unavailable Git re
 	expect(() =>
 		loadUpstreamGitObject("../yuku-minimal-seam", "0000000000000000000000000000000000000000"),
 	).toThrow(/Git object/);
+});
+
+test("the seam is read from its own checkout when a Git hook pins GIT_DIR elsewhere", () => {
+	const expected = loadUpstreamGitObject("../yuku-minimal-seam");
+	// A hook in a linked worktree runs with these naming this repository.
+	const pinned = {
+		GIT_DIR: temporaryDirectory("git-dir"),
+		GIT_WORK_TREE: process.cwd(),
+		GIT_INDEX_FILE: join(temporaryDirectory("git-index"), "index"),
+	};
+	const saved = Object.fromEntries(Object.keys(pinned).map((name) => [name, process.env[name]]));
+	Object.assign(process.env, pinned);
+	try {
+		expect(loadUpstreamGitObject("../yuku-minimal-seam")).toEqual(expected);
+	} finally {
+		for (const [name, value] of Object.entries(saved)) {
+			if (value === undefined) delete process.env[name];
+			else process.env[name] = value;
+		}
+	}
+	const env = seamGitEnv({ ...pinned, PATH: "/bin" });
+	expect(env).toEqual({ PATH: "/bin", GIT_NO_LAZY_FETCH: "1" });
 });
 
 test("sync validates every generated input and upstream decoder before copying targets", () => {
