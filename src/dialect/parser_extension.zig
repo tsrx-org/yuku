@@ -1463,7 +1463,8 @@ fn unclosedEnd(comptime H: type, parser: anytype, name: []const u8, opening_end:
     const source = H.source(parser);
     const at = H.currentSpan(parser).start;
     const tag = scanJsxTag(source, at) orelse return null;
-    const closing = std.mem.trim(u8, source[at + 2 .. tag.end - 1], " \t\r\n");
+    // `</p>`, `< / p >`: the name between the `<`, the `/` and the `>`
+    const closing = std.mem.trim(u8, source[at + 1 .. tag.end - 1], " \t\r\n/");
     if (std.mem.eql(u8, std.mem.trim(u8, name, " \t\r\n"), closing)) return null;
     for (children) |child| switch (H.data(parser, child)) {
         // a comment's container starts where its expression does; `{}`'s doesn't

@@ -138,6 +138,8 @@ test("#110, #118: every comment between children is a {} of its own, and all tex
 	]) {
 		expect(thrown(source)?.message, source).toMatch(/^Expected closing tag for '<p?>' but found/);
 	}
+	// ... but a closing tag yuku reads as the element's own still closes it (`< /p>`)
+	expect(children("export function App() {\n\treturn <p>/* c */< /p>;\n}")).toEqual(["{}"]);
 });
 
 test("#112: a non-breaking space next to a line break is text, not layout", () => {
