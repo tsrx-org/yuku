@@ -533,3 +533,27 @@ test("#113: merging, shadowing, overloads, and template scopes core accepts stay
 		expect(collected(source, "loose"), source).toEqual([]);
 	}
 });
+
+test("parse and analyze give the core shape too: diagnostic codes, no content on <script />", () => {
+	const source = "export function App() @{\n\t<script />\n\t<{a()} />\n}";
+	for (const result of [parse(source, { lang: "tsx" }), analyze(source, "App.tsrx")]) {
+		expect(result.diagnostics.map(({ code }) => code)).toEqual(["tsrx-dynamic-tag-expression"]);
+		const [script] = findAll(result.program, (node) => node.type === "JSXScriptElement");
+		expect("content" in script).toBe(false);
+	}
+});
+
+test("sloppy-mode scripts keep Annex B function declarations", () => {
+	for (const source of [
+		"{ function g() {} function g() {} }",
+		"function o() { { function g() {} function g() {} } }",
+	]) {
+		for (const lang of ["js", "ts"] as const) {
+			const { diagnostics } = parse(source, { lang, sourceType: "script", semanticErrors: true });
+			expect(diagnostics, `${lang}: ${source}`).toEqual([]);
+		}
+	}
+	expect(thrown("{ function g() {} function g() {} }")?.message).toMatch(
+		/^Identifier 'g' has already been declared/,
+	);
+});

@@ -14,12 +14,12 @@ export default async function render({ fence, ctx }) {
   if (!fence || fence.lang !== 'tsrx') {
     throw new Error('options-strip needs a ```tsrx fence right after its marker')
   }
-  const seed = await ctx.parse(fence.code, { lang: 'tsx', semanticErrors: false })
+  const seed = await ctx.parse(fence.code, { lang: 'tsx', tsrx: true, semanticErrors: false })
   const seedErrors = seed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')
   if (seedErrors.length > 0) {
     throw new Error(`options-strip: the seed does not parse: ${seedErrors[0].message}`)
   }
-  const broken = await ctx.parse(BROKEN, { lang: 'tsx', semanticErrors: false })
+  const broken = await ctx.parse(BROKEN, { lang: 'tsx', tsrx: true, semanticErrors: false })
   const brokenErrors = broken.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')
   if (brokenErrors.length !== 1 || !brokenErrors[0].help) {
     throw new Error(
@@ -57,7 +57,7 @@ export default async function render({ fence, ctx }) {
       <div class="ex-out os-out" data-os-out><p class="ex-note">The parser runs when this widget scrolls into view.</p></div>
     </div>
   </div>
-  <p class="os-call">Current call: <code data-os-call>parse(source, { lang: "tsx" })</code></p>
+  <p class="os-call">Current call: <code data-os-call>parse(source, { lang: "tsx", tsrx: true })</code></p>
   <figcaption class="ex-status" data-widget-status aria-live="polite">the parser runs in your browser when this widget scrolls into view; with JavaScript off this stays the listing above</figcaption>
   <script type="application/json" data-os-payload>${payload}</script>`
 }

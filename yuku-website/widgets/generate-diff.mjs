@@ -7,7 +7,7 @@ export const LANDING = {
   b: { strip: true },
 }
 
-const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', attachComments: true }
+const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true, attachComments: true }
 
 function landingOptions(attrs) {
   const landing = { a: { ...LANDING.a }, b: { ...LANDING.b } }

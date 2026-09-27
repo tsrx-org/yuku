@@ -24,7 +24,7 @@ export const className = 'explorer ex-figure'
 
 export default async function render({ ctx }) {
   for (const item of CASES) {
-    const result = await ctx.parse(item.source, { lang: 'tsx', semanticErrors: Boolean(item.semanticErrors) })
+    const result = await ctx.parse(item.source, { lang: 'tsx', tsrx: true, semanticErrors: Boolean(item.semanticErrors) })
     const hit = result.diagnostics.find((diagnostic) => diagnostic.message.includes(item.expect))
     if (!hit) {
       throw new Error(`diagnostics-gallery: ${item.id} no longer reports "${item.expect}" (got ${result.diagnostics.map((d) => d.message).join('; ') || 'nothing'})`)
@@ -33,7 +33,7 @@ export default async function render({ ctx }) {
       throw new Error(`diagnostics-gallery: ${item.id} is a ${hit.severity} now, expected ${item.severity ?? 'error'}`)
     }
     if (item.loose) {
-      const recovered = await ctx.parse(item.source, { lang: 'tsx', semanticErrors: false, loose: true })
+      const recovered = await ctx.parse(item.source, { lang: 'tsx', tsrx: true, semanticErrors: false, loose: true })
       if (recovered.diagnostics.length !== 0) {
         throw new Error(`diagnostics-gallery: ${item.id} is no longer recovered by loose`)
       }

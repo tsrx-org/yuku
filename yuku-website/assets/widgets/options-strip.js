@@ -7,10 +7,12 @@ import { createLayeredEditor } from './_editor.js'
 import { diagnosticsHtml, highlightedHtml, plainStatus, walkNodes } from './_shared.js'
 import { bindMarkedReadout, diagnosticRanges, markRanges } from './_source-pane.js'
 
-const DEFAULTS = { lang: 'tsx', loose: false, semanticErrors: false, attachComments: false }
+// The source is .tsrx, so `tsrx` is on: a comment in JSX text is a comment.
+const DEFAULTS = { lang: 'tsx', tsrx: true, loose: false, semanticErrors: false, attachComments: false }
 
 function callText(options) {
   const parts = [`lang: "${options.lang}"`]
+  if (options.tsrx) parts.push('tsrx: true')
   for (const flag of ['loose', 'semanticErrors', 'attachComments']) {
     if (options[flag]) parts.push(`${flag}: true`)
   }

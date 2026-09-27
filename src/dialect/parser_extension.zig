@@ -1051,7 +1051,8 @@ pub fn jsx_text_boundary(source: anytype, cursor: u32) ?bool {
 /// `}` in it does not end the text run (`// <b>x</b>` on its own line comments
 /// the element out). In `.tsx` and `.jsx` it is text, as in TSX.
 pub fn jsx_text_skip(lexer: anytype, run_start: u32, cursor: u32) ?u32 {
-    if (!isTsrxSource(lexer)) return null;
+    // called once per text byte: only a `/` can open a comment
+    if (lexer.source[cursor] != '/' or !isTsrxSource(lexer)) return null;
     return text.skip(lexer.source, run_start, cursor);
 }
 pub fn jsx_text_value(comptime Result: type, parser: anytype, span: anytype) Result {

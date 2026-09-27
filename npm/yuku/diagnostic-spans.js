@@ -1,10 +1,4 @@
 /**
- * A malformed closing tag followed by one extra `>`, with any run of
- * whitespace between it and whatever token the parser stopped on.
- */
-const DOUBLED_CLOSING_ANGLE = /<\/[^<>\s]+>>\s*$/;
-
-/**
  * Re-derive the span a reader would point at for the two malformed-markup
  * shapes whose diagnostics the parser aims at the wrong offset.
  *
@@ -43,10 +37,27 @@ export function authoredDiagnosticSpan(diagnostic, source) {
   const end = Math.max(start, Math.min(source.length, diagnostic.end));
   if (source.slice(start - 2, start) === "</") return { start: start - 2, end };
 
-  const prefix = source.slice(0, start);
-  const doubled = prefix.match(DOUBLED_CLOSING_ANGLE)?.[0];
-  if (doubled !== undefined) {
-    return { start: prefix.length - doubled.length + doubled.lastIndexOf(">"), end };
-  }
+  const doubled = doubledClosingAngleBefore(source, start);
+  if (doubled !== -1) return { start: doubled, end };
   return { start, end };
+}
+
+/**
+ * Where the extra `>` of a doubled closing angle (`</tag>>`) sits when one
+ * ends right before `start`, give or take whitespace; -1 otherwise. The same
+ * match as `/<\/[^<>\s]+>>\s*$/` against `source.slice(0, start)`, read
+ * backwards from `start` so it costs the length of the match, not of the file.
+ */
+function doubledClosingAngleBefore(source, start) {
+  let index = start;
+  while (index > 0 && /\s/.test(source[index - 1])) index--;
+  if (index < 2 || source[index - 1] !== ">" || source[index - 2] !== ">") return -1;
+  const extra = index - 1;
+  let name = index - 2;
+  while (name > 0 && !/[<>\s]/.test(source[name - 1])) name--;
+  // `name` is where the run of tag characters starts; a `<` must precede it,
+  // then `/`, then at least one tag character before the `>>`.
+  const lt = name - 1;
+  if (lt < 0 || source[lt] !== "<" || source[lt + 1] !== "/" || lt + 2 > index - 3) return -1;
+  return extra;
 }

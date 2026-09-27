@@ -25,6 +25,7 @@
 		"index.js",
 		"index.d.ts",
 		"binding.js",
+		"core-compat.js",
 		"decode.js",
 		"decode-analyzer.js",
 		"diagnostic-spans.js",

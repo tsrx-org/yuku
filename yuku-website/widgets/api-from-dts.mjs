@@ -315,7 +315,7 @@ export default async function render({ ctx }) {
   // A snippet meant to show a diagnostic must produce one; every other snippet must parse clean.
   for (const name of declared) {
     if (!TRY[name]) throw new Error(`api-from-dts: no Try snippet for ${name}`)
-    const result = await ctx.parse(snippetOf(name), { lang: "tsx", sourceType: "module", semanticErrors: false })
+    const result = await ctx.parse(snippetOf(name), { lang: "tsx", sourceType: "module", tsrx: true, semanticErrors: false })
     const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")
     if (TRY[name].expectsError && errors.length === 0) {
       throw new Error(`api-from-dts: the Try snippet for ${name} was meant to show an error and parsed clean`)

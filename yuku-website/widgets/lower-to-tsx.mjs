@@ -2,7 +2,7 @@ import { generatedSource, lowerProgram } from '../assets/widgets/_lower-to-tsx.j
 
 export const className = 'explorer ex-figure'
 
-const OPTIONS = { lang: 'tsx', sourceType: 'module' }
+const OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true }
 
 export default async function render({ fence, ctx }) {
   if (!fence || fence.lang !== 'tsrx') throw new Error('lower-to-tsx needs a ```tsrx fence right after its marker')

@@ -19,11 +19,11 @@ import { createLayeredEditor } from './widgets/_editor.js'
 import { highlightedHtml, plainStatus } from './widgets/_shared.js'
 import { markRanges } from './widgets/_source-pane.js'
 
-const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', semanticErrors: true }
-const ANALYZE_OPTIONS = { lang: 'tsx', sourceType: 'module' }
+const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true, semanticErrors: true }
+const ANALYZE_OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true }
 // The comments option can only act on comments the parse kept, so the codegen
 // figure asks for them. Without this every comments mode prints the same text.
-const CODEGEN_PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', attachComments: true }
+const CODEGEN_PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true, attachComments: true }
 
 const MAX_TREE_DEPTH = 12
 

@@ -1220,6 +1220,8 @@ function packBuildFlags({
   lang = 'tsx',
   preserveParens = true,
   semanticErrors = true,
+  // the fences are .tsrx: a comment in JSX text is a comment
+  tsrx = true,
 } = {}) {
   const sourceTypeIndex = BUILD_SOURCE_TYPES.indexOf(sourceType)
   const langIndex = BUILD_LANGS.indexOf(lang)
@@ -1229,6 +1231,7 @@ function packBuildFlags({
   flags |= langIndex << 2
   if (preserveParens) flags |= 1 << 5
   if (semanticErrors) flags |= 1 << 6
+  if (tsrx) flags |= 1 << 9
   return flags >>> 0
 }
 
@@ -1252,10 +1255,11 @@ async function bootWasmForBuild() {
   for (const name of ['memory', 'alloc', 'free', 'parse']) {
     if (!(name in instance.exports)) throw new Error(`${relative}: missing export \`${name}\``)
   }
-  const { decode } = await import(
-    pathToFileURL(path.join(repoRoot, 'npm', 'yuku', 'decode.js')).href
-  )
-  buildEngine = { exports: instance.exports, decode }
+  const [{ decode }, { applyCoreShape }] = await Promise.all([
+    import(pathToFileURL(path.join(repoRoot, 'npm', 'yuku', 'decode.js')).href),
+    import(pathToFileURL(path.join(repoRoot, 'npm', 'yuku', 'core-compat.js')).href),
+  ])
+  buildEngine = { exports: instance.exports, decode, applyCoreShape }
   return buildEngine
 }
 
@@ -1279,7 +1283,7 @@ async function parseForBuild(source) {
   } finally {
     engine.exports.free(ptr, len)
   }
-  return engine.decode(payload, source)
+  return engine.applyCoreShape(engine.decode(payload, source), source)
 }
 
 // ---------- node-type chips (guide/tsrx-syntax) ----------
@@ -2040,7 +2044,7 @@ async function copyWasmAssets() {
     )
   }
   await writeFile(path.join(outWasmDir, 'yuku-tsrx.wasm'), wasm)
-  for (const name of ['decode.js', 'decode-analyzer.js']) {
+  for (const name of ['decode.js', 'decode-analyzer.js', 'core-compat.js']) {
     await cp(path.join(repoRoot, 'npm', 'yuku', name), path.join(outWasmDir, name))
   }
   return wasm.length

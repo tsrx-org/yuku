@@ -1900,3 +1900,49 @@ test "a dynamic tag nested in a tag expression is reported first" {
     }
     try std.testing.expectEqual(@as(usize, 2), arrows);
 }
+
+test "plain function declarations repeated in a sloppy-mode block are not errors (Annex B)" {
+    for ([_]parser.ast.Lang{ .js, .ts }) |lang| {
+        for ([_][]const u8{
+            "{ function g() {} function g() {} }",
+            "function o() { { function g() {} function g() {} } }",
+            "function g() {}\nfunction g() {}",
+            "function g() {}\nvar g;",
+        }) |source| {
+            var tree = try parser.parse(std.testing.allocator, source, .{ .lang = lang, .source_type = .script });
+            defer tree.deinit();
+            for (boundaryDiagnostics(&tree)) |diagnostic| {
+                std.debug.print("{s}: {s}\n", .{ source, diagnostic.message });
+                return error.TestUnexpectedResult;
+            }
+        }
+        // still errors: a lexical binding, a generator, and any module
+        for ([_][]const u8{
+            "{ function g() {} let g; }",
+            "{ function* g() {} function* g() {} }",
+        }) |source| {
+            var tree = try parser.parse(std.testing.allocator, source, .{ .lang = lang, .source_type = .script });
+            defer tree.deinit();
+            try std.testing.expect(findDiagnostic(boundaryDiagnostics(&tree), "has already been declared") != null);
+        }
+        var module = try parser.parse(std.testing.allocator, "{ function g() {} function g() {} }", .{ .lang = lang });
+        defer module.deinit();
+        try std.testing.expect(findDiagnostic(boundaryDiagnostics(&module), "has already been declared") != null);
+    }
+}
+
+test "early errors stay linear in the number of redeclarations and @catch blocks" {
+    // Every lookup goes through one index; a per-diagnostic scan of the tree
+    // made these quadratic.
+    var source: std.ArrayList(u8) = .empty;
+    defer source.deinit(std.testing.allocator);
+    for (0..2000) |index| {
+        try source.print(std.testing.allocator, "function f{d}(a, a) {{ let b; let b; }}\n", .{index});
+    }
+    var tree = try parser.parse(std.testing.allocator, source.items, .{ .lang = .tsx });
+    defer tree.deinit();
+    const diagnostics = boundaryDiagnostics(&tree);
+    try std.testing.expectEqual(@as(usize, 4000), diagnostics.len);
+    try std.testing.expectEqualStrings("Argument name clash", diagnostics[0].message);
+    try std.testing.expectEqualStrings("Identifier 'b' has already been declared", diagnostics[1].message);
+}

@@ -76,9 +76,10 @@ export async function createNodeEngine({ wasmPath, decodersDir }) {
   for (const name of ['memory', 'alloc', 'free', 'parse', 'analyze', 'generate']) {
     if (!(name in exports)) throw new Error(`${relative}: missing export \`${name}\``)
   }
-  const [{ decode }, { decode: decodeAnalyzer }] = await Promise.all([
+  const [{ decode }, { decode: decodeAnalyzer }, { applyCoreShape }] = await Promise.all([
     import(pathToFileURL(path.join(decodersDir, 'decode.js')).href),
     import(pathToFileURL(path.join(decodersDir, 'decode-analyzer.js')).href),
+    import(pathToFileURL(path.join(decodersDir, 'core-compat.js')).href),
   ])
 
   // Every call may grow the memory, so each view is built from the current buffer.
@@ -107,7 +108,8 @@ export async function createNodeEngine({ wasmPath, decodersDir }) {
     bytes,
     parse(source, options = {}) {
       const buffer = call('parse', source, packFlags(options))
-      const view = decode(buffer, source)
+      // diagnostic codes and self-closing <script />, as npm/yuku gives them
+      const view = applyCoreShape(decode(buffer, source), source)
       return {
         program: view.program,
         comments: view.comments,
@@ -116,7 +118,7 @@ export async function createNodeEngine({ wasmPath, decodersDir }) {
       }
     },
     analyze(source, options = {}) {
-      return decodeAnalyzer(call('analyze', source, packFlags(options)), source)
+      return applyCoreShape(decodeAnalyzer(call('analyze', source, packFlags(options)), source), source)
     },
     generate(source, options = {}, generateOptions = {}) {
       const payload = call(
