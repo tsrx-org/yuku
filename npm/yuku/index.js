@@ -21,13 +21,145 @@ function inferLang(filename) {
   return "js";
 }
 
+/**
+ * Whether `filename` names a `.tsrx` file. Only there is a comment in JSX text
+ * a comment, as `@tsrx/core` reads it; in `.tsx` and `.jsx` it is text.
+ */
+function isTsrxFile(filename) {
+  return filename.split(/[?#]/, 1)[0].toLowerCase().endsWith(".tsrx");
+}
+
 export function parseWire(source, options = {}) {
   const bytes = typeof source === "string" ? encoder.encode(source) : source;
   return binding.parse(bytes, options);
 }
 
+// A self-closing `<script />` has no body, and core gives it no `content`. The
+// wire format carries an empty string there, so it is removed after decoding
+// and put back for the encoder, which needs one.
+const SELF_CLOSING_SCRIPTS = new WeakMap();
+
+function dropSelfClosingScriptContent(program, text) {
+  if (!text.includes("<script")) return program;
+  const scripts = [];
+  walk(program, {
+    JSXScriptElement(node) {
+      if (node.closingElement === null) {
+        delete node.content;
+        scripts.push(node);
+      }
+    },
+  });
+  if (scripts.length > 0) SELF_CLOSING_SCRIPTS.set(program, scripts);
+  return program;
+}
+
 export function parse(source, options = {}) {
-  return decode(parseWire(source, options), sourceText(source));
+  const text = sourceText(source);
+  const result = decode(parseWire(source, options), text);
+  let diagnostics;
+  let program;
+  return {
+    get program() {
+      return (program ??= dropSelfClosingScriptContent(result.program, text));
+    },
+    get comments() {
+      return result.comments;
+    },
+    get diagnostics() {
+      return (diagnostics ??= result.diagnostics.map(withDiagnosticCode));
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostic codes
+//
+// `@tsrx/core` gives some diagnostics a stable `code`. The native diagnostic
+// record carries no code field, so the wrapper assigns them here, from core's
+// exact messages. Each message below is one the native parser reports only for
+// that code.
+// ---------------------------------------------------------------------------
+
+const DYNAMIC_TAG_EXPRESSION_MESSAGE =
+  "A dynamic tag expression must be an identifier, a member access such as `props.as` or `registry[name]`, or a string literal. Compute anything else before the element: `const Tag = c ? Child : Fallback;`, then `<{Tag} />`.";
+const SCRIPT_END_TAG_IN_BODY_MESSAGE =
+  /^'<\/script' can end a script in HTML, so a '<script>' body can't contain it\. Write '<\\\/script' instead\.$/i;
+
+/**
+ * The `@tsrx/core` code for a diagnostic, or `undefined` when core has none.
+ *
+ * A spread or empty dynamic tag (`<{...a} />`, `<{} />`) shares the dynamic
+ * tag message, but core raises it as a plain syntax error without a code; the
+ * native parser marks it with help text, which the coded diagnostic never has.
+ *
+ * @param {{ message: string, help: string | null }} diagnostic
+ * @returns {string | undefined}
+ */
+function diagnosticCode(diagnostic) {
+  if (diagnostic.message === DYNAMIC_TAG_EXPRESSION_MESSAGE && diagnostic.help === null) {
+    return "tsrx-dynamic-tag-expression";
+  }
+  if (SCRIPT_END_TAG_IN_BODY_MESSAGE.test(diagnostic.message)) {
+    return "tsrx-script-end-tag-in-body";
+  }
+  return undefined;
+}
+
+function withDiagnosticCode(diagnostic) {
+  const code = diagnosticCode(diagnostic);
+  return code === undefined ? diagnostic : { ...diagnostic, code };
+}
+
+// acorn reports these at one position, and core's error spans the one
+// character there; the native diagnostic spans the whole name.
+const POINT_ERROR =
+  /^(?:Identifier '.+' has already been declared|type '.+' has already been declared\.|Export '.+' is not defined)$/;
+
+/**
+ * A diagnostic as `parseModule` reports it: with core's `pos` (the start) and
+ * core's `end`.
+ */
+function coreError(diagnostic) {
+  const end = POINT_ERROR.test(diagnostic.message)
+    ? Math.min(diagnostic.start + 1, diagnostic.end)
+    : diagnostic.end;
+  return { ...diagnostic, pos: diagnostic.start, end };
+}
+
+/**
+ * The errors `parseModule` records for one diagnostic. A duplicate parameter
+ * is recorded at both parameters, the earlier one first, as `@tsrx/core`
+ * records `Argument name clash`; the native diagnostic sits on the later
+ * one and labels the earlier one first.
+ */
+function recordedErrors(diagnostic) {
+  const first = diagnostic.labels[0];
+  if (diagnostic.message !== "Argument name clash" || first === undefined) {
+    return [coreError(diagnostic)];
+  }
+  return [
+    coreError({ ...diagnostic, start: first.start, end: first.end, labels: [] }),
+    coreError(diagnostic),
+  ];
+}
+
+/**
+ * A spread or empty dynamic tag (`<{...a} />`, `<{} />`) is no expression, and
+ * core raises it as a syntax error that ends the parse in every mode.
+ */
+function endsTheParse(diagnostic) {
+  return diagnostic.message === DYNAMIC_TAG_EXPRESSION_MESSAGE && diagnostic.help !== null;
+}
+
+function syntaxError(diagnostic, source) {
+  const reported = coreError(diagnostic);
+  const error = new SyntaxError(`${reported.message} (${reported.start}:${reported.end})`);
+  error.pos = reported.pos;
+  error.end = reported.end;
+  error.loc = sourcePosition(source, reported.pos);
+  if (reported.code !== undefined) error.code = reported.code;
+  return error;
 }
 
 /**
@@ -54,6 +186,7 @@ export function analyze(source, filename, options) {
     // `??=` and not a truthiness check: an explicitly-undefined `lang` means
     // "not specified", which is exactly what the filename is here to answer.
     analyzeOptions.lang ??= inferLang(filename);
+    analyzeOptions.tsrx ??= isTsrxFile(filename);
   } else {
     // 0.1.1 shape: the second argument was the options object.
     analyzeOptions = filename ?? options ?? {};
@@ -101,7 +234,13 @@ export function generate(program, options) {
   if (!program || program.type !== "Program") {
     throw new TypeError("Expected a Program node from yuku-tsrx");
   }
-  return binding.generate(encode(program), normalizeGenerateOptions(options));
+  const scripts = SELF_CLOSING_SCRIPTS.get(program) ?? [];
+  for (const script of scripts) script.content ??= "";
+  try {
+    return binding.generate(encode(program), normalizeGenerateOptions(options));
+  } finally {
+    for (const script of scripts) if (script.content === "") delete script.content;
+  }
 }
 
 export function parseModule(source, filename, options = {}) {
@@ -110,6 +249,7 @@ export function parseModule(source, filename, options = {}) {
   const result = parse(source, {
     ...parseOptions,
     lang: parseOptions.lang ?? inferLang(filename),
+    tsrx: parseOptions.tsrx ?? isTsrxFile(filename),
     sourceType: "module",
     loose,
     // A module boundary owes its caller the scope-dependent early errors, not
@@ -123,10 +263,9 @@ export function parseModule(source, filename, options = {}) {
   // on `collect || loose` meant a caller who passed only a `comments` array
   // paid for comment attachment and got an empty array back.
   if (comments) comments.push(...result.comments);
-  // Only `error` severity makes a module unusable. The native boundary lowers
-  // the early errors a mid-edit file still recovers from -- redeclarations --
-  // to `warning`, so they stay visible on `parse()` without failing the module
-  // here. See src/dialect/diagnostics.zig for how that set was derived.
+  // Only `error` severity makes a module unusable. Every early error is one,
+  // redeclarations included, as in `@tsrx/core`: a normal parse throws it and
+  // `collect`/`loose` record it. See src/dialect/diagnostics.zig.
   // Place the malformed-markup diagnostics on the markup the author wrote
   // before anyone reads them, so the collected `errors` and the thrown message
   // agree with each other and with what a reader would underline. See
@@ -137,11 +276,17 @@ export function parseModule(source, filename, options = {}) {
     .map((diagnostic) => ({ ...diagnostic, ...authoredDiagnosticSpan(diagnostic, text) }));
   if (fatal.length > 0) {
     if (collect || loose) {
-      if (errors) errors.push(...fatal);
+      const ending = fatal.find(endsTheParse);
+      if (ending !== undefined) {
+        // What core raised before it is recorded; the rest is never reached.
+        const before = fatal.filter((diagnostic) => diagnostic.start < ending.start);
+        if (errors) errors.push(...before.flatMap(recordedErrors));
+        throw syntaxError(ending, text);
+      }
+      if (errors) errors.push(...fatal.flatMap(recordedErrors));
       return result.program;
     }
-    const diagnostic = fatal[0];
-    throw new SyntaxError(`${diagnostic.message} (${diagnostic.start}:${diagnostic.end})`);
+    throw syntaxError(fatal[0], text);
   }
   return result.program;
 }

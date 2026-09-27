@@ -20,6 +20,7 @@ export function packFlags({
   semanticErrors = true,
   attachComments = false,
   loose = false,
+  tsrx = false,
 } = {}) {
   const sourceTypeIndex = SOURCE_TYPES.indexOf(sourceType)
   const langIndex = LANGS.indexOf(lang)
@@ -31,6 +32,7 @@ export function packFlags({
   if (semanticErrors) flags |= 1 << 6
   if (attachComments) flags |= 1 << 7
   if (loose) flags |= 1 << 8
+  if (tsrx) flags |= 1 << 9
   return flags >>> 0
 }
 

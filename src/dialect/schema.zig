@@ -70,7 +70,7 @@ pub const JSXScriptElement = struct {
     opening_element: abi.NodeRef,
     children: abi.NodeList,
     closing_element: abi.OptionalNodeRef,
-    raw: abi.StringSlice,
+    content: abi.StringSlice,
 };
 
 pub const TSRXExpression = struct {

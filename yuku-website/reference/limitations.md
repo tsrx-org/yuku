@@ -21,7 +21,7 @@ The second `@catch` parameter (`reset`) is parsed and printed, but the semantic 
 
 An unresolved reference has `symbolId: null`. That alone is not an error: environment-supplied globals can also be unresolved. The missing catch binding is a separate, known analyzer gap.
 
-Style contents and raw `<script>` contents are retained as template data, not analyzed as JavaScript. The CSS scanner exposes structure useful for a later style transform; it is not a CSS validator or scoping compiler.
+Style contents and raw `<script>` contents are retained as template data, not analyzed as JavaScript. A `<script>` body is its `content`, as written, and the element has no children. The CSS scanner exposes structure useful for a later style transform; it is not a CSS validator or scoping compiler.
 
 ## The browser build is a separate host
 
@@ -45,9 +45,9 @@ The browser generator reparses the source string; it does not print an edited Ja
 
 Lazy `&{ ... }` and `&[ ... ]` patterns were removed in 0.3.0 to match tsrx: `&` directly before `{` or `[` is a syntax error, as in TypeScript, while `a & { b: 1 }` and `x & [1]` remain bitwise AND.
 
-A call inside a dynamic tag name, such as `<{makeTag()} />`, is rejected by the current tag validator. Assign the result to a variable first: `const Tag = makeTag(); const view = <{Tag} />;`.
+A dynamic tag name must be an identifier (`tag`), a member access (`props.as`, `this.tag`, `registry[name]`, `items[0]`), or a string literal, as in `@tsrx/core` 0.5.0. Anything else, such as `<{c ? A : B} />`, `<{(tag)} />` or `<{makeTag()} />`, is reported with code `tsrx-dynamic-tag-expression`. The tree keeps the expression. Compute the tag first: `const Tag = makeTag(); const view = <{Tag} />;`.
 
-Recovery may produce an incomplete tree. Check diagnostics before transforming. With `semanticErrors: true`, the `parse` path downgrades the `Identifier '…' has already been declared` diagnostic family to warnings; `analyze` retains errors. Legal repeated `var` declarations are accepted. See [Diagnostics and recovery](/guide/diagnostics).
+Recovery may produce an incomplete tree. Check diagnostics before transforming. With `semanticErrors: true`, redeclarations such as `Identifier 'count' has already been declared` are errors, as in `@tsrx/core`. Legal repeated `var` declarations are accepted. See [Diagnostics and recovery](/guide/diagnostics).
 
 ## Printing and stripping
 

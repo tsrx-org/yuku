@@ -25,9 +25,11 @@ pub fn analyze(tree: anytype) AnalyzeResult {
             else if (comptime std.mem.eql(u8, @tagName(tag), "jsx_code_block"))
                 .{ .block_statement = .{ .body = try semanticRange(tree, value.body.start, value.body.len, value.render.raw) } }
             else if (comptime std.mem.eql(u8, @tagName(tag), "jsx_for_expression") or
-                std.mem.eql(u8, @tagName(tag), "jsx_switch_expression") or
-                std.mem.eql(u8, @tagName(tag), "jsx_try_expression"))
+                std.mem.eql(u8, @tagName(tag), "jsx_switch_expression"))
                 .{ .block_statement = .{ .body = try semanticRange(tree, 0, 0, value.statement.raw) } }
+            else if (comptime std.mem.eql(u8, @tagName(tag), "jsx_try_expression"))
+                // the `@pending` block is a body too: a `var` in it hoists
+                .{ .block_statement = .{ .body = try semanticPair(tree, value.statement.raw, value.pending.raw) } }
             else if (comptime std.mem.eql(u8, @tagName(tag), "jsx_if_expression"))
                 .{ .conditional_expression = .{
                     .@"test" = @enumFromInt(value.@"test".raw),
@@ -50,7 +52,46 @@ pub fn analyze(tree: anytype) AnalyzeResult {
     defer for (tree.dialect_store.associations.items, saved) |association, data| {
         tree.tree.setData(@enumFromInt(association.anchor), data);
     };
+
+    // A `@case` body is written in braces, and each is its own block scope, as
+    // in `@tsrx/core`: `@case 1: { const x = 1; } @case 2: { const x = 2; }` is
+    // valid. The tree keeps a case's statements as its consequent, so each
+    // case is analyzed through a block wrapping them, and restored after.
+    var cases: std.ArrayList(CaseConsequent) = .empty;
+    for (tree.dialect_store.associations.items) |association| {
+        const record = tree.dialect_store.records.items[association.record_index];
+        if (record != .jsx_switch_expression) continue;
+        const statement: parser.ast.NodeIndex = @enumFromInt(record.jsx_switch_expression.statement.raw);
+        const range = switch (tree.tree.data(statement)) {
+            .switch_statement => |data| data.cases,
+            else => continue,
+        };
+        for (0..range.len) |offset| {
+            const case_node = tree.tree.extras.items[range.start + offset];
+            const case_data = tree.tree.data(case_node).switch_case;
+            if (case_data.consequent.len == 0) continue;
+            const block = try tree.tree.addNode(
+                .{ .block_statement = .{ .body = case_data.consequent } },
+                tree.tree.span(case_node),
+            );
+            const consequent = try semanticRange(tree, 0, 0, @intFromEnum(block));
+            try cases.append(tree.tree.allocator(), .{ .node = case_node, .consequent = case_data.consequent });
+            tree.tree.setData(case_node, .{ .switch_case = .{ .@"test" = case_data.@"test", .consequent = consequent } });
+        }
+    }
+    defer for (cases.items) |case| {
+        const case_data = tree.tree.data(case.node).switch_case;
+        tree.tree.setData(case.node, .{ .switch_case = .{ .@"test" = case_data.@"test", .consequent = case.consequent } });
+    };
     return parser.semantic.analyze(&tree.tree);
+}
+
+fn semanticPair(tree: anytype, first: u32, second: u32) !parser.ast.IndexRange {
+    const start: u32 = @intCast(tree.tree.extras.items.len);
+    try tree.tree.extras.append(tree.tree.allocator(), @enumFromInt(first));
+    if (second == std.math.maxInt(u32)) return .{ .start = start, .len = 1 };
+    try tree.tree.extras.append(tree.tree.allocator(), @enumFromInt(second));
+    return .{ .start = start, .len = 2 };
 }
 
 fn semanticRange(tree: anytype, start: u32, len: u32, tail: u32) !parser.ast.IndexRange {
@@ -63,3 +104,8 @@ fn semanticRange(tree: anytype, start: u32, len: u32, tail: u32) !parser.ast.Ind
     if (tail != std.math.maxInt(u32)) try tree.tree.extras.append(tree.tree.allocator(), @enumFromInt(tail));
     return .{ .start = first, .len = len + @intFromBool(tail != std.math.maxInt(u32)) };
 }
+
+const CaseConsequent = struct {
+    node: parser.ast.NodeIndex,
+    consequent: parser.ast.IndexRange,
+};

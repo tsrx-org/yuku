@@ -29,7 +29,7 @@ const semantic_transfer = transfer.semantic;
 const gpa = std.heap.wasm_allocator;
 
 /// Option bits packed by the JS host. Bits 0..7 match yuku's own wasm entries;
-/// bit 8 is the dialect's `loose` option.
+/// bit 8 is the dialect's `loose` option, bit 9 its `tsrx` option.
 const flag = struct {
     const source_type_mask: u32 = 0b11; // bits 0..1: ast.SourceType index
     const lang_shift: u5 = 2; // bits 2..4: ast.Lang index
@@ -38,6 +38,7 @@ const flag = struct {
     const semantic: u32 = 1 << 6;
     const attach_comments: u32 = 1 << 7;
     const loose: u32 = 1 << 8;
+    const tsrx: u32 = 1 << 9;
 };
 
 /// Codegen option bits packed by the JS host. `strip` and `minify` select the
@@ -92,6 +93,7 @@ fn parseOptions(flags: u32) parser.Options {
         .preserve_parens = flags & flag.preserve_parens != 0,
         .comments = if (flags & flag.attach_comments != 0) .both else .flat,
         .loose = flags & flag.loose != 0,
+        .tsrx = flags & flag.tsrx != 0,
     };
 }
 
@@ -118,7 +120,7 @@ fn runParse(source: []const u8, flags: u32) ![]u8 {
     var tree = try parser.parse(gpa, source, parseOptions(flags));
     defer tree.deinit();
 
-    if (flags & flag.semantic != 0) parser.diagnostics.analyzeWithBoundarySeverity(&tree);
+    if (flags & flag.semantic != 0) parser.diagnostics.analyzeEarlyErrors(&tree);
 
     const out = try prefixed(transfer.bufferSize(&tree));
     _ = transfer.serializeInto(&tree, out[4..]);

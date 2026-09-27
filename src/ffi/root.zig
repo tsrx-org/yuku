@@ -11,6 +11,7 @@ const ParseOptions = struct {
     semantic_errors: bool = false,
     attach_comments: bool = false,
     loose: bool = false,
+    tsrx: bool = false,
 };
 
 const AnalyzeOptions = struct {
@@ -18,6 +19,7 @@ const AnalyzeOptions = struct {
     lang: parser.ast.Lang = .js,
     preserve_parens: bool = true,
     attach_comments: bool = false,
+    tsrx: bool = false,
 };
 
 pub fn parse(env: napi.Env, source: []const u8, options: ParseOptions) !napi.Val {
@@ -27,9 +29,10 @@ pub fn parse(env: napi.Env, source: []const u8, options: ParseOptions) !napi.Val
         .preserve_parens = options.preserve_parens,
         .comments = if (options.attach_comments) .both else .flat,
         .loose = options.loose,
+        .tsrx = options.tsrx,
     }) catch return error.ParseFailed;
     defer tree.deinit();
-    if (options.semantic_errors) parser.diagnostics.analyzeWithBoundarySeverity(&tree);
+    if (options.semantic_errors) parser.diagnostics.analyzeEarlyErrors(&tree);
     const buffer = try env.createArrayBuffer(transfer.bufferSize(&tree));
     _ = transfer.serializeInto(&tree, buffer.data);
     return buffer.val;
@@ -41,6 +44,7 @@ pub fn analyze(env: napi.Env, source: []const u8, options: AnalyzeOptions) !napi
         .lang = options.lang,
         .preserve_parens = options.preserve_parens,
         .comments = if (options.attach_comments) .both else .flat,
+        .tsrx = options.tsrx,
     }) catch return error.AnalyzeFailed;
     defer tree.deinit();
     var semantic = parser.semantic.analyze(&tree) catch return error.AnalyzeFailed;
