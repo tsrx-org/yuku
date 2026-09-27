@@ -177,6 +177,33 @@ export function addInnerComments(program, text, comments) {
 }
 
 /**
+ * Gives every mapped type in `program` core's `typeParameter`, a
+ * `TSTypeParameter` named by the key, for typescript-estree's `key` and
+ * `constraint`, which stay on the node unlisted for the encoder.
+ */
+export function addMappedTypeParameters(program, text) {
+  if (!/\bin\b/.test(text)) return;
+  forEachNode(
+    program,
+    (node) => node.type === "TSMappedType" && !node.typeParameter,
+    (node) => {
+      const { key, constraint } = node;
+      node.typeParameter = {
+        type: "TSTypeParameter",
+        start: key.start,
+        end: constraint.end,
+        name: key,
+        constraint,
+      };
+      Object.defineProperties(node, {
+        key: { enumerable: false },
+        constraint: { enumerable: false },
+      });
+    },
+  );
+}
+
+/**
  * Gives a decoded result (`decode` or the analyzer's `decode`) the core shape,
  * lazily and in place: `diagnostics` gain their `code`, and `program` loses
  * the `content` of every self-closing `<script />`. Every other field of the

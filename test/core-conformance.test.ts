@@ -855,12 +855,16 @@ test("a type parameter's name is an Identifier, and an enum's members are in a T
 		["function f<const T extends string>(x: T) {}", "T"],
 		["class A<in /* c */ out T> {}", "T"],
 		["type I = X extends Array<infer U> ? U : never;", "U"],
+		["type M = { [K in keyof X]: X[K] };", "K"],
 	]) {
 		const [parameter] = findAll(
 			parseModule(source, "a.ts"),
 			(node) => node.type === "TSTypeParameter",
 		);
-		const start = source.lastIndexOf(name, source.indexOf(name === "T" ? ">" : " ?"));
+		const start = source.lastIndexOf(
+			name,
+			source.indexOf(name === "T" ? ">" : name === "K" ? " in" : " ?"),
+		);
 		expect(parameter.name, source).toMatchObject({
 			type: "Identifier",
 			name,
@@ -868,6 +872,18 @@ test("a type parameter's name is an Identifier, and an enum's members are in a T
 			end: start + 1,
 		});
 	}
+	// a mapped type's key and constraint are its typeParameter's, as in core
+	const [mapped] = findAll(
+		parseModule("type M = { [K in X]: 1 };", "a.ts"),
+		(node) => node.type === "TSMappedType",
+	);
+	expect(mapped.typeParameter).toMatchObject({
+		type: "TSTypeParameter",
+		start: 12,
+		end: 18,
+		constraint: { start: 17 },
+	});
+	expect(["key", "constraint"].filter((key) => Object.keys(mapped).includes(key))).toEqual([]);
 	const source = "enum E /* c */ { A, B = 2 }";
 	const [declaration] = findAll(
 		parseModule(source, "a.ts"),

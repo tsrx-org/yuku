@@ -1,6 +1,7 @@
 import binding from "./binding.js";
 import {
   addInnerComments,
+  addMappedTypeParameters,
   applyCoreShape,
   DYNAMIC_TAG_EXPRESSION_MESSAGE,
   withSelfClosingScriptContent,
@@ -220,6 +221,7 @@ export function parseModule(source, filename, options = {}) {
   // paid for comment attachment and got an empty array back.
   if (comments) comments.push(...result.comments);
   addInnerComments(result.program, text, result.comments);
+  addMappedTypeParameters(result.program, text);
   // Only `error` severity makes a module unusable. Every early error is one,
   // redeclarations included, as in `@tsrx/core`: a normal parse throws it and
   // `collect`/`loose` record it. See src/dialect/diagnostics.zig.
