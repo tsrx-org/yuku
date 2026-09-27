@@ -257,8 +257,10 @@ test("#118: a comment is a {} child whichever parser reads the element", () => {
 			thrown(`export function A({ x }) @{\n\t<div>\n\t\t@if (x) { <i /> }${after}\n\t</div>\n}`),
 		).not.toBeNull();
 	}
-	// a comment after a closing tag's name is no part of it
-	expect(collected("export function A({ x, y }) @{\n\t<p>x > y</p /* c */>\n}")).toEqual([]);
+	// a comment after a closing tag's name is no part of it, nor space before its `/`
+	for (const closer of ["x > y</p /* c */>", "@if (x) { <i /> } < /p>"]) {
+		expect(collected(`export function A({ x, y }) @{\n\t<p>${closer}\n}`), closer).toEqual([]);
+	}
 	expect(
 		inner("export const A = <p>\r\n/* a */\u2028/* b */\r/* c */\u2029/* d */</p>;").map(
 			([[, , start]]) => start,
