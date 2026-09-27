@@ -501,6 +501,89 @@ test("#113: a duplicate parameter throws at the second, and collect records both
 	}
 });
 
+test("a thrown argument name clash spans one character, a recorded one the whole name, as in core", () => {
+	// [source, core's thrown [pos, end], core's recorded [pos, end] in order]
+	const cases: [string, [number, number], [number, number][]][] = [
+		[
+			"function f(abc, abc) {}",
+			[16, 17],
+			[
+				[11, 14],
+				[16, 19],
+			],
+		],
+		[
+			"export function App(props, props) @{\n\t<div />\n}",
+			[27, 28],
+			[
+				[20, 25],
+				[27, 32],
+			],
+		],
+		[
+			"export function App({ abc }, abc) @{\n\t<div />\n}",
+			[29, 30],
+			[
+				[22, 25],
+				[29, 32],
+			],
+		],
+		[
+			"const g = (abc, abc) => abc;",
+			[16, 17],
+			[
+				[11, 14],
+				[16, 19],
+			],
+		],
+		// the earlier parameter is recorded once however often its name repeats
+		[
+			"function f(abc, abc, abc) {}",
+			[16, 17],
+			[
+				[11, 14],
+				[16, 19],
+				[21, 24],
+			],
+		],
+		[
+			"function f(ab, cd, ab, cd, ab) {}",
+			[19, 20],
+			[
+				[11, 13],
+				[19, 21],
+				[15, 17],
+				[23, 25],
+				[27, 29],
+			],
+		],
+		[
+			"function f(ab, ab) {} function g(ab, ab) {}",
+			[15, 16],
+			[
+				[11, 13],
+				[15, 17],
+				[33, 35],
+				[37, 39],
+			],
+		],
+	];
+	for (const [source, strict, expected] of cases) {
+		const error = thrown(source);
+		expect(
+			error?.message.startsWith(`Argument name clash (${strict[0]}:${strict[1]})`),
+			source,
+		).toBe(true);
+		expect([error?.pos, error?.end], source).toEqual(strict);
+		for (const mode of ["collect", "loose"] as const) {
+			expect(
+				collected(source, mode).map(({ pos, end }) => [pos, end]),
+				`${mode}: ${source}`,
+			).toEqual(expected);
+		}
+	}
+});
+
 test("#113: merging, shadowing, overloads, and template scopes core accepts stay valid", () => {
 	for (const source of [
 		"function f() { var a; var a; }",

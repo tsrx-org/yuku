@@ -54,32 +54,45 @@ export function parse(source, options = {}) {
 const POINT_ERROR =
   /^(?:Identifier '.+' has already been declared|type '.+' has already been declared\.|Export '.+' is not defined)$/;
 
+const ARGUMENT_NAME_CLASH = "Argument name clash";
+
 /**
  * A diagnostic as `parseModule` reports it: with core's `pos` (the start) and
  * core's `end`.
+ *
+ * A thrown `Argument name clash` is acorn's own raise, at one position, so
+ * core's thrown error spans the one character there. A collected one is
+ * recorded over the whole parameter name, as core records it.
  */
-function coreError(diagnostic) {
-  const end = POINT_ERROR.test(diagnostic.message)
-    ? Math.min(diagnostic.start + 1, diagnostic.end)
-    : diagnostic.end;
+function coreError(diagnostic, thrown = false) {
+  const point =
+    POINT_ERROR.test(diagnostic.message) || (thrown && diagnostic.message === ARGUMENT_NAME_CLASH);
+  const end = point ? Math.min(diagnostic.start + 1, diagnostic.end) : diagnostic.end;
   return { ...diagnostic, pos: diagnostic.start, end };
 }
 
 /**
- * The errors `parseModule` records for one diagnostic. A duplicate parameter
- * is recorded at both parameters, the earlier one first, as `@tsrx/core`
- * records `Argument name clash`; the native diagnostic sits on the later
- * one and labels the earlier one first.
+ * Returns the recorder for one parse: the errors `parseModule` records for
+ * one diagnostic. A duplicate parameter is recorded at both parameters, the
+ * earlier one first, as `@tsrx/core` records `Argument name clash`; the native
+ * diagnostic sits on the later one and labels the earlier one first. Core
+ * records that earlier parameter once however often its name repeats, so the
+ * recorder remembers which earlier parameters it has recorded.
  */
-function recordedErrors(diagnostic) {
-  const first = diagnostic.labels[0];
-  if (diagnostic.message !== "Argument name clash" || first === undefined) {
-    return [coreError(diagnostic)];
-  }
-  return [
-    coreError({ ...diagnostic, start: first.start, end: first.end, labels: [] }),
-    coreError(diagnostic),
-  ];
+function errorRecorder() {
+  const recordedFirsts = new Set();
+  return (diagnostic) => {
+    const first = diagnostic.labels[0];
+    if (diagnostic.message !== ARGUMENT_NAME_CLASH || first === undefined) {
+      return [coreError(diagnostic)];
+    }
+    if (recordedFirsts.has(first.start)) return [coreError(diagnostic)];
+    recordedFirsts.add(first.start);
+    return [
+      coreError({ ...diagnostic, start: first.start, end: first.end, labels: [] }),
+      coreError(diagnostic),
+    ];
+  };
 }
 
 /**
@@ -91,7 +104,7 @@ function endsTheParse(diagnostic) {
 }
 
 function syntaxError(diagnostic, source) {
-  const reported = coreError(diagnostic);
+  const reported = coreError(diagnostic, true);
   const error = new SyntaxError(`${reported.message} (${reported.start}:${reported.end})`);
   error.pos = reported.pos;
   error.end = reported.end;
@@ -221,6 +234,7 @@ export function parseModule(source, filename, options = {}) {
     .map((diagnostic) => ({ ...diagnostic, ...authoredDiagnosticSpan(diagnostic, text) }));
   if (fatal.length > 0) {
     if (collect || loose) {
+      const recordedErrors = errorRecorder();
       const ending = fatal.find(endsTheParse);
       if (ending !== undefined) {
         // What core raised before it is recorded; the rest is never reached.
