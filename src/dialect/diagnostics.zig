@@ -48,13 +48,17 @@ pub const argument_name_clash = "Argument name clash";
 /// never by scanning the tree once per diagnostic.
 pub fn analyzeEarlyErrors(tree: anytype) void {
     const parsed = tree.tree.diagnostics.items.len;
-    const analysis = semantic.analyze(tree) catch return;
+    // analysis only fails out of memory; the passes that read it are then
+    // skipped, and the rest still shape what the checker appended
+    const analysis = semantic.analyze(tree) catch null;
     var context = Context.init(&tree.tree, analysis, parsed) catch return;
-    reportImportRedeclarations(&context) catch {};
-    reportLexicalRedeclarations(&context) catch {};
-    reportOverloadOnlyExports(&context) catch {};
+    if (analysis != null) {
+        reportImportRedeclarations(&context) catch {};
+        reportLexicalRedeclarations(&context) catch {};
+        reportOverloadOnlyExports(&context) catch {};
+    }
     reportCatchResetClashes(&context, tree.dialect_store) catch {};
-    alignRedeclarations(&context) catch {};
+    alignRedeclarations(&context);
     orderLikeCore(&context) catch {};
 }
 
@@ -64,12 +68,12 @@ const Binding = struct { start: u32, node: yuku.ast.NodeIndex };
 /// start, and the starts of the redeclarations already reported.
 const Context = struct {
     tree: *yuku.ast.Tree,
-    analysis: yuku.semantic.Semantic,
+    analysis: ?yuku.semantic.Semantic,
     checked_from: usize,
     bindings: []Binding,
     reported: std.AutoHashMapUnmanaged(u32, void),
 
-    fn init(tree: *yuku.ast.Tree, analysis: yuku.semantic.Semantic, checked_from: usize) !Context {
+    fn init(tree: *yuku.ast.Tree, analysis: ?yuku.semantic.Semantic, checked_from: usize) !Context {
         std.debug.assert(checked_from <= tree.diagnostics.items.len);
         const allocator = tree.allocator();
         var bindings: std.ArrayList(Binding) = .empty;
@@ -122,8 +126,9 @@ const Context = struct {
     }
 
     fn parentOf(self: *const Context, node: yuku.ast.NodeIndex) ?yuku.ast.NodeIndex {
-        if (node == .null or @intFromEnum(node) >= self.analysis.node_parents.len) return null;
-        return self.analysis.parentOf(node);
+        const analysis = self.analysis orelse return null;
+        if (node == .null or @intFromEnum(node) >= analysis.node_parents.len) return null;
+        return analysis.parentOf(node);
     }
 
     fn reportedAt(self: *const Context, span: yuku.ast.Span) bool {
@@ -194,7 +199,7 @@ fn bindingKind(context: *const Context, decl: yuku.ast.NodeIndex, scope: anytype
 /// followed by a declaration of the same name.
 fn reportLexicalRedeclarations(context: *Context) !void {
     const tree = context.tree;
-    const analysis = context.analysis;
+    const analysis = context.analysis.?;
     for (analysis.symbols, 0..) |symbol, index| {
         const decls = analysis.decls(@enumFromInt(index));
         if (decls.len < 2) continue;
@@ -233,7 +238,7 @@ fn reportLexicalRedeclarations(context: *Context) !void {
 /// reported that declaration.
 fn reportImportRedeclarations(context: *Context) !void {
     const tree = context.tree;
-    const analysis = context.analysis;
+    const analysis = context.analysis.?;
     for (analysis.symbols, 0..) |symbol, index| {
         const flags = symbol.flags;
         if (!flags.import and !flags.type_import) continue;
@@ -256,7 +261,7 @@ fn reportImportRedeclarations(context: *Context) !void {
 /// binds nothing for a signature, so core reports the export as undefined.
 fn reportOverloadOnlyExports(context: *Context) !void {
     const tree = context.tree;
-    const analysis = context.analysis;
+    const analysis = context.analysis.?;
     const allocator = tree.allocator();
     // module-scope symbols made only of overload signatures, by name
     var signatures: std.StringHashMapUnmanaged(void) = .empty;
@@ -372,12 +377,12 @@ fn orderKey(context: *const Context, diagnostic: yuku.ast.Diagnostic) u64 {
 
 /// Rewords or drops the redeclarations from `checked_from` on where core
 /// reports them differently. See the module comment.
-fn alignRedeclarations(context: *Context) !void {
+fn alignRedeclarations(context: *Context) void {
     const tree = context.tree;
     var kept = context.checked_from;
     for (context.checked_from..tree.diagnostics.items.len) |index| {
         var diagnostic = tree.diagnostics.items[index];
-        const keep = try alignRedeclaration(context, &diagnostic);
+        const keep = alignRedeclaration(context, &diagnostic);
         if (!keep) continue;
         tree.diagnostics.items[kept] = diagnostic;
         kept += 1;
@@ -387,7 +392,7 @@ fn alignRedeclarations(context: *Context) !void {
 }
 
 /// False when core reports nothing for `diagnostic`.
-fn alignRedeclaration(context: *const Context, diagnostic: *yuku.ast.Diagnostic) !bool {
+fn alignRedeclaration(context: *const Context, diagnostic: *yuku.ast.Diagnostic) bool {
     if (diagnostic.severity != .@"error" or !isRedeclaration(diagnostic.message)) return true;
     if (diagnostic.labels.len == 0) return true;
     const first = diagnostic.labels[0];
@@ -407,7 +412,8 @@ fn alignRedeclaration(context: *const Context, diagnostic: *yuku.ast.Diagnostic)
     switch (declarationKind(context, diagnostic.span)) {
         .type_alias => {
             const name = diagnostic.message["Identifier '".len .. diagnostic.message.len - "' has already been declared".len];
-            diagnostic.message = try std.fmt.allocPrint(context.tree.allocator(), "type '{s}' has already been declared.", .{name});
+            // out of memory keeps the checker's message; failing here would leave the list half compacted
+            diagnostic.message = std.fmt.allocPrint(context.tree.allocator(), "type '{s}' has already been declared.", .{name}) catch diagnostic.message;
             return true;
         },
         .interface => return !after_type_alias,
@@ -420,10 +426,11 @@ fn isSloppyFunction(context: *const Context, span: yuku.ast.Span) bool {
     // the scope the declaration sits in, not the function's own
     const declaration = context.parentOf(binding) orelse return false;
     const container = context.parentOf(declaration) orelse return false;
-    if (@intFromEnum(container) >= context.analysis.node_scopes.len) return false;
-    const scope_id = context.analysis.scopeOf(container);
+    const analysis = context.analysis.?; // parents come from the analysis
+    if (@intFromEnum(container) >= analysis.node_scopes.len) return false;
+    const scope_id = analysis.scopeOf(container);
     if (scope_id == .none) return false;
-    return bindingKind(context, binding, context.analysis.scopes.get(scope_id)) == .sloppy_function;
+    return bindingKind(context, binding, analysis.scopes.get(scope_id)) == .sloppy_function;
 }
 
 const DeclarationKind = enum { type_alias, interface, other };

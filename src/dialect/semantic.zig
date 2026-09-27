@@ -15,6 +15,11 @@ pub fn analyze(tree: anytype) AnalyzeResult {
     const NodeData = @TypeOf(tree.tree.data(tree.tree.root));
     const saved = try tree.tree.allocator().alloc(NodeData, tree.dialect_store.associations.items.len);
     defer tree.tree.allocator().free(saved);
+    // before the loop, so an allocation failure in it still restores the anchors changed so far
+    var replaced: usize = 0;
+    defer for (tree.dialect_store.associations.items[0..replaced], saved[0..replaced]) |association, data| {
+        tree.tree.setData(@enumFromInt(association.anchor), data);
+    };
     for (tree.dialect_store.associations.items, 0..) |association, index| {
         const anchor: parser.ast.NodeIndex = @enumFromInt(association.anchor);
         saved[index] = tree.tree.data(anchor);
@@ -48,16 +53,18 @@ pub fn analyze(tree: anytype) AnalyzeResult {
             else
                 saved[index],
         });
+        replaced = index + 1;
     }
-    defer for (tree.dialect_store.associations.items, saved) |association, data| {
-        tree.tree.setData(@enumFromInt(association.anchor), data);
-    };
 
     // A `@case` body is written in braces, and each is its own block scope, as
     // in `@tsrx/core`: `@case 1: { const x = 1; } @case 2: { const x = 2; }` is
     // valid. The tree keeps a case's statements as its consequent, so each
     // case is analyzed through a block wrapping them, and restored after.
     var cases: std.ArrayList(CaseConsequent) = .empty;
+    defer for (cases.items) |case| {
+        const case_data = tree.tree.data(case.node).switch_case;
+        tree.tree.setData(case.node, .{ .switch_case = .{ .@"test" = case_data.@"test", .consequent = case.consequent } });
+    };
     for (tree.dialect_store.associations.items) |association| {
         const record = tree.dialect_store.records.items[association.record_index];
         if (record != .jsx_switch_expression) continue;
@@ -79,10 +86,6 @@ pub fn analyze(tree: anytype) AnalyzeResult {
             tree.tree.setData(case_node, .{ .switch_case = .{ .@"test" = case_data.@"test", .consequent = consequent } });
         }
     }
-    defer for (cases.items) |case| {
-        const case_data = tree.tree.data(case.node).switch_case;
-        tree.tree.setData(case.node, .{ .switch_case = .{ .@"test" = case_data.@"test", .consequent = case.consequent } });
-    };
     return parser.semantic.analyze(&tree.tree);
 }
 

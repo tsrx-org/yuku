@@ -1882,6 +1882,50 @@ test "early errors come in core's order" {
     });
 }
 
+/// Fails only the allocation at `fail_index`; the ones after it succeed.
+const FailOnce = struct {
+    fail_index: usize,
+    index: usize = 0,
+
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret: usize) ?[*]u8 {
+        const self: *FailOnce = @ptrCast(@alignCast(ctx));
+        defer self.index += 1;
+        return if (self.index == self.fail_index) null else std.testing.allocator.rawAlloc(len, alignment, ret);
+    }
+
+    fn free(_: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret: usize) void {
+        std.testing.allocator.rawFree(memory, alignment, ret);
+    }
+
+    fn allocator(self: *FailOnce) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &.{ .alloc = alloc, .resize = std.mem.Allocator.noResize, .remap = std.mem.Allocator.noRemap, .free = free } };
+    }
+};
+
+test "a failed analysis still reports catch-reset clashes and restores the tree" {
+    const source = "export function App() @{ <div>@try { <b /> } @catch (e, e) { <i /> }</div> }\n" ++
+        "(function () @{ <div>{1}</div> });\n" ** 200;
+    var counter: FailOnce = .{ .fail_index = std.math.maxInt(usize) };
+    var clean = try parser.parse(counter.allocator(), source, .{ .lang = .tsx });
+    const parsed = counter.index;
+    _ = try parser.semantic.analyze(&clean);
+    const analyzed = counter.index;
+    clean.deinit();
+    try std.testing.expect(analyzed > parsed);
+    // fail each allocation the analysis makes in turn
+    for (parsed..analyzed) |fail_index| {
+        var failing: FailOnce = .{ .fail_index = fail_index };
+        var tree = try parser.parse(failing.allocator(), source, .{ .lang = .tsx });
+        defer tree.deinit();
+        const before = try std.testing.allocator.dupe(parser.ast.NodeData, tree.tree.nodes.items(.data));
+        defer std.testing.allocator.free(before);
+        parser.diagnostics.analyzeEarlyErrors(&tree);
+        for (before, tree.tree.nodes.items(.data)[0..before.len]) |want, got| try std.testing.expect(std.meta.eql(want, got));
+        try std.testing.expectEqual(@as(usize, 1), tree.tree.diagnostics.items.len);
+        try std.testing.expectEqualStrings("Identifier 'e' has already been declared", tree.tree.diagnostics.items[0].message);
+    }
+}
+
 test "a dynamic tag nested in a tag expression is reported first" {
     const source = "export function A() @{ const x=<{() => <{a()}/>}>x</{() => <{a()}/>}>; }";
     var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx, .tsrx = true });
