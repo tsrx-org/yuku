@@ -4,7 +4,7 @@
 // parsed here so the seed can never be one the engine refuses.
 import { readdir } from 'node:fs/promises'
 
-const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', semanticErrors: false }
+const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true, semanticErrors: false }
 const DEFAULT_SWEEP = '16,64,128,256,512'
 const DEFAULT_MAX_KB = 1024
 const STEP_KB = 8

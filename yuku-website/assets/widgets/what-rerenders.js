@@ -5,7 +5,7 @@ import { rerenderModel } from './_what-rerenders.js'
 import { diagnosticsHtml, highlightedHtml } from './_shared.js'
 import { markRanges } from './_source-pane.js'
 
-const OPTIONS = { lang: 'tsx', sourceType: 'module' }
+const OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true }
 
 export default function mount(root, { cleanup }) {
   const { source: seed } = JSON.parse(root.querySelector('[data-wr-seed]').textContent)

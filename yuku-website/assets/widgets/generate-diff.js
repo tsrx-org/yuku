@@ -5,7 +5,7 @@ import { createLayeredEditor } from './_editor.js'
 import { highlightedCode, highlightedHtml, plainStatus } from './_shared.js'
 import { bindMarkedReadout, failWidget } from './_source-pane.js'
 
-const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', attachComments: true }
+const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true, attachComments: true }
 const DEFAULTS = { format: 'pretty', indent: 2, quotes: 'preserve', comments: 'some', strip: false, minify: false }
 const SHORTEST_TITLE =
   'not available: the Quotes enum in src/dialect/codegen.zig has preserve, double and single, so shortest cannot be requested'

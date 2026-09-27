@@ -4,7 +4,7 @@ import { formatMs, plural } from '../yuku-shared.js'
 import { parse, ready } from '../yuku-wasm.js'
 import { plainStatus } from './_shared.js'
 
-const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', semanticErrors: false }
+const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true, semanticErrors: false }
 const RUNS_PER_POINT = 3
 const SVG = 'http://www.w3.org/2000/svg'
 const WIDTH = 600

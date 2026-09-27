@@ -4,7 +4,7 @@ import { createLayeredEditor } from './_editor.js'
 import { generatedSource, lowerProgram } from './_lower-to-tsx.js'
 import { diagnosticsHtml, highlightedHtml } from './_shared.js'
 
-const OPTIONS = { lang: 'tsx', sourceType: 'module' }
+const OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true }
 const PRINT = { format: 'pretty', indent: 2 }
 
 async function generate(program, options) {

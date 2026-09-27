@@ -14,7 +14,7 @@ import {
   markRanges,
 } from './_source-pane.js'
 
-const ANALYZE_OPTIONS = { lang: 'tsx', sourceType: 'module' }
+const ANALYZE_OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true }
 const IDLE_READOUT = 'Focus or hover a token to read its scope and symbol.'
 
 const cell = (value) => `<td>${escapeHtml(value === null ? 'null' : String(value))}</td>`

@@ -17,7 +17,7 @@ export default async function render({ attrs, fence, ctx }) {
   if (!fence || fence.lang !== 'tsrx') {
     throw new Error('symbol-table needs a ```tsrx fence right after its marker')
   }
-  const view = await ctx.analyze(fence.code, { lang: 'tsx', sourceType: 'module' })
+  const view = await ctx.analyze(fence.code, { lang: 'tsx', sourceType: 'module', tsrx: true })
   const errors = view.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')
   if (errors.length > 0) {
     throw new Error(`symbol-table: the fence does not analyze clean: ${errors[0].message}`)

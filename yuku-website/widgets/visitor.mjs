@@ -29,7 +29,7 @@ export default async function render({ attrs, fence, ctx }) {
     throw new Error('visitor needs a ```tsrx fence right after its marker')
   }
   const landing = attrs.type ?? 'JSXIfExpression'
-  const result = await ctx.parse(fence.code, { lang: 'tsx', sourceType: 'module' })
+  const result = await ctx.parse(fence.code, { lang: 'tsx', sourceType: 'module', tsrx: true })
   const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')
   if (errors.length > 0) {
     throw new Error(`visitor: the fence does not parse: ${errors[0].message}`)

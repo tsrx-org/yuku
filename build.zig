@@ -384,6 +384,7 @@ fn installNpmHostWrapper(b: *std.Build) void {
         "index.d.ts",
         "package.json",
         "decode.js",
+        "core-compat.js",
         "decode-analyzer.js",
         "diagnostic-spans.js",
         "encode.js",

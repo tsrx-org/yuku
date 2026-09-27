@@ -4,7 +4,7 @@ import { createLayeredEditor } from './_editor.js'
 import { highlightedHtml, plainStatus } from './_shared.js'
 import { clearClass, collectNodes, failWidget, markRanges, paint, readSegments } from './_source-pane.js'
 
-const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module' }
+const PARSE_OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true }
 
 const visitorCode = (type, hits) =>
   `walk(program, {\n  ${type}(node) {\n    hits.push([node.start, node.end]);\n  },\n});\n// hits.length === ${hits}`

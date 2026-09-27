@@ -32,6 +32,7 @@ export default function mount(root) {
     const result = await parse(item.source, {
       lang: 'tsx',
       sourceType: 'module',
+      tsrx: true,
       semanticErrors: item.semanticErrors,
       loose,
     })

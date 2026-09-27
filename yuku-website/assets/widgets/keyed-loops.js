@@ -4,7 +4,7 @@ import { createLayeredEditor } from './_editor.js'
 import { diagnosticsHtml, highlightedHtml } from './_shared.js'
 import { markRanges } from './_source-pane.js'
 
-const OPTIONS = { lang: 'tsx', sourceType: 'module' }
+const OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true }
 const isNode = (value) => value && typeof value === 'object' && typeof value.type === 'string'
 
 function keyLoops(program) {

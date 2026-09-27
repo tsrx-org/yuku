@@ -33,6 +33,7 @@ test("generated npm host composes the compatibility wrapper with package-relativ
 			"index.js",
 			"index.d.ts",
 			"binding.js",
+			"core-compat.js",
 			"decode.js",
 			"decode-analyzer.js",
 			"encode.js",

@@ -100,6 +100,8 @@ export async function initDemo(panel) {
     lang: shared.lang ?? 'tsx',
     sourceType: shared.sourceType ?? 'module',
     semanticErrors: true,
+    // the playground edits .tsrx source, where a comment in JSX text is a comment
+    tsrx: true,
   }
   if (metaEl) metaEl.textContent = `${options.lang} · ${options.sourceType}`
 

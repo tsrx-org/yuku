@@ -2,7 +2,7 @@ import { rerenderModel } from '../assets/widgets/_what-rerenders.js'
 
 export const className = 'explorer ex-figure'
 
-const OPTIONS = { lang: 'tsx', sourceType: 'module' }
+const OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true }
 
 export default async function render({ fence, ctx }) {
   if (!fence || fence.lang !== 'tsrx') throw new Error('what-rerenders needs a ```tsrx fence right after its marker')

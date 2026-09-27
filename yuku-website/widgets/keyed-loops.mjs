@@ -1,6 +1,6 @@
 export const className = 'explorer ex-figure'
 
-const OPTIONS = { lang: 'tsx', sourceType: 'module' }
+const OPTIONS = { lang: 'tsx', sourceType: 'module', tsrx: true }
 const isNode = (value) => value && typeof value === 'object' && typeof value.type === 'string'
 
 export function keyLoops(program) {

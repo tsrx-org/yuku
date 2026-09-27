@@ -9,6 +9,8 @@
 const wasmUrl = new URL('./wasm/yuku-tsrx.wasm', import.meta.url)
 const decodeUrl = new URL('./wasm/decode.js', import.meta.url)
 const decodeAnalyzerUrl = new URL('./wasm/decode-analyzer.js', import.meta.url)
+// npm/yuku/core-compat.js, copied next to the decoders by build.mjs
+const coreCompatUrl = new URL('./wasm/core-compat.js', import.meta.url)
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -19,7 +21,8 @@ const QUOTES = ['preserve', 'double', 'single']
 const COMMENT_MODES = ['none', 'all', 'some', 'line', 'block']
 
 // bits 0-1 source type, 2-4 lang, 5 preserve parens, 6 semantic early errors,
-// 7 attach comments, 8 loose. Mirrors src/ffi/wasm.zig.
+// 7 attach comments, 8 loose, 9 tsrx (a comment in JSX text is a comment).
+// Mirrors src/ffi/wasm.zig.
 export function packFlags(options = {}) {
   const {
     sourceType = 'module',
@@ -102,13 +105,15 @@ async function boot() {
   for (const name of ['memory', 'alloc', 'free', 'parse', 'analyze', 'generate']) {
     if (!(name in instance.exports)) throw new Error(`@tsrx/yuku wasm: missing export ${name}`)
   }
-  const [{ decode }, analyzer] = await Promise.all([
+  const [{ decode }, analyzer, { applyCoreShape }] = await Promise.all([
     import(decodeUrl.href),
     import(decodeAnalyzerUrl.href),
+    import(coreCompatUrl.href),
   ])
   engine = {
     exports: instance.exports,
     decode,
+    applyCoreShape,
     decodeAnalyzer: analyzer.decode,
     SymbolFlags: analyzer.SymbolFlags,
   }
@@ -170,7 +175,8 @@ export async function parse(source, options = {}) {
   await ready()
   const started = performance.now()
   const buffer = call('parse', source, packFlags(options))
-  const view = engine.decode(buffer, source)
+  // diagnostic codes and self-closing <script />, as npm/yuku gives them
+  const view = engine.applyCoreShape(engine.decode(buffer, source), source)
   const result = {
     program: view.program,
     comments: view.comments,
@@ -185,7 +191,7 @@ export async function analyze(source, options = {}) {
   await ready()
   const started = performance.now()
   const buffer = call('analyze', source, packFlags(options))
-  const view = engine.decodeAnalyzer(buffer, source)
+  const view = engine.applyCoreShape(engine.decodeAnalyzer(buffer, source), source)
   view.nodeCount = nodeCountOf(buffer)
   view.ms = performance.now() - started
   return view

@@ -228,6 +228,7 @@ jobs:
               name: "@tsrx/yuku",
               files: [
                 "package/binding.js",
+                "package/core-compat.js",
                 "package/decode-analyzer.js",
                 "package/decode.js",
                 "package/diagnostic-spans.js",

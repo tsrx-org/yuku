@@ -1,4 +1,5 @@
 import binding from "./binding.js";
+import { applyCoreShape, DYNAMIC_TAG_EXPRESSION_MESSAGE } from "./core-compat.js";
 import { authoredDiagnosticSpan } from "./diagnostic-spans.js";
 import { decode } from "./decode.js";
 import { decode as decodeAnalyzer } from "./decode-analyzer.js";
@@ -39,76 +40,13 @@ export function parseWire(source, options = {}) {
 // and put back for the encoder, which needs one.
 const SELF_CLOSING_SCRIPTS = new WeakMap();
 
-function dropSelfClosingScriptContent(program, text) {
-  if (!text.includes("<script")) return program;
-  const scripts = [];
-  walk(program, {
-    JSXScriptElement(node) {
-      if (node.closingElement === null) {
-        delete node.content;
-        scripts.push(node);
-      }
-    },
-  });
-  if (scripts.length > 0) SELF_CLOSING_SCRIPTS.set(program, scripts);
-  return program;
+function rememberSelfClosingScripts(program, scripts) {
+  SELF_CLOSING_SCRIPTS.set(program, scripts);
 }
 
 export function parse(source, options = {}) {
   const text = sourceText(source);
-  const result = decode(parseWire(source, options), text);
-  let diagnostics;
-  let program;
-  return {
-    get program() {
-      return (program ??= dropSelfClosingScriptContent(result.program, text));
-    },
-    get comments() {
-      return result.comments;
-    },
-    get diagnostics() {
-      return (diagnostics ??= result.diagnostics.map(withDiagnosticCode));
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Diagnostic codes
-//
-// `@tsrx/core` gives some diagnostics a stable `code`. The native diagnostic
-// record carries no code field, so the wrapper assigns them here, from core's
-// exact messages. Each message below is one the native parser reports only for
-// that code.
-// ---------------------------------------------------------------------------
-
-const DYNAMIC_TAG_EXPRESSION_MESSAGE =
-  "A dynamic tag expression must be an identifier, a member access such as `props.as` or `registry[name]`, or a string literal. Compute anything else before the element: `const Tag = c ? Child : Fallback;`, then `<{Tag} />`.";
-const SCRIPT_END_TAG_IN_BODY_MESSAGE =
-  /^'<\/script' can end a script in HTML, so a '<script>' body can't contain it\. Write '<\\\/script' instead\.$/i;
-
-/**
- * The `@tsrx/core` code for a diagnostic, or `undefined` when core has none.
- *
- * A spread or empty dynamic tag (`<{...a} />`, `<{} />`) shares the dynamic
- * tag message, but core raises it as a plain syntax error without a code; the
- * native parser marks it with help text, which the coded diagnostic never has.
- *
- * @param {{ message: string, help: string | null }} diagnostic
- * @returns {string | undefined}
- */
-function diagnosticCode(diagnostic) {
-  if (diagnostic.message === DYNAMIC_TAG_EXPRESSION_MESSAGE && diagnostic.help === null) {
-    return "tsrx-dynamic-tag-expression";
-  }
-  if (SCRIPT_END_TAG_IN_BODY_MESSAGE.test(diagnostic.message)) {
-    return "tsrx-script-end-tag-in-body";
-  }
-  return undefined;
-}
-
-function withDiagnosticCode(diagnostic) {
-  const code = diagnosticCode(diagnostic);
-  return code === undefined ? diagnostic : { ...diagnostic, code };
+  return applyCoreShape(decode(parseWire(source, options), text), text, rememberSelfClosingScripts);
 }
 
 // acorn reports these at one position, and core's error spans the one
@@ -193,7 +131,11 @@ export function analyze(source, filename, options) {
   }
   const text = sourceText(source);
   const bytes = typeof source === "string" ? encoder.encode(source) : source;
-  return decodeAnalyzer(binding.analyze(bytes, analyzeOptions), text);
+  return applyCoreShape(
+    decodeAnalyzer(binding.analyze(bytes, analyzeOptions), text),
+    text,
+    rememberSelfClosingScripts,
+  );
 }
 
 const QUOTES_SHORTEST_UNSUPPORTED =
