@@ -3,6 +3,7 @@ import {
   addInnerComments,
   addMappedTypeParameters,
   applyCoreShape,
+  decodeJsxReferences,
   DYNAMIC_TAG_EXPRESSION_MESSAGE,
   withSelfClosingScriptContent,
 } from "./core-compat.js";
@@ -220,6 +221,7 @@ export function parseModule(source, filename, options = {}) {
   if (comments) comments.push(...result.comments);
   addInnerComments(result.program, text, result.comments);
   addMappedTypeParameters(result.program, text);
+  decodeJsxReferences(result.program, text);
   // Only `error` severity makes a module unusable. Every early error is one,
   // redeclarations included, as in `@tsrx/core`: a normal parse throws it and
   // `collect`/`loose` record it. See src/dialect/diagnostics.zig.
