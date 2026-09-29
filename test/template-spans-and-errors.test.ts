@@ -337,3 +337,47 @@ test("a loose parse records no unclosed element, as core's doesn't", () => {
 		["TSRX1001", 32, 33, 33],
 	]);
 });
+
+test("a JSX element that opens an expression in a template stays one expression", () => {
+	// only a statement of the body is a render node; `<b/> || x` in a header,
+	// a child container or an attribute is one expression, as in core
+	for (const source of [
+		"export function App({ x }) @{\n\t@if (<b/> || x) { <p/> }\n}",
+		"export function App({ x }) @{\n\t@for (const i of <b/> || x) { <p/> }\n}",
+		"export function App({ x }) @{\n\t<div>{<b/> && x}</div>\n}",
+		"export function App({ x }) @{\n\t<div>{<b/> || <i/>}</div>\n}",
+		"export function App({ x }) @{\n\t<div title={<b/> && x} />\n}",
+	]) {
+		expect(thrown(source), source).toBeNull();
+	}
+	const [test] = findAll(
+		parseModule("export function App({ x }) @{\n\t@if (<b/> || x) { <p/> }\n}", "App.tsrx"),
+		(node) => node.type === "JSXIfExpression",
+	);
+	const condition = test.test as Node;
+	expect([condition.type, condition.start, condition.end]).toEqual(["LogicalExpression", 36, 45]);
+});
+
+test("a fragment a template ends is unclosed where the template ends, as an element is", () => {
+	// [source, core's pos]
+	for (const [source, pos] of [
+		["export function App({ x }) @{\n\t<>\n}", 34],
+		["export function App({ x }) @{\n\t<><p/>\n}", 38],
+	] as const) {
+		const error = thrown(source);
+		expect(error, source).toBeInstanceOf(SyntaxError);
+		expect(error?.message, source).toBe(
+			"Unclosed tag '<>'. Expected '</>' before end of template. (3:0)",
+		);
+		expect([error?.code, error?.pos], source).toEqual(["TSRX1001", pos]);
+		const errors: CoreError[] = [];
+		parseModule(source, "App.tsrx", { collect: true, errors });
+		expect(
+			errors.map(({ code, pos }) => [code, pos]),
+			source,
+		).toEqual([["TSRX1001", pos]]);
+		const loose: CoreError[] = [];
+		parseModule(source, "App.tsrx", { loose: true, errors: loose });
+		expect(loose, source).toEqual([]);
+	}
+});

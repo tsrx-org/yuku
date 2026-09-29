@@ -482,7 +482,7 @@ pub fn Host(comptime Parser: type) type {
             const saved_store = container(p).store.checkpoint();
             const whole_source = p.lexer.source;
             p.lexer.source = whole_source[0..end];
-            const body = p.parseBody(null, .other) catch |err| {
+            const body = parseInnerBody(p) catch |err| {
                 p.lexer.source = whole_source;
                 return err;
             };
@@ -547,20 +547,15 @@ pub fn Host(comptime Parser: type) type {
             const saved = p.checkpoint();
             const saved_store = container(p).store.checkpoint();
             const whole_source = p.source;
-            // A child is no statement of the template body around it.
-            const depth = container(p).template_body_depth;
-            container(p).template_body_depth = 0;
             p.source = whole_source[0..end];
             p.lexer.source = whole_source[0..end];
-            const body = p.parseBody(null, .other) catch |err| {
+            const body = parseInnerBody(p) catch |err| {
                 p.source = whole_source;
                 p.lexer.source = whole_source;
-                container(p).template_body_depth = depth;
                 return err;
             };
             p.source = whole_source;
             p.lexer.source = whole_source;
-            container(p).template_body_depth = depth;
 
             const nodes = p.tree.extra(body);
             var child = NodeIndex.null;
@@ -611,6 +606,17 @@ pub fn Host(comptime Parser: type) type {
             container(p).template_body_depth -= 1;
         }
 
+        /// `p.parseBody(null, .other)` for one element, child or expression
+        /// that no template body encloses: a `<` that opens its first
+        /// statement is no render node, so `jsx_statement` leaves it to the
+        /// host, and `<b /> || x` stays one expression.
+        fn parseInnerBody(p: *P) ErrorType!IndexRange {
+            const depth = container(p).template_body_depth;
+            container(p).template_body_depth = 0;
+            defer container(p).template_body_depth = depth;
+            return p.parseBody(null, .other);
+        }
+
         /// Parse the statement that opens with a JSX element or fragment at
         /// the current `<` inside a template body: the element alone, as
         /// `@tsrx/core` reads a render node, so a `<` after its closing tag
@@ -633,19 +639,15 @@ pub fn Host(comptime Parser: type) type {
             const whole_source = p.source;
             // The element is the one statement of the inner parse: it opens
             // with this `<`, which must not come back here.
-            const depth = container(p).template_body_depth;
-            container(p).template_body_depth = 0;
             p.source = whole_source[0..end];
             p.lexer.source = whole_source[0..end];
-            const body = p.parseBody(null, .other) catch |err| {
+            const body = parseInnerBody(p) catch |err| {
                 p.source = whole_source;
                 p.lexer.source = whole_source;
-                container(p).template_body_depth = depth;
                 return err;
             };
             p.source = whole_source;
             p.lexer.source = whole_source;
-            container(p).template_body_depth = depth;
 
             const nodes = p.tree.extra(body);
             var statement_node = NodeIndex.null;
@@ -740,7 +742,7 @@ pub fn Host(comptime Parser: type) type {
                 const whole_source = p.source;
                 p.source = whole_source[0..close];
                 p.lexer.source = whole_source[0..close];
-                const body = p.parseBody(null, .other) catch |err| {
+                const body = parseInnerBody(p) catch |err| {
                     p.source = whole_source;
                     p.lexer.source = whole_source;
                     return err;
@@ -1723,11 +1725,7 @@ fn parseExtendedJsxElement(comptime H: type, parser: anytype, opening: H.NodeInd
     // children: one nested inside a child element belongs to that child, which
     // re-enters this hook when the host parses it.
     const region = scanJsxChildren(source, opening_span.end, 0, container(parser).options.tsrx) orelse return null;
-    // An element a template body ends before its closing tag is reported
-    // unclosed at the `}` that ends the body, as in core, not read on as text.
-    const unclosed_in_template = region.unclosed and container(parser).options.tsrx and
-        container(parser).template_body_depth > 0;
-    if (!region.owned and !unclosed_in_template) return null;
+    if (!region.owned and !unclosedInTemplate(parser, region)) return null;
 
     // Declining halfway through leaves the host holding a parser that has
     // already consumed children, so every failure below rewinds to entry.
@@ -1790,6 +1788,14 @@ fn parseExtendedJsxElement(comptime H: type, parser: anytype, opening: H.NodeInd
 
 /// collects jsx text and `@` directive children from `from` up to the `<` that opens
 /// the closing tag, which the caller parses; false declines the whole host node.
+/// An element or fragment a template body ends before its closing tag, in
+/// `.tsrx`: the dialect owns it, and reports it unclosed at the `}` that ends
+/// the body, as core does, rather than the host reading that `}` as text.
+fn unclosedInTemplate(parser: anytype, region: ChildrenScan) bool {
+    return region.unclosed and container(parser).options.tsrx and
+        container(parser).template_body_depth > 0;
+}
+
 fn parseExtendedJsxFragment(comptime H: type, parser: anytype, opening: H.NodeIndex) H.ErrorType!?H.NodeIndex {
     switch (H.data(parser, opening)) {
         .jsx_opening_fragment => {},
@@ -1798,7 +1804,7 @@ fn parseExtendedJsxFragment(comptime H: type, parser: anytype, opening: H.NodeIn
     const opening_span = H.nodeSpan(parser, opening);
     const source = H.source(parser);
     const region = scanJsxChildren(source, opening_span.end, 0, container(parser).options.tsrx) orelse return null;
-    if (!region.owned) return null;
+    if (!region.owned and !unclosedInTemplate(parser, region)) return null;
 
     const entry_parser = parser.checkpoint();
     const entry_store = container(parser).store.checkpoint();
