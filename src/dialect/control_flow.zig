@@ -2,6 +2,7 @@ const std = @import("std");
 const abi = @import("dialect_abi");
 const schema = @import("dialect_schema");
 const jsx_text = @import("text.zig");
+const code_block = @import("code_block.zig");
 
 pub fn statement(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
     return dispatch(Host, parser, false);
@@ -113,10 +114,14 @@ fn parseHostFor(comptime Host: type, parser: anytype, start: u32, rewritten_for_
         try Host.report(parser, Host.currentSpan(parser), "Expected 'for' after '@'");
         return null;
     }
-    const parsed = if (comptime @hasDecl(Host, "parseStatement"))
-        try Host.parseStatement(parser) orelse return null
-    else
-        try Host.parseStatementNode(parser) orelse return null;
+    Host.enterTemplateBody(parser);
+    const parsed = parsed: {
+        defer Host.leaveTemplateBody(parser);
+        break :parsed if (comptime @hasDecl(Host, "parseStatement"))
+            try Host.parseStatement(parser) orelse return null
+        else
+            try Host.parseStatementNode(parser) orelse return null;
+    };
     const statement_node = try transformForBody(Host, parser, parsed, rewritten_for_in) orelse return null;
     return wrapFor(Host, parser, start, statement_node);
 }
@@ -560,7 +565,11 @@ fn templateBlock(comptime Host: type, parser: anytype, allow_return: bool) Host.
         try Host.reportWithHelp(parser, Host.currentSpan(parser), "Expected '{' after TSRX control-flow directive", "TSRX control-flow bodies are written with braces.");
         return null;
     }
-    const parsed = try Host.parseBlockWithTemporaryReturn(parser, true) orelse return null;
+    Host.enterTemplateBody(parser);
+    const parsed = parsed: {
+        defer Host.leaveTemplateBody(parser);
+        break :parsed try Host.parseBlockWithTemporaryReturn(parser, true) orelse return null;
+    };
     const block = try transformParsedBlock(Host, parser, parsed) orelse return null;
     if (!allow_return) {
         const data = Host.data(parser, block).block_statement;
@@ -582,6 +591,7 @@ fn transformParsedBlock(comptime Host: type, parser: anytype, block: Host.NodeIn
         },
     };
     const items = Host.extra(parser, data.body);
+    try code_block.reportRenderOutputs(Host, parser, items);
     var end = items.len;
     while (end > 0 and Host.data(parser, items[end - 1]) == .empty_statement) {
         if (Host.isDialectNode(parser, items[end - 1])) break;
@@ -599,7 +609,10 @@ fn transformParsedBlock(comptime Host: type, parser: anytype, block: Host.NodeIn
     }
     var rebuilt: std.ArrayList(Host.NodeIndex) = .empty;
     defer rebuilt.deinit(Host.allocator(parser));
-    try rebuilt.appendSlice(Host.allocator(parser), items[0..body_len]);
+    for (items[0..body_len]) |item| {
+        const earlier = if (Host.data(parser, item) == .expression_statement) code_block.renderNode(Host, parser, item) else .null;
+        try rebuilt.append(Host.allocator(parser), if (earlier != .null) earlier else item);
+    }
     if (render != .null) try rebuilt.append(Host.allocator(parser), render);
     const range = try Host.addExtra(parser, rebuilt.items);
     return @as(?Host.NodeIndex, try Host.addNode(parser, Host.NodeData{ .block_statement = .{ .body = range } }, Host.nodeSpan(parser, block)));

@@ -49,6 +49,12 @@ function collected(source: string, mode: "collect" | "loose" = "collect"): Diagn
 	return errors;
 }
 
+// The `(line:column)` acorn puts after a thrown message, for `offset` in `source`.
+function at(source: string, offset: number): string {
+	const lines = source.slice(0, offset).split(/\r\n?|[\n\u2028\u2029]/);
+	return `(${lines.length}:${lines[lines.length - 1].length})`;
+}
+
 function thrown(source: string, options?: object): CoreError | null {
 	try {
 		parseModule(source, "App.tsrx", options);
@@ -161,7 +167,7 @@ test("#110, #118: every comment between children is a {} of its own, and all tex
 	// a line comment runs over the closing tag on its line
 	const unclosed = "export function App() @{\n\t<p>// c</p>\n}";
 	expect(thrown(unclosed)?.message).toBe(
-		"Unclosed tag '<p>'. Expected '</p>' before end of template. (38:39)",
+		"Unclosed tag '<p>'. Expected '</p>' before end of template. (3:0)",
 	);
 	expect(thrown(unclosed)?.code).toBe("TSRX1001");
 	expect(collected(unclosed).map(({ code, pos }) => [code, pos])).toEqual([["TSRX1001", 38]]);
@@ -461,9 +467,11 @@ test("#116: any other </script in a script body is TSRX1004", () => {
 	for (const [inner, written] of cases) {
 		const source = `export function App() @{\n\t<div><script>a = 1;${inner}b = 2;</script></div>\n}`;
 
+		// core reports it itself, not as acorn's SyntaxError: no location in the message
 		const error = thrown(source);
-		expect(error?.message, source).toBe(`${message(written)} (45:53)`);
+		expect(error?.message, source).toBe(message(written));
 		expect(error?.code, source).toBe("TSRX1004");
+		expect([error?.pos, error?.raisedAt, error?.end], source).toEqual([45, 53, 53]);
 
 		for (const mode of ["collect", "loose"] as const) {
 			const errors: Diagnostic[] = [];
@@ -537,8 +545,9 @@ test("#115: any other dynamic tag expression is reported at the part core report
 		const start = source.indexOf(part, source.indexOf("<{"));
 		const end = start + part.length;
 		const error = thrown(source);
-		expect(error?.message, tag).toBe(`${DYNAMIC_TAG_MESSAGE} (${start}:${end})`);
+		expect(error?.message, tag).toBe(DYNAMIC_TAG_MESSAGE);
 		expect(error?.code, tag).toBe(DYNAMIC_TAG_CODE);
+		expect([error?.pos, error?.end], tag).toEqual([start, end]);
 		for (const mode of ["collect", "loose"] as const) {
 			const errors = collected(source, mode);
 			expect(
@@ -619,9 +628,13 @@ test("#113: scope errors throw core's message, and collect and loose record it",
 	];
 	for (const [source, message, pos] of cases) {
 		const error = thrown(source);
-		expect(error?.message.startsWith(`${message} (${pos}:`), source).toBe(true);
+		// core throws a redeclared identifier itself, and the rest as acorn's
+		// SyntaxError, with the position in the message
+		const redeclared = message.startsWith("Identifier ");
+		expect(error?.message, source).toBe(redeclared ? message : `${message} ${at(source, pos)}`);
+		expect(error?.pos, source).toBe(pos);
 		// core reports the one character at the name's start
-		expect([error?.pos, error?.end], source).toEqual([pos, pos + 1]);
+		if (redeclared) expect(error?.end, source).toBe(pos + 1);
 		for (const mode of ["collect", "loose"] as const) {
 			expect(recorded(source, mode), `${mode}: ${source}`).toEqual([[message, pos, pos + 1]]);
 		}
@@ -681,9 +694,8 @@ test("#113: a duplicate parameter throws at the second, and collect records both
 		["export function App(a, a) @{\n\t<div />\n}", 23, [20, 23]],
 	];
 	for (const [source, strict, recorded] of cases) {
-		expect(thrown(source)?.message.startsWith(`Argument name clash (${strict}:`), source).toBe(
-			true,
-		);
+		expect(thrown(source)?.message, source).toBe("Argument name clash");
+		expect(thrown(source)?.pos, source).toBe(strict);
 		for (const mode of ["collect", "loose"] as const) {
 			const errors = collected(source, mode);
 			expect(new Set(errors.map(({ message }) => message)), source).toEqual(
@@ -766,10 +778,7 @@ test("a thrown argument name clash spans one character, a recorded one the whole
 	];
 	for (const [source, strict, expected] of cases) {
 		const error = thrown(source);
-		expect(
-			error?.message.startsWith(`Argument name clash (${strict[0]}:${strict[1]})`),
-			source,
-		).toBe(true);
+		expect(error?.message, source).toBe("Argument name clash");
 		expect([error?.pos, error?.end], source).toEqual(strict);
 		for (const mode of ["collect", "loose"] as const) {
 			expect(
@@ -814,7 +823,17 @@ test("#113: merging, shadowing, overloads, and template scopes core accepts stay
 });
 
 test("#117: errors carry the TS or TSRX code @tsrx/core gives the same mistake", () => {
-	// [source, the code @tsrx/core (tsrx-org/tsrx#888) throws and records for it]
+	// [source, the code @tsrx/core 0.5.2 throws and records for it]. Core throws
+	// the mistakes it reports itself (TSRX1004, TSRX2001, TSRX2014, a redeclared
+	// `let`, an argument name clash) as an `Error`, and the rest as acorn's
+	// `SyntaxError`.
+	const reportedByCore = new Set([
+		"export function App() @{\n\t<div><script>a</SCRIPT>b</script></div>\n}",
+		"export function App({ getTag }) @{\n\t<{getTag()} />\n}",
+		"let a = 1; let a = 2;",
+		"export function f(a, a) {}",
+		"function App() @{\n\t@try {\n\t\treturn;\n\t} @catch (e) {\n\t\t<p />\n\t}\n}",
+	]);
 	const cases: [string, string | undefined][] = [
 		["export function App() @{\n\t<p>a< /p>\n}", "TSRX1001"],
 		["const a = <div><b>text</b>;", "TSRX1001"],
@@ -837,12 +856,11 @@ test("#117: errors carry the TS or TSRX code @tsrx/core gives the same mistake",
 		["const re = /a/gg;", "TS1500"],
 		["class A { m() { return this.#x; } }", "TS1111"],
 		["function f() { continue; }", "TS1104"],
-		// the message doesn't say which block the `return` is in, so no code
-		["function App() @{\n\t@try {\n\t\treturn;\n\t} @catch (e) {\n\t\t<p />\n\t}\n}", undefined],
+		["function App() @{\n\t@try {\n\t\treturn;\n\t} @catch (e) {\n\t\t<p />\n\t}\n}", "TSRX2001"],
 	];
 	for (const [source, code] of cases) {
 		const error = thrown(source);
-		expect(error, source).toBeInstanceOf(SyntaxError);
+		expect(error?.constructor, source).toBe(reportedByCore.has(source) ? Error : SyntaxError);
 		expect(error?.code, source).toBe(code);
 		expect(collected(source)[0]?.code, source).toBe(code);
 	}
@@ -855,7 +873,8 @@ test("#117: errors carry the TS or TSRX code @tsrx/core gives the same mistake",
 test("parse and analyze give the core shape too: diagnostic codes, no content on <script />", () => {
 	const source = "export function App() @{\n\t<script />\n\t<{a()} />\n}";
 	for (const result of [parse(source, { lang: "tsx" }), analyze(source, "App.tsrx")]) {
-		expect(result.diagnostics.map(({ code }) => code)).toEqual(["TSRX2014"]);
+		// the dynamic tag is a second render node too, as core reports it
+		expect(result.diagnostics.map(({ code }) => code)).toEqual(["TSRX2014", "TSRX2011"]);
 		const [script] = findAll(result.program, (node) => node.type === "JSXScriptElement");
 		expect("content" in script).toBe(false);
 	}

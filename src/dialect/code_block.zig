@@ -1,3 +1,4 @@
+const std = @import("std");
 const abi = @import("dialect_abi");
 const schema = @import("dialect_schema");
 
@@ -38,7 +39,11 @@ fn parse(comptime Host: type, parser: anytype, allow_return: bool) Host.ErrorTyp
     const extras_start = (try Host.addExtra(parser, &.{})).start;
     if (!try Host.advance(parser)) return null;
     // Parse with return enabled; expression blocks validate returns below.
-    const parsed = try Host.parseBlockWithTemporaryReturn(parser, true);
+    Host.enterTemplateBody(parser);
+    const parsed = parsed: {
+        defer Host.leaveTemplateBody(parser);
+        break :parsed try Host.parseBlockWithTemporaryReturn(parser, true);
+    };
     const block = parsed orelse blk: {
         if (Host.currentToken(parser) != .eof) return null;
         const extras_end = (try Host.addExtra(parser, &.{})).start;
@@ -71,6 +76,7 @@ fn parse(comptime Host: type, parser: anytype, allow_return: bool) Host.ErrorTyp
         else => return null,
     };
     const items = Host.extra(parser, range);
+    try reportRenderOutputs(Host, parser, items);
     var body_len = items.len;
     var render = Host.NodeIndex.null;
     if (body_len > 0) {
@@ -78,7 +84,7 @@ fn parse(comptime Host: type, parser: anytype, allow_return: bool) Host.ErrorTyp
         render = renderNode(Host, parser, last);
         if (render != .null) body_len -= 1;
     }
-    const body = try Host.addExtra(parser, items[0..body_len]);
+    const body = try addUnwrappedBody(Host, parser, items[0..body_len]);
     const end = Host.nodeSpan(parser, block).end;
     return @as(?Host.NodeIndex, try Host.addDialectNode(parser, schema.Record{ .jsx_code_block = .{
         .body = .{ .start = body.start, .len = body.len },
@@ -86,7 +92,46 @@ fn parse(comptime Host: type, parser: anytype, allow_return: bool) Host.ErrorTyp
     } }, .{ .start = start, .end = end }));
 }
 
-fn renderNode(comptime Host: type, parser: anytype, node: Host.NodeIndex) Host.NodeIndex {
+pub const single_output_message = "A code block renders a single node; wrap multiple nodes or text in a fragment '<>…</>'.";
+pub const statement_after_output_message = "Code must be at the top of '@{ }'; statements cannot follow the rendered output.";
+
+/// Report what `@tsrx/core` reports in a template body's statements (a `@{ }`
+/// body, or a directive's `{ }`): every render node after the first, which
+/// is one too many, and every statement after one, which must come before it.
+/// A stray `;` is neither.
+pub fn reportRenderOutputs(comptime Host: type, parser: anytype, items: []const Host.NodeIndex) Host.ErrorType!void {
+    var rendered = false;
+    for (items) |item| {
+        if (Host.data(parser, item) == .empty_statement and !Host.isDialectNode(parser, item)) continue;
+        const render = renderNode(Host, parser, item);
+        if (render != .null) {
+            if (rendered) try Host.report(parser, Host.nodeSpan(parser, render), single_output_message);
+            rendered = true;
+        } else if (rendered) {
+            try Host.report(parser, Host.nodeSpan(parser, item), statement_after_output_message);
+        }
+    }
+}
+
+/// `items` as a template body's statement list: a render node before the last
+/// statement, which `reportRenderOutputs` reported, is its bare element, as in
+/// `@tsrx/core`, not an expression statement around it.
+pub fn addUnwrappedBody(comptime Host: type, parser: anytype, items: []const Host.NodeIndex) Host.ErrorType!Host.IndexRange {
+    var wrapped = false;
+    for (items) |item| {
+        if (Host.data(parser, item) == .expression_statement and renderNode(Host, parser, item) != .null) wrapped = true;
+    }
+    if (!wrapped) return Host.addExtra(parser, items);
+    var unwrapped: std.ArrayList(Host.NodeIndex) = .empty;
+    defer unwrapped.deinit(Host.allocator(parser));
+    for (items) |item| {
+        const render = if (Host.data(parser, item) == .expression_statement) renderNode(Host, parser, item) else .null;
+        try unwrapped.append(Host.allocator(parser), if (render != .null) render else item);
+    }
+    return Host.addExtra(parser, unwrapped.items);
+}
+
+pub fn renderNode(comptime Host: type, parser: anytype, node: Host.NodeIndex) Host.NodeIndex {
     return switch (Host.data(parser, node)) {
         .expression_statement => |data| switch (Host.data(parser, data.expression)) {
             .jsx_element, .jsx_fragment => data.expression,

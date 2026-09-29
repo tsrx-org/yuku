@@ -116,8 +116,21 @@ test("parseModule keeps everything about a diagnostic except its span", () => {
 });
 
 test("the throw path carries the authored span too", () => {
-	expect(() => parseModule(MISMATCHED_CLOSING_TAG, "mismatched.tsrx")).toThrow("(34:40)");
-	expect(() => parseModule(DOUBLED_CLOSING_ANGLE, "doubled.tsrx")).toThrow("(40:42)");
+	// the message ends with the authored start's `(line:column)`, as acorn's does
+	const thrown = (source: string, filename: string) => {
+		try {
+			parseModule(source, filename);
+		} catch (error) {
+			return error as SyntaxError & { pos: number };
+		}
+		throw new Error(`${filename} parsed`);
+	};
+	const mismatched = thrown(MISMATCHED_CLOSING_TAG, "mismatched.tsrx");
+	expect(mismatched.message).toMatch(/ \(1:34\)$/);
+	expect(mismatched.pos).toBe(34);
+	const doubled = thrown(DOUBLED_CLOSING_ANGLE, "doubled.tsrx");
+	expect(doubled.message).toMatch(/ \(1:40\)$/);
+	expect(doubled.pos).toBe(40);
 });
 
 test("parseModule reads UTF-8 bytes for the span policy as well as strings", () => {
