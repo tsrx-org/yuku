@@ -436,7 +436,21 @@ fn writeBuildPosMap(w: *Writer) !void {
         \\    m[bp] = u16p;
         \\    if (cu < 0x80) { bp++; u16p++; i++; }
         \\    else if (cu < 0x800) { m[bp + 1] = u16p + 1; bp += 2; u16p++; i++; }
+        \\
+    );
+    // The production decoders read a lone surrogate as its UTF-8 encoding
+    // does, three bytes of U+FFFD, not as the first half of a pair: a pair's
+    // mapping gives the unit after it one byte too many, and each offset there
+    // lands one unit too far. The upstream decoder stays byte-for-byte the
+    // pinned seam's.
+    try w.writeAll(if (comptime dialect_enabled)
+        \\    else if (cu < 0xD800 || cu >= 0xDC00 || (src.charCodeAt(i + 1) & 0xFC00) !== 0xDC00) {
+        \\
+    else
         \\    else if (cu < 0xD800 || cu >= 0xE000) {
+        \\
+    );
+    try w.writeAll(
         \\      m[bp + 1] = u16p + 1; m[bp + 2] = u16p + 1;
         \\      bp += 3; u16p++; i++;
         \\    }

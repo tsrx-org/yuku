@@ -116,6 +116,10 @@ pub fn Container(comptime Parser: type) type {
         parser: Parser,
         store: Store = .{},
         options: LocalOptions = .{},
+        /// How many template bodies (`@{ }`, a directive's `{ }`) enclose the
+        /// parse. Inside one, a statement that opens with a JSX element is a
+        /// render node, which ends at its closing tag.
+        template_body_depth: u32 = 0,
     };
 }
 
@@ -478,7 +482,7 @@ pub fn Host(comptime Parser: type) type {
             const saved_store = container(p).store.checkpoint();
             const whole_source = p.lexer.source;
             p.lexer.source = whole_source[0..end];
-            const body = p.parseBody(null, .other) catch |err| {
+            const body = parseInnerBody(p) catch |err| {
                 p.lexer.source = whole_source;
                 return err;
             };
@@ -545,7 +549,7 @@ pub fn Host(comptime Parser: type) type {
             const whole_source = p.source;
             p.source = whole_source[0..end];
             p.lexer.source = whole_source[0..end];
-            const body = p.parseBody(null, .other) catch |err| {
+            const body = parseInnerBody(p) catch |err| {
                 p.source = whole_source;
                 p.lexer.source = whole_source;
                 return err;
@@ -590,6 +594,99 @@ pub fn Host(comptime Parser: type) type {
             p.rewind(restore);
             if (!try resumeAfterRawSpan(p, end, .child)) return null;
             return @as(?NodeIndex, child);
+        }
+
+        /// Enter a template body: `@{ }` or a directive's `{ }`. Pair with
+        /// `leaveTemplateBody`.
+        pub fn enterTemplateBody(p: *P) void {
+            container(p).template_body_depth += 1;
+        }
+
+        pub fn leaveTemplateBody(p: *P) void {
+            container(p).template_body_depth -= 1;
+        }
+
+        /// `p.parseBody(null, .other)` for one element, child or expression
+        /// that no template body encloses: a `<` that opens its first
+        /// statement is no render node, so `jsx_statement` leaves it to the
+        /// host, and `<b /> || x` stays one expression.
+        fn parseInnerBody(p: *P) ErrorType!IndexRange {
+            const depth = container(p).template_body_depth;
+            container(p).template_body_depth = 0;
+            defer container(p).template_body_depth = depth;
+            return p.parseBody(null, .other);
+        }
+
+        /// Parse the statement that opens with a JSX element or fragment at
+        /// the current `<` inside a template body: the element alone, as
+        /// `@tsrx/core` reads a render node, so a `<` after its closing tag
+        /// starts the next statement even on the same line (`<a /> <b />`),
+        /// which the host would read as a comparison. A `;` right after the
+        /// element belongs to its statement.
+        ///
+        /// It borrows `parseJsxChildElement`'s parse, then resumes in the
+        /// statement lexer mode. Outside a template body, or when that parse
+        /// declines, it declines too and the host parses the statement.
+        pub fn parseJsxRenderStatement(p: *P) ErrorType!?NodeIndex {
+            if (container(p).template_body_depth == 0) return null;
+            if (p.current_token.tag != .less_than) return null;
+            const start = p.current_token.span.start;
+            const end = jsxElementEnd(p.source, start, 0, container(p).options.tsrx) orelse return null;
+            if (end <= start or end > p.source.len) return null;
+
+            const saved = p.checkpoint();
+            const saved_store = container(p).store.checkpoint();
+            const whole_source = p.source;
+            // The element is the one statement of the inner parse: it opens
+            // with this `<`, which must not come back here.
+            p.source = whole_source[0..end];
+            p.lexer.source = whole_source[0..end];
+            const body = parseInnerBody(p) catch |err| {
+                p.source = whole_source;
+                p.lexer.source = whole_source;
+                return err;
+            };
+            p.source = whole_source;
+            p.lexer.source = whole_source;
+
+            const nodes = p.tree.extra(body);
+            var statement_node = NodeIndex.null;
+            if (nodes.len == 1) switch (p.tree.data(nodes[0])) {
+                .expression_statement => |value| switch (p.tree.data(value.expression)) {
+                    .jsx_element, .jsx_fragment => statement_node = nodes[0],
+                    else => if (record(p, value.expression)) |value_record| switch (value_record) {
+                        .jsx_style_element, .jsx_script_element => statement_node = nodes[0],
+                        else => {},
+                    },
+                },
+                else => {},
+            };
+            const parsed_exactly_one = statement_node != .null and
+                onlyAdvisory(p.diagnostics.items[saved.diagnostics_len..]) and
+                p.tree.span(statement_node).start == start and
+                p.tree.span(statement_node).end == end;
+            if (!parsed_exactly_one) {
+                p.rewind(saved);
+                container(p).store.rewind(saved_store);
+                return null;
+            }
+
+            var restore = saved;
+            restore.nodes_len = p.tree.nodes.len;
+            restore.extra_len = p.tree.extras.items.len;
+            restore.lexer_comments_len = p.lexer.comments.items.len;
+            restore.diagnostics_len = p.diagnostics.items.len;
+            p.rewind(restore);
+            if (!try resumeAfterRawSpan(p, end, .statement)) return null;
+            if (p.current_token.tag == .semicolon) {
+                const semicolon_end = p.current_token.span.end;
+                try p.advance() orelse return null;
+                const expression = p.tree.data(statement_node).expression_statement.expression;
+                return @as(?NodeIndex, try p.tree.addNode(.{ .expression_statement = .{
+                    .expression = expression,
+                } }, .{ .start = start, .end = semicolon_end }));
+            }
+            return @as(?NodeIndex, statement_node);
         }
 
         /// Parse the JSX expression container child that begins at the current
@@ -645,7 +742,7 @@ pub fn Host(comptime Parser: type) type {
                 const whole_source = p.source;
                 p.source = whole_source[0..close];
                 p.lexer.source = whole_source[0..close];
-                const body = p.parseBody(null, .other) catch |err| {
+                const body = parseInnerBody(p) catch |err| {
                     p.source = whole_source;
                     p.lexer.source = whole_source;
                     return err;
@@ -1029,6 +1126,11 @@ pub fn jsx_child_at_code_block(comptime Result: type, parser: anytype) Result {
 pub fn jsx_child_at_control_flow(comptime Result: type, parser: anytype) Result {
     return hookNode(Result, parser, control_flow.jsxChild);
 }
+pub fn jsx_statement(comptime Result: type, parser: anytype) Result {
+    const H = Host(@TypeOf(parser.*));
+    const node = try H.parseJsxRenderStatement(parser) orelse return null;
+    return decisionNode(Result, abi.Decision(?H.NodeIndex){ .handled = node });
+}
 pub fn jsx_attribute(comptime Result: type, parser: anytype) Result {
     return hookNode(Result, parser, jsx.attribute);
 }
@@ -1292,6 +1394,9 @@ const ChildrenScan = struct {
     /// directive, a `<` that cannot open a tag (text in TSRX), or, with
     /// `comments`, a comment (a `{}` child of its own)
     owned: bool,
+    /// the region runs to the end of the source with no closing tag, and `close`
+    /// is the source's length
+    unclosed: bool = false,
 };
 
 /// Walk a JSX children region from `from` to the closing tag of the element
@@ -1362,7 +1467,7 @@ fn scanJsxChildren(source: []const u8, from: u32, depth: u32, comments: bool) ?C
         block = false;
     }
     // no closing tag: an owned element reports itself unclosed
-    return if (owned) .{ .close = @intCast(source.len), .owned = true } else null;
+    return .{ .close = @intCast(source.len), .owned = owned, .unclosed = true };
 }
 
 /// Step past `@name (...)` so a header's own `<`, `{` or `>` - as in
@@ -1620,7 +1725,7 @@ fn parseExtendedJsxElement(comptime H: type, parser: anytype, opening: H.NodeInd
     // children: one nested inside a child element belongs to that child, which
     // re-enters this hook when the host parses it.
     const region = scanJsxChildren(source, opening_span.end, 0, container(parser).options.tsrx) orelse return null;
-    if (!region.owned) return null;
+    if (!region.owned and !unclosedInTemplate(parser, region)) return null;
 
     // Declining halfway through leaves the host holding a parser that has
     // already consumed children, so every failure below rewinds to entry.
@@ -1683,6 +1788,14 @@ fn parseExtendedJsxElement(comptime H: type, parser: anytype, opening: H.NodeInd
 
 /// collects jsx text and `@` directive children from `from` up to the `<` that opens
 /// the closing tag, which the caller parses; false declines the whole host node.
+/// An element or fragment a template body ends before its closing tag, in
+/// `.tsrx`: the dialect owns it, and reports it unclosed at the `}` that ends
+/// the body, as core does, rather than the host reading that `}` as text.
+fn unclosedInTemplate(parser: anytype, region: ChildrenScan) bool {
+    return region.unclosed and container(parser).options.tsrx and
+        container(parser).template_body_depth > 0;
+}
+
 fn parseExtendedJsxFragment(comptime H: type, parser: anytype, opening: H.NodeIndex) H.ErrorType!?H.NodeIndex {
     switch (H.data(parser, opening)) {
         .jsx_opening_fragment => {},
@@ -1691,7 +1804,7 @@ fn parseExtendedJsxFragment(comptime H: type, parser: anytype, opening: H.NodeIn
     const opening_span = H.nodeSpan(parser, opening);
     const source = H.source(parser);
     const region = scanJsxChildren(source, opening_span.end, 0, container(parser).options.tsrx) orelse return null;
-    if (!region.owned) return null;
+    if (!region.owned and !unclosedInTemplate(parser, region)) return null;
 
     const entry_parser = parser.checkpoint();
     const entry_store = container(parser).store.checkpoint();

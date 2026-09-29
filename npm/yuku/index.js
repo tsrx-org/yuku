@@ -3,8 +3,11 @@ import {
   addInnerComments,
   addMappedTypeParameters,
   applyCoreShape,
+  coreDiagnostic,
+  corePosition,
   decodeJsxReferences,
   DYNAMIC_TAG_EXPRESSION_MESSAGE,
+  narrowTemplateElements,
   withSelfClosingScriptContent,
 } from "./core-compat.js";
 import { authoredDiagnosticSpan } from "./diagnostic-spans.js";
@@ -65,18 +68,24 @@ const POINT_ERROR =
 const ARGUMENT_NAME_CLASH = "Argument name clash";
 
 /**
- * A diagnostic as `parseModule` reports it: with core's `pos` (the start) and
- * core's `end`.
+ * A diagnostic as `parseModule` reports it: with core's `pos` (the start),
+ * `raisedAt` and `end`, and core's `loc` of the span.
  *
  * A thrown `Argument name clash` is acorn's own raise, at one position, so
  * core's thrown error spans the one character there. A collected one is
  * recorded over the whole parameter name, as core records it.
  */
-function coreError(diagnostic, thrown = false) {
+function coreError(diagnostic, source, thrown = false) {
   const point =
     POINT_ERROR.test(diagnostic.message) || (thrown && diagnostic.message === ARGUMENT_NAME_CLASH);
   const end = point ? Math.min(diagnostic.start + 1, diagnostic.end) : diagnostic.end;
-  return { ...diagnostic, pos: diagnostic.start, end };
+  return {
+    ...diagnostic,
+    pos: diagnostic.start,
+    raisedAt: point ? end : (diagnostic.raisedAt ?? end),
+    end,
+    loc: { start: corePosition(source, diagnostic.start), end: corePosition(source, end) },
+  };
 }
 
 /**
@@ -87,19 +96,18 @@ function coreError(diagnostic, thrown = false) {
  * records that earlier parameter once however often its name repeats, so the
  * recorder remembers which earlier parameters it has recorded.
  */
-function errorRecorder() {
+function errorRecorder(source) {
   const recordedFirsts = new Set();
   return (diagnostic) => {
     const first = diagnostic.labels[0];
     if (diagnostic.message !== ARGUMENT_NAME_CLASH || first === undefined) {
-      return [coreError(diagnostic)];
+      return [coreError(diagnostic, source)];
     }
-    if (recordedFirsts.has(first.start)) return [coreError(diagnostic)];
+    if (recordedFirsts.has(first.start)) return [coreError(diagnostic, source)];
     recordedFirsts.add(first.start);
-    return [
-      coreError({ ...diagnostic, start: first.start, end: first.end, labels: [] }),
-      coreError(diagnostic),
-    ];
+    const earlier = { ...diagnostic, start: first.start, end: first.end, labels: [] };
+    delete earlier.raisedAt;
+    return [coreError(earlier, source), coreError(diagnostic, source)];
   };
 }
 
@@ -111,12 +119,45 @@ function endsTheParse(diagnostic) {
   return diagnostic.message === DYNAMIC_TAG_EXPRESSION_MESSAGE && diagnostic.help !== null;
 }
 
-function syntaxError(diagnostic, source) {
-  const reported = coreError(diagnostic, true);
-  const error = new SyntaxError(`${reported.message} (${reported.start}:${reported.end})`);
+// The mistakes core reports with its own `error()` rather than acorn's
+// `raise`: a strict parse throws them as a plain `Error`, with no location in
+// the message and `loc` over the span. Every other one is acorn's
+// `SyntaxError`.
+const COMPILE_ERROR_CODES = new Set(["TSRX1004", "TSRX2011", "TSRX2012"]);
+const COMPILE_ERROR_MESSAGE =
+  /^(?:Identifier '.+' has already been declared|Argument name clash|`return` is invalid inside TSRX template blocks)$/;
+
+function isCompileError(diagnostic) {
+  if (COMPILE_ERROR_CODES.has(diagnostic.code) || COMPILE_ERROR_MESSAGE.test(diagnostic.message)) {
+    return true;
+  }
+  // a dynamic tag that is an expression, but not an allowed one
+  return diagnostic.message === DYNAMIC_TAG_EXPRESSION_MESSAGE && diagnostic.help === null;
+}
+
+/**
+ * The error `@tsrx/core`'s parseModule throws for `diagnostic`: acorn's
+ * `SyntaxError`, whose message ends with the `(line:column)` of `pos` and whose
+ * `loc` is that position, or core's own `Error`, whose `loc` spans the mistake.
+ */
+function syntaxError(diagnostic, source, filename) {
+  const reported = coreError(diagnostic, source, true);
+  if (isCompileError(reported)) {
+    const error = new Error(reported.message);
+    error.pos = reported.pos;
+    error.raisedAt = reported.raisedAt;
+    error.fileName = filename;
+    error.code = reported.code;
+    error.end = reported.end;
+    error.loc = reported.loc;
+    error.type = "fatal";
+    return error;
+  }
+  const loc = reported.loc.start;
+  const error = new SyntaxError(`${reported.message} (${loc.line}:${loc.column})`);
   error.pos = reported.pos;
-  error.end = reported.end;
-  error.loc = sourcePosition(source, reported.pos);
+  error.loc = loc;
+  error.raisedAt = reported.raisedAt;
   if (reported.code !== undefined) error.code = reported.code;
   return error;
 }
@@ -199,9 +240,10 @@ export function generate(program, options) {
 export function parseModule(source, filename, options = {}) {
   const { collect = false, loose = false, errors, comments, ...parseOptions } = options;
   const text = sourceText(source);
+  const lang = parseOptions.lang ?? inferLang(filename);
   const result = parse(source, {
     ...parseOptions,
-    lang: parseOptions.lang ?? inferLang(filename),
+    lang,
     // The core-compatible entry reads a comment in JSX text as a comment for
     // every filename, as `@tsrx/core`'s parseModule does. `parse` and
     // `analyze` keep standard JSX for `.tsx` and `.jsx`.
@@ -222,6 +264,8 @@ export function parseModule(source, filename, options = {}) {
   addInnerComments(result.program, text, result.comments);
   addMappedTypeParameters(result.program, text);
   decodeJsxReferences(result.program, text);
+  // The decoder spans a TypeScript tree's template text as typescript-estree does.
+  if (lang !== "js" && lang !== "jsx") narrowTemplateElements(result.program, text);
   // Only `error` severity makes a module unusable. Every early error is one,
   // redeclarations included, as in `@tsrx/core`: a normal parse throws it and
   // `collect`/`loose` record it. See src/dialect/diagnostics.zig.
@@ -232,21 +276,26 @@ export function parseModule(source, filename, options = {}) {
   // rather than at the seam that assigns the spans.
   const fatal = result.diagnostics
     .filter((diagnostic) => diagnostic.severity === "error")
-    .map((diagnostic) => ({ ...diagnostic, ...authoredDiagnosticSpan(diagnostic, text) }));
+    .map((diagnostic) =>
+      coreDiagnostic({ ...diagnostic, ...authoredDiagnosticSpan(diagnostic, text) }, text),
+    );
   if (fatal.length > 0) {
     if (collect || loose) {
-      const recordedErrors = errorRecorder();
+      const recordedErrors = errorRecorder(text);
       const ending = fatal.find(endsTheParse);
       if (ending !== undefined) {
         // What core raised before it is recorded; the rest is never reached.
         const before = fatal.filter((diagnostic) => diagnostic.start < ending.start);
         if (errors) errors.push(...before.flatMap(recordedErrors));
-        throw syntaxError(ending, text);
+        throw syntaxError(ending, text, filename);
       }
-      if (errors) errors.push(...fatal.flatMap(recordedErrors));
+      // A loose parse reads an unclosed element as closed where its template
+      // or the file ends, and records nothing for it, as core does.
+      const recorded = loose ? fatal.filter(({ code }) => code !== "TSRX1001") : fatal;
+      if (errors) errors.push(...recorded.flatMap(recordedErrors));
       return result.program;
     }
-    throw syntaxError(fatal[0], text);
+    throw syntaxError(fatal[0], text, filename);
   }
   return result.program;
 }

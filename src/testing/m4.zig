@@ -444,14 +444,43 @@ test "control-flow directives parse in template blocks and at statement position
         "const view = @{ @for (const item of items) {<p>{item}</p>} };",
         "const view = @{ @for (const item of items) { const label = item; <p>{label}</p> } };",
         "const view = @{ @switch (kind) {@case 1: {<p>a</p>}} };",
-        "const view = @{ @for (const item of items) {<p>a</p>} @if (ready) {<b>b</b>} };",
-        "const view = @{ @for (const item of items) {<p>a</p>} const trailing = 1; <p>{trailing}</p> };",
+        "const view = @{ const leading = 1; @for (const item of items) {<p>{leading}</p>} };",
         "@for (const item of items) {<p>a</p>}",
     }) |source| {
         var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
         defer tree.deinit();
         try std.testing.expectEqual(@as(usize, 0), tree.diagnostics.items.len);
         try std.testing.expect(!tree.hasErrors());
+        try std.testing.expect(tree.dialect_store.associations.items.len >= 1);
+    }
+
+    // A directive is a code block's render node, so what follows it is what
+    // @tsrx/core 0.5.2 reports (TSRX2011, TSRX2012), and nothing else: the
+    // directive still ends at its own closing brace.
+    const Reported = struct { start: u32, end: u32, message: []const u8 };
+    const single_output = "A code block renders a single node; wrap multiple nodes or text in a fragment '<>…</>'.";
+    const statement_after_output = "Code must be at the top of '@{ }'; statements cannot follow the rendered output.";
+    for ([_]struct { source: []const u8, reported: []const Reported }{
+        .{
+            .source = "const view = @{ @for (const item of items) {<p>a</p>} @if (ready) {<b>b</b>} };",
+            .reported = &.{.{ .start = 54, .end = 76, .message = single_output }},
+        },
+        .{
+            .source = "const view = @{ @for (const item of items) {<p>a</p>} const trailing = 1; <p>{trailing}</p> };",
+            .reported = &.{
+                .{ .start = 54, .end = 73, .message = statement_after_output },
+                .{ .start = 74, .end = 91, .message = single_output },
+            },
+        },
+    }) |case| {
+        var tree = try parser.parse(std.testing.allocator, case.source, .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expectEqual(case.reported.len, tree.diagnostics.items.len);
+        for (case.reported, tree.diagnostics.items) |expected, actual| {
+            try std.testing.expectEqualStrings(expected.message, actual.message);
+            try std.testing.expectEqual(expected.start, actual.span.start);
+            try std.testing.expectEqual(expected.end, actual.span.end);
+        }
         try std.testing.expect(tree.dialect_store.associations.items.len >= 1);
     }
 }

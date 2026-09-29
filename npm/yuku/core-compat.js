@@ -23,6 +23,8 @@ const MESSAGE_CODES = [
   [/^TSRX try directive requires /, "TSRX1010"],
   [/^Expected unique 'index' then 'key' clauses /, "TSRX1011"],
   [/^`break` is invalid inside `@switch` cases\.$/, "TSRX2008"],
+  [/^A code block renders a single node; /, "TSRX2011"],
+  [/^Code must be at the top of '@\{ \}'; /, "TSRX2012"],
   [/^`return` is invalid inside `@switch` cases\.$/, "TSRX2009"],
   [/^A dynamic tag expression must be /, "TSRX2014"],
   [/^Duplicate import attribute key /, "TSRX4003"],
@@ -35,6 +37,16 @@ const MESSAGE_CODES = [
     "TS1005",
   ],
   [/^Unexpected token\b/, "TS1012"],
+  // a directive's header or `@switch` body that isn't what the grammar reads
+  [
+    /^(?:Expected (?:a condition after '@if \('|'\)' after '@if' condition|an expression after '@switch \('|'\)' after '@switch' expression|'@case' or '@default' in TSRX switch body|a value after '@case'|':' after TSRX switch clause)$)/,
+    "TS1012",
+  ],
+  // a directive keyword with no `(` after it, which acorn reads as a keyword
+  [/^Expected '\(' after '@(?:if|switch)'$/, "TS1359"],
+  [/^'[^']+' is reserved in strict mode and cannot be used as /, "TS1212"],
+  [/^'[^']+' is reserved and cannot be used as /, "TS1359"],
+  [/^Expected 'class' keyword, but found /, "TS1206"],
   [/^Unexpected '\}' in JSX text$/, "TS1381"],
   [/^Unexpected '>' in JSX text$/, "TS1382"],
   [/^'import' declaration may only appear at the top level$/, "TS1232"],
@@ -92,6 +104,107 @@ export function diagnosticCode(diagnostic) {
 export function withDiagnosticCode(diagnostic) {
   const code = diagnosticCode(diagnostic);
   return code === undefined ? diagnostic : { ...diagnostic, code };
+}
+
+/**
+ * The directive keyword (`if`, `for`, `try`, …) right after an `@` that ends
+ * before `offset`, give or take whitespace and a `( … )` header: its name and
+ * where it starts, or `undefined`.
+ */
+function directiveBefore(text, offset) {
+  let index = offset;
+  const skipSpace = () => {
+    while (index > 0 && /\s/.test(text[index - 1])) index--;
+  };
+  skipSpace();
+  if (text[index - 1] === ")") {
+    const open = text.lastIndexOf("(", index - 1);
+    if (open === -1) return undefined;
+    index = open;
+    skipSpace();
+  }
+  const end = index;
+  while (index > 0 && /[a-z]/.test(text[index - 1])) index--;
+  if (index === end || text[index - 1] !== "@") return undefined;
+  return { keyword: text.slice(index, end), start: index };
+}
+
+/**
+ * `diagnostic` (with its code) as `@tsrx/core` reports the mistake: where
+ * core's error points and the code core gives it, when the message alone
+ * doesn't say. `raisedAt` is where acorn stopped reading, the end of the
+ * token the diagnostic is on.
+ *
+ * A directive keyword with no `(` or `{` after it (`@if`, `@for`, `@switch`,
+ * `@try`) is acorn's `Unexpected keyword`, TS1359, at the keyword; the body
+ * of a `@catch` or `@pending` that doesn't open with `{` is `Unexpected
+ * token`, TS1012.
+ *
+ * @template {{ message: string, start: number, end: number, code?: string }} D
+ * @param {D} diagnostic
+ * @param {string} text Source text the diagnostic was produced from.
+ * @returns {D & { raisedAt: number }}
+ */
+export function coreDiagnostic(diagnostic, text) {
+  const reported = { ...withDiagnosticCode(diagnostic), raisedAt: diagnostic.end };
+  const { message } = diagnostic;
+  // a `@try` with neither `@pending` nor `@catch` is reported at its keyword
+  if (reported.code === "TSRX1010" && text[diagnostic.start] === "@") {
+    return { ...reported, start: diagnostic.start + 1 };
+  }
+  const keywordError =
+    /^Expected '\(' after '@(?:if|switch)'$|^Expected '\(' after 'for', /.test(message) ||
+    reported.code === "TSRX1008";
+  if (!keywordError) return reported;
+  const directive = directiveBefore(text, diagnostic.start);
+  if (directive === undefined) return reported;
+  if (reported.code === "TSRX1008") {
+    if (directive.keyword === "catch" || directive.keyword === "pending") reported.code = "TS1012";
+    if (directive.keyword !== "try") return reported;
+  } else if (!["if", "for", "switch"].includes(directive.keyword)) {
+    return reported;
+  }
+  return { ...reported, code: "TS1359", start: directive.start };
+}
+
+/**
+ * The 1-based line and 0-based column of `offset` in `text`, with acorn's line
+ * breaks: `\r\n`, `\r`, `\n`, U+2028 and U+2029.
+ *
+ * @param {string} text
+ * @param {number} offset
+ * @returns {{ line: number, column: number }}
+ */
+export function corePosition(text, offset) {
+  const bounded = Math.max(0, Math.min(text.length, offset));
+  let line = 1;
+  let lineStart = 0;
+  const breaks = /\r\n?|[\n\u2028\u2029]/g;
+  for (let match = breaks.exec(text); match !== null && match.index < bounded; ) {
+    line++;
+    lineStart = match.index + match[0].length;
+    match = breaks.exec(text);
+  }
+  return { line, column: bounded - lineStart };
+}
+
+/**
+ * Gives every `TemplateElement` in a TypeScript `program` the span
+ * `@tsrx/core` gives it, its text alone, as acorn spans one: typescript-estree's
+ * span, which the decoder gives a TypeScript tree, also covers the backtick
+ * and the `${` or `}` around the text. Skips the walk when `text` holds no
+ * backtick.
+ */
+export function narrowTemplateElements(program, text) {
+  if (!text.includes("`")) return;
+  forEachNode(
+    program,
+    (node) => node.type === "TemplateElement",
+    (node) => {
+      node.start += 1;
+      node.end -= node.tail ? 1 : 2;
+    },
+  );
 }
 
 /** Whether `node` is a `<script />` with no closing tag, and so no body. */
