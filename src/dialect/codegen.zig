@@ -3780,7 +3780,7 @@ fn dialectPrintRecord(comptime Host: type, host: *Host, record_index: u32) !void
         },
         // CSS structure records are offsets into the sheet text `style_sheet` already wrote.
         .css_rule, .css_atrule, .css_selector => {},
-        .for_of, .catch_clause => unreachable,
+        .for_of, .catch_clause, .jsx_attribute => unreachable,
     }
 }
 
@@ -3801,6 +3801,7 @@ fn dialectPrintOverlay(
             try printCatch(Host, host, raw, overlay.reset_param.raw);
             break :block true;
         },
+        .jsx_attribute => |overlay| overlay.shorthand and try printShorthandAttribute(Host, host, raw),
         .node,
         .jsx_code_block,
         .jsx_for_expression,
@@ -3816,6 +3817,33 @@ fn dialectPrintOverlay(
         .css_selector,
         => false,
     };
+}
+
+/// `{name}` for a shorthand attribute whose value is still the braced
+/// `name`; any other value, as a program built or edited by hand can hold,
+/// prints as `name={value}`.
+fn printShorthandAttribute(comptime Host: type, host: *Host, raw: u32) !bool {
+    std.debug.assert(raw < host.tree.nodes.len);
+    const data = host.tree.data(@enumFromInt(raw));
+    std.debug.assert(data == .jsx_attribute);
+    const attribute = data.jsx_attribute;
+    if (attribute.name == .null or attribute.value == .null) return false;
+    const name = switch (host.tree.data(attribute.name)) {
+        .jsx_identifier => |identifier| identifier.name,
+        else => return false,
+    };
+    const expression = switch (host.tree.data(attribute.value)) {
+        .jsx_expression_container => |container| container.expression,
+        else => return false,
+    };
+    if (expression == .null) return false;
+    const reference = switch (host.tree.data(expression)) {
+        .identifier_reference => |identifier| identifier.name,
+        else => return false,
+    };
+    if (!std.mem.eql(u8, host.tree.string(name), host.tree.string(reference))) return false;
+    try host.dialectEmit(@intFromEnum(attribute.value));
+    return true;
 }
 
 fn printForOf(comptime Host: type, host: *Host, raw: u32, index: u32, key: u32) !void {
