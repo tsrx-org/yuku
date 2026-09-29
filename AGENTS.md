@@ -16,3 +16,7 @@ Cursor Bugbot reviews every push to a pull request in this repository. Every pus
 4. Repeat until the latest review has no unresolved findings. A pull request with unresolved Bugbot findings is not done and is not merged.
 
 A finding that turns up on a pull request after it merged gets its own fix pull request, one finding per pull request.
+
+## Releases
+
+Releases are minor only: every version is X.Y.0 (or a prerelease of one, X.Y.0-rc.1), never a patch. A fix to a release ships in the next minor. `pnpm release` and `manual-release.yml` bump minor; `scripts/sync-version.ts` refuses a patch version in sync mode and under `--check --version`, and the gate in `publish.yml` refuses one before anything builds.

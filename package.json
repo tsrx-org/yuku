@@ -19,7 +19,7 @@
 		"gen:npm": "node tools/generated-decoders.ts --sync",
 		"lint": "vp lint",
 		"prepare": "git config core.hooksPath .githooks",
-		"release": "bumpp package.json --no-commit --no-tag --no-push && node scripts/sync-version.ts",
+		"release": "bumpp minor package.json --no-commit --no-tag --no-push && node scripts/sync-version.ts",
 		"release:check": "node scripts/sync-version.ts --check",
 		"release:notes": "node scripts/release-notes.ts",
 		"test": "vp test"

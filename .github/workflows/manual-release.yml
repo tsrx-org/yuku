@@ -12,18 +12,19 @@ name: Manual Release
 on:
   workflow_dispatch:
     inputs:
+      # No patch: releases are minor only (X.Y.0), and a fix to a release ships
+      # in the next minor. scripts/sync-version.ts refuses anything else.
       release_type:
-        description: "Version bump type."
+        description: "Version bump type. Releases are minor only; there is no patch."
         required: true
-        default: patch
+        default: minor
         type: choice
         options:
-          - patch
           - minor
           - major
           - prerelease
       preid:
-        description: "Prerelease id, for example rc. Only used with release_type: prerelease."
+        description: "Prerelease id, for example rc. Only used with release_type: prerelease. From X.Y.0 (or a published X.Y.Z) a prerelease starts the next minor, X.(Y+1).0-rc.1; from X.Y.0-rc.N it goes to X.Y.0-rc.(N+1)."
         required: false
         default: ""
         type: string
@@ -123,6 +124,12 @@ jobs:
       # bumpp rewrites the root manifest only and is told not to commit, tag or
       # push; scripts/sync-version.ts carries the version to every other
       # manifest and the commit is made below once the tree is whole.
+      #
+      # `prerelease` is not handed to bumpp as is: from a stable version its
+      # `prerelease` increments the patch (0.5.0 -> 0.5.1-rc.1), which the
+      # minor-only rule then refuses. From a stable version a prerelease starts
+      # the next minor (`preminor`, 0.5.0 -> 0.6.0-rc.1); only an existing
+      # prerelease is incremented in place (0.6.0-rc.1 -> 0.6.0-rc.2).
       - name: Bump the root version
         id: bump
         shell: bash
@@ -131,6 +138,13 @@ jobs:
           PREID: ${{ inputs.preid }}
         run: |
           set -euo pipefail
+          if [[ "$RELEASE_TYPE" == "prerelease" ]]; then
+            CURRENT_VERSION=$(node -p "require('./package.json').version")
+            if [[ "$CURRENT_VERSION" != *-* ]]; then
+              RELEASE_TYPE=preminor
+            fi
+            echo "$CURRENT_VERSION: prerelease bumps as bumpp $RELEASE_TYPE"
+          fi
           if [[ -n "$PREID" ]]; then
             pnpm exec bumpp package.json --release "$RELEASE_TYPE" --preid "$PREID" \
               --yes --no-commit --no-tag --no-push

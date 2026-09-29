@@ -118,7 +118,8 @@ runner is 11.5.1 or newer (the workflow asserts this).
 of the `tsrx` organization, or the placeholder step was skipped.
 
 **"You cannot publish over the previously published versions."** The version is
-already on the registry. npm versions are immutable. Pick the next patch.
+already on the registry. npm versions are immutable. Pick the next minor;
+releases are minor only (X.Y.0), never a patch.
 
 **The gate fails with "declares X in files but ... does not exist".** The staged
 tree is incomplete, usually a build for one target only. Both build jobs have
