@@ -824,9 +824,9 @@ test("#113: merging, shadowing, overloads, and template scopes core accepts stay
 
 test("#117: errors carry the TS or TSRX code @tsrx/core gives the same mistake", () => {
 	// [source, the code @tsrx/core 0.5.2 throws and records for it]. Core throws
-	// the mistakes it reports itself (TSRX1004, TSRX2001, TSRX2014, a redeclared
-	// `let`, an argument name clash) as an `Error`, and the rest as acorn's
-	// `SyntaxError`.
+	// the mistakes it reports itself (TSRX1004, TSRX2014, a `return` in a
+	// template, a redeclared `let`, an argument name clash) as an `Error`, and
+	// the rest as acorn's `SyntaxError`.
 	const reportedByCore = new Set([
 		"export function App() @{\n\t<div><script>a</SCRIPT>b</script></div>\n}",
 		"export function App({ getTag }) @{\n\t<{getTag()} />\n}",
@@ -856,7 +856,9 @@ test("#117: errors carry the TS or TSRX code @tsrx/core gives the same mistake",
 		["const re = /a/gg;", "TS1500"],
 		["class A { m() { return this.#x; } }", "TS1111"],
 		["function f() { continue; }", "TS1104"],
-		["function App() @{\n\t@try {\n\t\treturn;\n\t} @catch (e) {\n\t\t<p />\n\t}\n}", "TSRX2001"],
+		// core gives it TSRX2001, but the message doesn't say which block the
+		// `return` is in, and core allows one in an `@if` or `@for`, so no code
+		["function App() @{\n\t@try {\n\t\treturn;\n\t} @catch (e) {\n\t\t<p />\n\t}\n}", undefined],
 	];
 	for (const [source, code] of cases) {
 		const error = thrown(source);

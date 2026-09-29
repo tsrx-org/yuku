@@ -10,7 +10,8 @@ export const DYNAMIC_TAG_EXPRESSION_MESSAGE =
 // The `@tsrx/core` code of each native message: TSRX's own code for a mistake
 // only TSRX reports, and TypeScript's for one TypeScript also reports, the
 // code core gives the same mistake. A message that could be more than one
-// mistake (an `'export'` in a function or a block) has none.
+// mistake (a `return` in any template block, an `'export'` in a function or a
+// block) has none.
 const MESSAGE_CODES = [
   [
     /^Unclosed tag '<.*>'\. Expected '<\/.*>' before end of template\.$|^Expected '<\/' to close the JSX element, but found 'end of file'$/,
@@ -21,7 +22,6 @@ const MESSAGE_CODES = [
   [/^Expected '\{' after TSRX control-flow directive$/, "TSRX1008"],
   [/^TSRX try directive requires /, "TSRX1010"],
   [/^Expected unique 'index' then 'key' clauses /, "TSRX1011"],
-  [/^`return` is invalid inside TSRX template blocks$/, "TSRX2001"],
   [/^`break` is invalid inside `@switch` cases\.$/, "TSRX2008"],
   [/^A code block renders a single node; /, "TSRX2011"],
   [/^Code must be at the top of '@\{ \}'; /, "TSRX2012"],

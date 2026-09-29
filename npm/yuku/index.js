@@ -123,12 +123,12 @@ function endsTheParse(diagnostic) {
 // `raise`: a strict parse throws them as a plain `Error`, with no location in
 // the message and `loc` over the span. Every other one is acorn's
 // `SyntaxError`.
-const COMPILE_ERROR_CODES = new Set(["TSRX1004", "TSRX2001", "TSRX2011", "TSRX2012"]);
-const REDECLARATION = /^Identifier '.+' has already been declared$/;
+const COMPILE_ERROR_CODES = new Set(["TSRX1004", "TSRX2011", "TSRX2012"]);
+const COMPILE_ERROR_MESSAGE =
+  /^(?:Identifier '.+' has already been declared|Argument name clash|`return` is invalid inside TSRX template blocks)$/;
 
 function isCompileError(diagnostic) {
-  if (COMPILE_ERROR_CODES.has(diagnostic.code)) return true;
-  if (diagnostic.message === ARGUMENT_NAME_CLASH || REDECLARATION.test(diagnostic.message)) {
+  if (COMPILE_ERROR_CODES.has(diagnostic.code) || COMPILE_ERROR_MESSAGE.test(diagnostic.message)) {
     return true;
   }
   // a dynamic tag that is an expression, but not an allowed one
