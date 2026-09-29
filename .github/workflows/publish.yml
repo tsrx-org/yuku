@@ -107,10 +107,14 @@ jobs:
               exit 1
             fi
           fi
-          case "$version" in
-            [0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "version must look like 1.2.3 or 1.2.3-rc.1, got: $version" >&2; exit 1 ;;
-          esac
+          # Releases are minor only: X.Y.0 or a prerelease of one, never a patch.
+          # sync-version --check --version refuses a patch too; this is the
+          # cheaper, earlier word on it. A regex, not a case glob: `*` in
+          # `[0-9]*.[0-9]*.0` would also match 1.2.1-rc.0.
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.0(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "version must look like 1.2.0 or 1.2.0-rc.1 (releases are minor only), got: $version" >&2
+            exit 1
+          fi
           node scripts/sync-version.ts --check --version "$version"
           test -f LICENSE || { echo "no LICENSE file at the repository root" >&2; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -261,10 +265,10 @@ jobs:
 
       # The backstop, and only the backstop: npm versions are immutable, so
       # nothing here can prevent a bad release, only find one (the remedy is
-      # deprecate and patch). It installs the published version into a project
-      # outside this workspace, resolves the binding through the published
-      # optionalDependencies the way a consumer's first install does, and
-      # parses a real .tsrx source through the installed addon.
+      # deprecate and cut the next minor). It installs the published version
+      # into a project outside this workspace, resolves the binding through the
+      # published optionalDependencies the way a consumer's first install does,
+      # and parses a real .tsrx source through the installed addon.
       - name: Install the published release from the registry and run it
         if: needs.gate.outputs.mode == 'publish'
         shell: bash
@@ -275,8 +279,44 @@ jobs:
           mkdir -p "$probe"
           cd "$probe"
           npm init -y > /dev/null
-          # A read can hit a replica that has not caught up with the write.
-          npm install "@tsrx/yuku@$VERSION" || (sleep 30 && npm install "@tsrx/yuku@$VERSION")
+          # A read can hit a replica that has not caught up with the write, and
+          # v0.4.1 saw ETARGET twice 30 seconds apart. So first wait, with
+          # backoff for about six minutes in all, until every published name
+          # answers at this version, then install without the local metadata
+          # cache and retry that too, since the install can land on a replica
+          # the view did not.
+          names=("@tsrx/yuku-darwin-arm64" "@tsrx/yuku-linux-x64-gnu" "@tsrx/yuku")
+          waited=0
+          for name in "${names[@]}"; do
+            delay=10
+            until [[ "$(npm view "$name@$VERSION" version --prefer-online 2>/dev/null || true)" == "$VERSION" ]]; do
+              if (( waited >= 360 )); then
+                echo "$name@$VERSION is still not visible on the registry after ${waited}s." >&2
+                echo "The publish step succeeded, so this is most likely replica lag, and the" >&2
+                echo "release is out regardless. Once \`npm view $name@$VERSION version\` answers," >&2
+                echo "run the install and parse below by hand; re-running this job would republish." >&2
+                exit 1
+              fi
+              echo "$name@$VERSION is not visible yet; waiting ${delay}s (${waited}s so far)"
+              sleep "$delay"
+              waited=$((waited + delay))
+              delay=$((delay * 2 > 60 ? 60 : delay * 2))
+            done
+            echo "visible  $name@$VERSION"
+          done
+          installed=0
+          for attempt in 1 2 3 4; do
+            if npm install "@tsrx/yuku@$VERSION" --prefer-online; then
+              installed=1
+              break
+            fi
+            echo "install attempt $attempt of 4 failed; retrying in 30s" >&2
+            sleep 30
+          done
+          if (( installed == 0 )); then
+            echo "npm view sees @tsrx/yuku@$VERSION but npm install could not resolve it after 4 attempts." >&2
+            exit 1
+          fi
           test -f node_modules/@tsrx/yuku-linux-x64-gnu/yuku-tsrx.node
           node --input-type=module <<'NODE'
           import assert from "node:assert/strict";

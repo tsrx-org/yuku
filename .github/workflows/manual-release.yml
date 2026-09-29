@@ -12,13 +12,14 @@ name: Manual Release
 on:
   workflow_dispatch:
     inputs:
+      # No patch: releases are minor only (X.Y.0), and a fix to a release ships
+      # in the next minor. scripts/sync-version.ts refuses anything else.
       release_type:
-        description: "Version bump type."
+        description: "Version bump type. Releases are minor only; there is no patch."
         required: true
-        default: patch
+        default: minor
         type: choice
         options:
-          - patch
           - minor
           - major
           - prerelease

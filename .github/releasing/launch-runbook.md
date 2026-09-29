@@ -121,9 +121,10 @@ npm view @tsrx/yuku-darwin-arm64 version
 npm view @tsrx/yuku-linux-x64-gnu version
 ```
 
-Later releases: `pnpm release` on a clean `main` runs bumpp for the root
-version and `scripts/sync-version.ts` for everything else; commit as
-`chore: release vX.Y.Z`, tag, `git push --follow-tags`. Or dispatch
+Later releases are minor only (X.Y.0, never a patch): `pnpm release` on a
+clean `main` runs `bumpp minor` for the root version and
+`scripts/sync-version.ts` for everything else; commit as
+`chore: release vX.Y.0`, tag, `git push --follow-tags`. Or dispatch
 `manual-release.yml`, which does the same on a runner; note that a tag pushed by
 that workflow with the default token does not trigger `publish.yml`, so either
 set a `RELEASE_PUSH_TOKEN` repository secret (a fine-grained token with
