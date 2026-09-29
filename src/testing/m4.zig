@@ -1695,6 +1695,14 @@ fn nodeOfKind(tree: *const parser.ParseResult, kind: std.meta.Tag(parser.ast.Nod
     return null;
 }
 
+fn countKind(tree: *const parser.ParseResult, kind: std.meta.Tag(parser.ast.NodeData)) usize {
+    var found: usize = 0;
+    for (tree.tree.nodes.items(.data)) |data| {
+        if (std.meta.activeTag(data) == kind) found += 1;
+    }
+    return found;
+}
+
 fn onlyScript(tree: *parser.ParseResult) !parser.dialect_schema.JSXScriptElement {
     for (tree.dialect_store.records.items) |record| switch (record) {
         .jsx_script_element => |script| return script,
@@ -1798,6 +1806,153 @@ test "a spread or empty dynamic tag is no expression" {
         try std.testing.expectEqualStrings(dynamic_tag_message, tree.diagnostics.items[0].message);
         try std.testing.expect(tree.diagnostics.items[0].help != null);
     }
+}
+
+test "a shorthand attribute is name={name} in every element, with the shorthand overlay" {
+    // @tsrx/core 0.5.2 reads `{name}` in an opening tag as `name={name}`
+    // (`shorthand: true`) in a template, in plain JSX and with a dynamic tag.
+    // The attribute and its value both span the braces; the name and the
+    // identifier span the name.
+    for ([_]struct { []const u8, []const []const u8 }{
+        .{ "export function Link({ href }) @{\n\t<a {href} />\n}", &.{"href"} },
+        .{ "export function link({ href }) {\n\treturn <a {href} />;\n}", &.{"href"} },
+        .{ "const link = (href) => <a {href} />;", &.{"href"} },
+        .{ "export function H({ tag, id }) @{\n\t<{tag} {id} />\n}", &.{"id"} },
+        .{ "export function H({ tag, id }) {\n\treturn <{tag} class=\"x\" {id}>hi</{tag}>;\n}", &.{"id"} },
+        .{ "const v = <a { href } {/* c */ id} {...rest} x={y} {this} {class} />;", &.{ "href", "id", "this", "class" } },
+    }) |case| {
+        var tree = try parser.parse(std.testing.allocator, case[0], .{ .lang = .tsx, .tsrx = true });
+        defer tree.deinit();
+        if (tree.hasErrors()) {
+            std.debug.print("\n{s}\n", .{case[0]});
+            for (tree.diagnostics.items) |diagnostic| std.debug.print("    {s}\n", .{diagnostic.message});
+            return error.ShorthandRejected;
+        }
+        var found: usize = 0;
+        for (0..tree.nodes.len) |index| {
+            const node: parser.ast.NodeIndex = @enumFromInt(index);
+            const attribute = switch (tree.data(node)) {
+                .jsx_attribute => |value| value,
+                else => continue,
+            };
+            const overlay = tree.dialectOverlay(@intCast(index)) orelse continue;
+            try std.testing.expect(tree.dialect_store.records.items[overlay].jsx_attribute.shorthand);
+            const name = tree.string(tree.data(attribute.name).jsx_identifier.name);
+            try std.testing.expectEqualStrings(case[1][found], name);
+            const span = tree.span(node);
+            try std.testing.expectEqual(span, tree.span(attribute.value));
+            try std.testing.expectEqual('{', case[0][span.start]);
+            try std.testing.expectEqual('}', case[0][span.end - 1]);
+            const expression = tree.data(attribute.value).jsx_expression_container.expression;
+            try std.testing.expectEqualStrings(name, tree.string(tree.data(expression).identifier_reference.name));
+            try std.testing.expectEqual(tree.span(attribute.name), tree.span(expression));
+            try std.testing.expectEqualStrings(name, case[0][tree.span(expression).start..tree.span(expression).end]);
+            found += 1;
+        }
+        try std.testing.expectEqual(case[1].len, found);
+    }
+}
+
+test "a written-out attribute and a spread carry no shorthand overlay" {
+    var tree = try parser.parse(std.testing.allocator, "const v = <a href={href} {...rest} {/* c */ ...more} disabled />;", .{ .lang = .tsx });
+    defer tree.deinit();
+    try std.testing.expect(!tree.hasErrors());
+    for (0..tree.nodes.len) |index| switch (tree.data(@enumFromInt(index))) {
+        .jsx_attribute => try std.testing.expectEqual(@as(?u32, null), tree.dialectOverlay(@intCast(index))),
+        else => {},
+    };
+    try std.testing.expectEqual(@as(usize, 2), countKind(&tree, .jsx_spread_attribute));
+}
+
+test "a malformed shorthand attribute is reported where core reports it" {
+    // core: `'}' expected` (TS1005) after a name, `Unexpected token` (TS1012) for anything else
+    for ([_][3][]const u8{
+        .{ "const v = <a {a.b} />;", "Expected '}' to close the shorthand attribute", "." },
+        .{ "const v = <a {a /> ;", "Expected '}' to close the shorthand attribute", "/" },
+        .{ "const v = <a {a,b} />;", "Expected '}' to close the shorthand attribute", "," },
+        .{ "const v = <a {} />;", "Unexpected token", "}" },
+        .{ "const v = <a {\"s\"} />;", "Unexpected token", "\"s\"" },
+        .{ "const v = <a {1} />;", "Unexpected token", "1" },
+        .{ "const v = <a {#x} />;", "Unexpected token", "#x" },
+    }) |case| {
+        var tree = try parser.parse(std.testing.allocator, case[0], .{ .lang = .tsx });
+        defer tree.deinit();
+        try std.testing.expect(tree.diagnostics.items.len >= 1);
+        const diagnostic = tree.diagnostics.items[0];
+        try std.testing.expect(std.mem.startsWith(u8, diagnostic.message, case[1]));
+        try std.testing.expectEqualStrings(case[2], case[0][diagnostic.span.start..diagnostic.span.end]);
+    }
+}
+
+test "shorthand attributes print back short and resolve as references" {
+    const source = "export function Link({ href, id }) @{ <a {href} x={id} {id} {...rest} /> }";
+    var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+    defer tree.deinit();
+    try std.testing.expect(!tree.hasErrors());
+    const result = try parser.codegen.generate(std.testing.allocator, &tree, .{});
+    defer result.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), result.errors.len);
+    try std.testing.expect(std.mem.indexOf(u8, result.code, "<a {href} x={id} {id} {...rest} />") != null);
+
+    const semantic = try parser.semantic.analyze(&tree);
+    var shorthand_references: usize = 0;
+    for (semantic.references) |reference| {
+        const span = tree.span(reference.node);
+        // `{name}` but not `x={name}`
+        if (span.start > 1 and source[span.start - 1] == '{' and source[span.start - 2] != '=' and source[span.end] == '}') {
+            try std.testing.expect(reference.symbol != .none);
+            shorthand_references += 1;
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 2), shorthand_references);
+}
+
+test "a class method's body can be a template, as an object method's can" {
+    // Every method form core 0.5.2 accepts with a `@{ }` body: the method's
+    // FunctionExpression body is the JSXCodeBlock, whose render is the <div>.
+    for ([_][]const u8{
+        "class View {\n\trender() @{\n\t\t<div />\n\t}\n}",
+        "class View {\n\trender(): Element<'div'> @{\n\t\t<div />\n\t}\n}",
+        "class View {\n\tstatic render() @{\n\t\t<div />\n\t}\n}",
+        "class View {\n\tget view() @{\n\t\t<div />\n\t}\n}",
+        "class View {\n\t#render() @{\n\t\t<div />\n\t}\n}",
+        "class View {\n\tasync render() @{\n\t\t<div />\n\t}\n}",
+        "export class View extends Base {\n\tpublic static render(a: A): Element<'div'> @{\n\t\tconst b = a;\n\t\t<div>{b}</div>\n\t}\n}",
+        "const View = class {\n\t['render']() @{\n\t\t<div />\n\t}\n};",
+        "const view = {\n\trender() @{\n\t\t<div />\n\t}\n};",
+    }) |source| {
+        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .tsx });
+        defer tree.deinit();
+        if (tree.hasErrors()) {
+            std.debug.print("\n{s}\n", .{source});
+            for (tree.diagnostics.items) |diagnostic| std.debug.print("    {s}\n", .{diagnostic.message});
+            return error.TemplateMethodRejected;
+        }
+        const function = tree.data(nodeOfKind(&tree, .function) orelse return error.MethodMissing).function;
+        try std.testing.expectEqual(parser.ast.FunctionType.function_expression, function.type);
+        const record_index = tree.dialectRecord(@intFromEnum(function.body)) orelse return error.TemplateBodyMissing;
+        const block = tree.dialect_store.records.items[record_index].jsx_code_block;
+        try std.testing.expect(block.render.raw != std.math.maxInt(u32));
+        const body = tree.span(function.body);
+        try std.testing.expectEqualStrings("@{", source[body.start .. body.start + 2]);
+        try std.testing.expectEqual('}', source[body.end - 1]);
+
+        const result = try parser.codegen.generate(std.testing.allocator, &tree, .{});
+        defer result.deinit(std.testing.allocator);
+        try std.testing.expectEqual(@as(usize, 0), result.errors.len);
+        try std.testing.expect(std.mem.indexOf(u8, result.code, "@{") != null);
+        var reparsed = try parser.parse(std.testing.allocator, result.code, .{ .lang = .tsx });
+        defer reparsed.deinit();
+        try std.testing.expect(!reparsed.hasErrors());
+    }
+}
+
+test "a class method with a braced body or none is still the parser's own" {
+    var tree = try parser.parse(std.testing.allocator, "class View {\n\trender(): void;\n\trender() { return <div />; }\n}", .{ .lang = .tsx });
+    defer tree.deinit();
+    try std.testing.expect(!tree.hasErrors());
+    try std.testing.expectEqual(@as(usize, 1), countKind(&tree, .function_body));
+    try std.testing.expectEqual(@as(usize, 0), tree.dialect_store.associations.items.len);
 }
 
 test "in a .tsrx file a comment between JSX children is a {} of its own; in .tsx and .jsx it is text" {

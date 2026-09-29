@@ -286,6 +286,37 @@ pub fn Host(comptime Parser: type) type {
             return @as(?NodeIndex, try p.tree.addNode(.{ .jsx_expression_container = .{ .expression = expression.? } }, .{ .start = start, .end = end }));
         }
 
+        /// `{name}` in an opening tag, with the `{` current: the attribute
+        /// `name={name}`, as @tsrx/core reads it. Any identifier name, a
+        /// keyword included, is the name; anything else is an unexpected
+        /// token, and a name must be followed by the `}`.
+        pub fn parseShorthandAttribute(p: *P) ErrorType!?NodeIndex {
+            const start = p.current_token.span.start;
+            p.setLexerMode(.normal);
+            try p.advance() orelse return null; // '{'
+            const token = p.current_token;
+            if (!token.tag.isIdentifierLike()) {
+                try p.report(token.span, "Unexpected token", .{});
+                return null;
+            }
+            const name = try p.identifierName(token);
+            try p.advance() orelse return null;
+            p.setLexerMode(.jsx_tag);
+            const end = p.current_token.span.end;
+            if (!try p.expect(.right_brace, "Expected '}' to close the shorthand attribute", "A shorthand attribute is a name in braces, such as {href}")) return null;
+            const key = try p.tree.addNode(.{ .jsx_identifier = .{ .name = name } }, token.span);
+            const reference = try p.tree.addNode(.{ .identifier_reference = .{ .name = name } }, token.span);
+            const span: Span = .{ .start = start, .end = end };
+            const value = try p.tree.addNode(.{ .jsx_expression_container = .{ .expression = reference } }, span);
+            const attribute = try p.tree.addNode(.{ .jsx_attribute = .{ .name = key, .value = value } }, span);
+            const record_index = try addRecord(p, .{ .jsx_attribute = .{
+                .host_node = abi.OverlayHost.init(@intFromEnum(attribute)),
+                .shorthand = true,
+            } });
+            try addOverlay(p, attribute, record_index);
+            return attribute;
+        }
+
         fn matchingBrace(bytes: []const u8, start: u32) ?u32 {
             var cursor: usize = start + 1;
             var depth: u32 = 0;
@@ -997,6 +1028,9 @@ pub fn jsx_child_at_code_block(comptime Result: type, parser: anytype) Result {
 }
 pub fn jsx_child_at_control_flow(comptime Result: type, parser: anytype) Result {
     return hookNode(Result, parser, control_flow.jsxChild);
+}
+pub fn jsx_attribute(comptime Result: type, parser: anytype) Result {
+    return hookNode(Result, parser, jsx.attribute);
 }
 pub fn jsx_element_name(comptime Result: type, parser: anytype) Result {
     return hookNode(Result, parser, jsx.elementName);

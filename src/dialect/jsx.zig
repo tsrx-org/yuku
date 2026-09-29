@@ -13,6 +13,38 @@ pub fn elementName(comptime Host: type, parser: anytype) Host.ErrorType!abi.Deci
     return .{ .handled = try Host.parseTagExpressionContainer(parser) };
 }
 
+/// An attribute that opens with `{`: a shorthand `{name}` unless the braces
+/// hold a spread, which the host parser reads. Core reads the shorthand in
+/// every element, a template's or not, and with a dynamic tag too.
+pub fn attribute(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
+    if (Host.currentToken(parser) != .left_brace) return .unhandled;
+    const source = Host.source(parser);
+    const inner = skipTrivia(source, Host.currentSpan(parser).end);
+    if (std.mem.startsWith(u8, source[inner..], "...")) return .unhandled;
+    return .{ .handled = try Host.parseShorthandAttribute(parser) };
+}
+
+/// The offset of the first byte at or after `start` that isn't whitespace or
+/// a comment.
+fn skipTrivia(source: []const u8, start: u32) usize {
+    var cursor: usize = start;
+    while (cursor < source.len) {
+        switch (source[cursor]) {
+            ' ', '\t', '\n', '\r', 0x0b, 0x0c => cursor += 1,
+            '/' => {
+                if (std.mem.startsWith(u8, source[cursor..], "//")) {
+                    cursor = std.mem.indexOfScalarPos(u8, source, cursor, '\n') orelse source.len;
+                } else if (std.mem.startsWith(u8, source[cursor..], "/*")) {
+                    const close = std.mem.indexOfPos(u8, source, cursor + 2, "*/") orelse return source.len;
+                    cursor = close + 2;
+                } else return cursor;
+            },
+            else => return cursor,
+        }
+    }
+    return cursor;
+}
+
 /// Runs once per element, on the opening tag's name: a closing tag repeats
 /// the expression, so it is not checked again. The check doesn't change the
 /// parse; it reports the first part of the expression that isn't allowed.

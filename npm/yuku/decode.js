@@ -37,6 +37,7 @@ const DIALECT_RECORDS = Object.freeze([
   Object.freeze({ tag: 184, type: "CssAtrule", overlay: false, fields: Object.freeze([Object.freeze({ name: "name", role: "string", slot: 2, bit: 0 }), Object.freeze({ name: "block", role: "nodeList", slot: 4, bit: 0 }), Object.freeze({ name: "keyframes", role: "bool", slot: 6, bit: 0 })]) }),
   Object.freeze({ tag: 185, type: "CssSelector", overlay: false, fields: Object.freeze([Object.freeze({ name: "scopeInsert", role: "scalar", slot: 2, bit: 0 })]) }),
   Object.freeze({ tag: 186, type: "JSXScriptElement", overlay: false, fields: Object.freeze([Object.freeze({ name: "openingElement", role: "node", slot: 2, bit: 0 }), Object.freeze({ name: "children", role: "nodeList", slot: 3, bit: 0 }), Object.freeze({ name: "closingElement", role: "optionalNode", slot: 5, bit: 0 }), Object.freeze({ name: "content", role: "string", slot: 6, bit: 0 })]) }),
+  Object.freeze({ tag: 187, type: "JSXAttribute", overlay: true, fields: Object.freeze([Object.freeze({ name: "hostNode", role: "host", slot: 2, bit: 0 }), Object.freeze({ name: "shorthand", role: "bool", slot: 3, bit: 0 })]) }),
 ]);
 function buildPosMap(src, byteLen, startByte) {
   const m = new Uint32Array(byteLen - startByte + 1);

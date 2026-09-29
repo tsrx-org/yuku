@@ -22,6 +22,7 @@ pub const Hook = enum(u8) {
     jsx_element_name,
     validate_jsx_element_name,
     jsx_text_child,
+    jsx_attribute,
 };
 
 pub const FieldRole = enum(u8) {
@@ -91,7 +92,7 @@ pub const Record = union(enum) {
 pub const record_count: u8 = @typeInfo(Record).@"union".fields.len;
 
 comptime {
-    std.debug.assert(@typeInfo(Hook).@"enum".fields.len == 17);
+    std.debug.assert(@typeInfo(Hook).@"enum".fields.len == 18);
     std.debug.assert(@sizeOf(FieldRole) == 1);
     std.debug.assert(@sizeOf(ScopeRole) == 1);
     std.debug.assert(@sizeOf(NodeRef) == 4);

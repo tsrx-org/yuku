@@ -18,6 +18,14 @@ pub const CatchClauseOverlay = struct {
     reset_param: abi.OptionalNodeRef,
 };
 
+/// `{name}` in an opening tag: the host `jsx_attribute` is `name={name}`, and
+/// the overlay records that it was written short, as @tsrx/core's `shorthand`.
+pub const JSXAttributeOverlay = struct {
+    pub const estree_type = "JSXAttribute";
+    host_node: abi.OverlayHost,
+    shorthand: bool,
+};
+
 pub const JSXCodeBlock = struct {
     pub const estree_type = "JSXCodeBlock";
     pub const scope_role = abi.ScopeRole.block;
@@ -108,17 +116,18 @@ pub const Record = union(enum) {
     style_sheet: StyleSheet,
     jsx_style_element: JSXStyleElement,
     tsrx_expression: TSRXExpression,
-    // Appended only: the Record union is positional ABI (tags 183/184/185).
+    // Appended only: the Record union is positional ABI (tags 183 onward).
     css_rule: CssRule,
     css_atrule: CssAtrule,
     css_selector: CssSelector,
     jsx_script_element: JSXScriptElement,
+    jsx_attribute: JSXAttributeOverlay,
 };
 
 pub const record_count: u8 = @typeInfo(Record).@"union".fields.len;
 
 comptime {
-    std.debug.assert(record_count == 15);
+    std.debug.assert(record_count == 16);
     std.debug.assert(@sizeOf(NodeRecord) <= 28);
     std.debug.assert(@sizeOf(ForOfOverlay) <= 28);
     std.debug.assert(@sizeOf(CatchClauseOverlay) <= 28);
@@ -134,4 +143,5 @@ comptime {
     std.debug.assert(@sizeOf(CssAtrule) <= 28);
     std.debug.assert(@sizeOf(CssSelector) <= 28);
     std.debug.assert(@sizeOf(JSXScriptElement) <= 28);
+    std.debug.assert(@sizeOf(JSXAttributeOverlay) <= 28);
 }
