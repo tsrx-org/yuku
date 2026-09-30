@@ -1502,3 +1502,20 @@ test("a JSON copy of parseModule's tree, which loses the unlisted fields, encode
 	expect(generate(copy).code).toBe(generate(program).code);
 	expect(JSON.stringify(copy)).toBe(before);
 });
+
+test("a @for...in expression's index and key, which core rejects, stay walkable", () => {
+	const source = "const c = @for (const k in obj; index i; key k) {\n\t<p />\n};";
+	const program = parseModule(source, "App.tsrx");
+	const node = at(program, "body[0].declarations[0].init") as Node & { statement: Node };
+	expect(node.statementType).toBe("ForInStatement");
+	expect(Object.keys(node)).toEqual(
+		expect.arrayContaining(["left", "right", "index", "key", "body"]),
+	);
+	expect(node.index).toMatchObject({ type: "Identifier", name: "i" });
+	expect(node.key).toBe(node.statement.key);
+	// A JSON copy, rebuilt for the encoder, keeps them too.
+	const copy = JSON.parse(JSON.stringify(program));
+	const typescript = Symbol.for("yuku.estree.transfer.ts");
+	Object.defineProperty(copy, typescript, Object.getOwnPropertyDescriptor(program, typescript)!);
+	expect(decode(encode(copy), source).program).toEqual(decode(encode(program), source).program);
+});

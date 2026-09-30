@@ -549,7 +549,8 @@ const STATEMENT_TYPES = {
 // yuku keeps under `statement`: a `@for`'s `await` among them.
 const STATEMENT_FIELDS = {
   ForOfStatement: ["await", "left", "right", "index", "key", "body"],
-  ForInStatement: ["left", "right", "body"],
+  // Core rejects `index` and `key` on a for-in loop, which yuku reads.
+  ForInStatement: ["left", "right", "index", "key", "body"],
   ForStatement: ["init", "test", "update", "body"],
   SwitchStatement: ["discriminant", "cases"],
   TryStatement: ["block", "handler", "finalizer"],
@@ -624,7 +625,9 @@ function addControlFlowFields(node, text) {
   // A statement of a kind this doesn't know stays the listed child.
   const fields = STATEMENT_FIELDS[statement.type];
   if (fields !== undefined) {
-    for (const field of fields) alias(node, field, statement, field, true);
+    for (const field of fields) {
+      if (field in statement) alias(node, field, statement, field, true);
+    }
     Object.defineProperty(node, "statement", { enumerable: false });
   }
   node.statementType = statement.type;
