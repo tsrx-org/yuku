@@ -1,6 +1,7 @@
 const std = @import("std");
 const abi = @import("dialect_abi");
 const schema = @import("dialect_schema");
+const returns = @import("returns.zig");
 
 pub fn statement(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
     if (!startsBlock(Host, parser)) return .unhandled;
@@ -9,7 +10,15 @@ pub fn statement(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decisi
 
 pub fn expression(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
     if (!startsBlock(Host, parser)) return .unhandled;
-    return .{ .handled = try parse(Host, parser, false) };
+    // an arrow's `@{ }` body is the function's body, as in core
+    return .{ .handled = try parse(Host, parser, afterArrow(Host.source(parser), Host.currentSpan(parser).start)) };
+}
+
+/// Whether `=>`, give or take whitespace, ends right before `at`.
+fn afterArrow(source: []const u8, at: u32) bool {
+    var index: usize = at;
+    while (index > 0 and std.ascii.isWhitespace(source[index - 1])) index -= 1;
+    return index >= 2 and source[index - 2] == '=' and source[index - 1] == '>';
 }
 
 pub fn jsxChild(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
@@ -68,7 +77,6 @@ fn parse(comptime Host: type, parser: anytype, allow_return: bool) Host.ErrorTyp
             .body = body,
         } }, .{ .start = start + 1, .end = @intCast(Host.source(parser).len) });
     };
-    if (!allow_return) try reportReturns(Host, parser, block, 0);
 
     const range = switch (Host.data(parser, block)) {
         .block_statement => |data| data.body,
@@ -84,6 +92,8 @@ fn parse(comptime Host: type, parser: anytype, allow_return: bool) Host.ErrorTyp
         render = renderNode(Host, parser, last);
         if (render != .null) body_len -= 1;
     }
+    // core reports a `return` in the statements before the rendered node
+    if (!allow_return) try returns.report(Host, parser, items[0..body_len]);
     const body = try addUnwrappedBody(Host, parser, items[0..body_len]);
     const end = Host.nodeSpan(parser, block).end;
     return @as(?Host.NodeIndex, try Host.addDialectNode(parser, schema.Record{ .jsx_code_block = .{
@@ -141,24 +151,4 @@ pub fn renderNode(comptime Host: type, parser: anytype, node: Host.NodeIndex) Ho
         .empty_statement => if (Host.isDialectNode(parser, node)) node else .null,
         else => .null,
     };
-}
-
-fn reportReturns(comptime Host: type, parser: anytype, node: Host.NodeIndex, depth: u8) Host.ErrorType!void {
-    if (depth == 64) return;
-    switch (Host.data(parser, node)) {
-        .return_statement => try Host.reportWithHelp(
-            parser,
-            Host.nodeSpan(parser, node),
-            "`return` is invalid inside TSRX template blocks",
-            "Use rendered output as the final expression instead.",
-        ),
-        .block_statement => |data| for (Host.extra(parser, data.body)) |child| {
-            try reportReturns(Host, parser, child, depth + 1);
-        },
-        .if_statement => |data| {
-            try reportReturns(Host, parser, data.consequent, depth + 1);
-            if (data.alternate != .null) try reportReturns(Host, parser, data.alternate, depth + 1);
-        },
-        else => {},
-    }
 }

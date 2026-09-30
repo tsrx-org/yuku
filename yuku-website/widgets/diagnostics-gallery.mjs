@@ -9,7 +9,7 @@ const CASES = [
   { id: 'unknown-directive', label: 'unknown directive', source: '@iffy (x) { <b/> }', expect: "Expected 'if' after '@'" },
   { id: 'switch-open', label: 'unclosed @switch', source: '@switch (x) { @case 1: { <b/> }', expect: "Expected '}' to close TSRX switch body" },
   { id: 'switch-break', label: 'break in @case', source: '@switch (x) { @case 1: { break; } }', expect: '`break` is invalid inside `@switch` cases.', code: 'TSRX2008' },
-  { id: 'block-return', label: 'return in template block', source: '<s>@{ return <b/>; }</s>', expect: '`return` is invalid inside TSRX template blocks' },
+  { id: 'block-return', label: 'return in template block', source: '<s>@{ return <b/>; }</s>', expect: '`return` is invalid inside TSRX template blocks', code: 'TSRX2001' },
   { id: 'try-alone', label: '@try without fallback', source: '@try { <b/> }', expect: "TSRX try directive requires '@pending' or '@catch'", code: 'TSRX1010' },
   { id: 'dynamic-call', label: 'dynamic tag call', source: '<{getTag()} />', expect: 'A dynamic tag expression must be an identifier, a member access', code: 'TSRX2014' },
   { id: 'style-open', label: 'unclosed <style>', source: '<s><style>.a{}</s>', expect: 'Unclosed TSRX style element' },

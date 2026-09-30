@@ -3,6 +3,7 @@ const abi = @import("dialect_abi");
 const schema = @import("dialect_schema");
 const jsx_text = @import("text.zig");
 const code_block = @import("code_block.zig");
+const returns = @import("returns.zig");
 
 pub fn statement(comptime Host: type, parser: anytype) Host.ErrorType!abi.Decision(?Host.NodeIndex) {
     return dispatch(Host, parser, false);
@@ -64,7 +65,7 @@ fn parseIfFromCurrent(comptime Host: type, parser: anytype, start: u32) Host.Err
     if (!try consume(Host, parser, .left_paren, "Expected '(' after '@if'", null)) return null;
     const condition = try header(Host, parser, ")", "Expected a condition after '@if ('") orelse return null;
     if (!try consume(Host, parser, .right_paren, "Expected ')' after '@if' condition", null)) return null;
-    const consequent = try templateBlock(Host, parser, false) orelse return null;
+    const consequent = try templateBlock(Host, parser, true) orelse return null;
 
     var alternate = Host.NodeIndex.null;
     if (directive(Host, parser, "else")) {
@@ -75,7 +76,7 @@ fn parseIfFromCurrent(comptime Host: type, parser: anytype, start: u32) Host.Err
         else if (directive(Host, parser, "if"))
             try parseIf(Host, parser) orelse return null
         else
-            try templateBlock(Host, parser, false) orelse return null;
+            try templateBlock(Host, parser, true) orelse return null;
     }
     const end = if (alternate != .null) Host.nodeSpan(parser, alternate).end else Host.nodeSpan(parser, consequent).end;
     return @as(?Host.NodeIndex, try Host.addDialectNode(parser, schema.Record{ .jsx_if_expression = .{
@@ -202,7 +203,7 @@ fn wrapFor(comptime Host: type, parser: anytype, start: u32, statement_node: Hos
             return null;
         }
         if (!try Host.advance(parser)) return null;
-        empty = try templateBlock(Host, parser, false) orelse return null;
+        empty = try templateBlock(Host, parser, true) orelse return null;
     }
     const end = if (empty != .null) Host.nodeSpan(parser, empty).end else Host.nodeSpan(parser, statement_node).end;
     return @as(?Host.NodeIndex, try Host.addDialectNode(parser, schema.Record{ .jsx_for_expression = .{
@@ -254,7 +255,7 @@ fn parseSimpleJsxFor(comptime Host: type, parser: anytype, start: u32) Host.Erro
         }
     }
     if (!try consume(Host, parser, .right_paren, "Expected ')' after for-of expression", null)) return null;
-    const body = try templateBlock(Host, parser, false) orelse return null;
+    const body = try templateBlock(Host, parser, true) orelse return null;
     const statement_node = try Host.addNode(parser, Host.NodeData{ .for_of_statement = .{
         .left = left,
         .right = right,
@@ -571,10 +572,9 @@ fn templateBlock(comptime Host: type, parser: anytype, allow_return: bool) Host.
         break :parsed try Host.parseBlockWithTemporaryReturn(parser, true) orelse return null;
     };
     const block = try transformParsedBlock(Host, parser, parsed) orelse return null;
-    if (!allow_return) {
-        const data = Host.data(parser, block).block_statement;
-        try validateReturns(Host, parser, data.body, 0);
-    }
+    // core allows a `return` in an `@if`, `@else`, `@for` or `@empty` body,
+    // and reports one under a `@try`, `@pending` or `@catch` body
+    if (!allow_return) try returns.report(Host, parser, Host.extra(parser, Host.data(parser, block).block_statement.body));
     return block;
 }
 
@@ -626,49 +626,64 @@ fn isRender(comptime Host: type, parser: anytype, node: Host.NodeIndex) bool {
     };
 }
 
-fn validateReturns(comptime Host: type, parser: anytype, range: Host.IndexRange, depth: u8) Host.ErrorType!void {
-    if (depth == 64) return;
-    for (Host.extra(parser, range)) |node| switch (Host.data(parser, node)) {
-        .return_statement => try Host.reportWithHelp(parser, Host.nodeSpan(parser, node), "`return` is invalid inside TSRX template blocks", "Use rendered output as the final expression instead."),
-        .block_statement => |data| try validateReturns(Host, parser, data.body, depth + 1),
-        .if_statement => |data| {
-            try validateNodeReturns(Host, parser, data.consequent, depth + 1);
-            if (data.alternate != .null) try validateNodeReturns(Host, parser, data.alternate, depth + 1);
-        },
-        else => {},
-    };
-}
+/// Where a `return` is in an `@case` body, for what core reports: one of its
+/// own statements is TSRX2009, and a deeper one, in an `if` or a loop, is
+/// allowed. A `{ }` directly among its statements is an expression container
+/// in core (see `validateCaseContainer`), so its statements are not searched.
+const SwitchReturn = enum { case, allowed };
 
-fn validateNodeReturns(comptime Host: type, parser: anytype, node: Host.NodeIndex, depth: u8) Host.ErrorType!void {
-    switch (Host.data(parser, node)) {
-        .block_statement => |data| try validateReturns(Host, parser, data.body, depth),
-        .return_statement => try Host.reportWithHelp(parser, Host.nodeSpan(parser, node), "`return` is invalid inside TSRX template blocks", "Use rendered output as the final expression instead."),
-        else => {},
+/// A `{ }` directly in an `@case` body, which core reads as an expression
+/// container: it holds one expression, or nothing. A first statement that is
+/// no expression is `Unexpected token` (TS1012) at its first token, and a
+/// second statement `'}' expected` (TS1005) at its first token.
+fn validateCaseContainer(comptime Host: type, parser: anytype, range: Host.IndexRange) Host.ErrorType!void {
+    const items = Host.extra(parser, range);
+    if (items.len == 0) return;
+    if (Host.data(parser, items[0]) != .expression_statement) {
+        return Host.report(parser, firstToken(Host, parser, items[0]), "Unexpected token");
+    }
+    if (items.len > 1) {
+        try Host.report(parser, firstToken(Host, parser, items[1]), "Expected '}' to close the expression container");
     }
 }
 
-fn validateSwitch(comptime Host: type, parser: anytype, range: Host.IndexRange, inside_loop: bool, depth: u8) Host.ErrorType!void {
-    if (depth == 64) return;
-    for (Host.extra(parser, range)) |node| switch (Host.data(parser, node)) {
-        .break_statement => if (!inside_loop) try Host.report(parser, Host.nodeSpan(parser, node), "`break` is invalid inside `@switch` cases."),
-        .return_statement => try Host.report(parser, Host.nodeSpan(parser, node), "`return` is invalid inside `@switch` cases."),
-        .block_statement => |data| try validateSwitch(Host, parser, data.body, inside_loop, depth + 1),
-        .if_statement => |data| {
-            try validateSwitchNode(Host, parser, data.consequent, inside_loop, depth + 1);
-            if (data.alternate != .null) try validateSwitchNode(Host, parser, data.alternate, inside_loop, depth + 1);
-        },
-        .for_statement => |data| try validateSwitchNode(Host, parser, data.body, true, depth + 1),
-        .for_in_statement => |data| try validateSwitchNode(Host, parser, data.body, true, depth + 1),
-        .for_of_statement => |data| try validateSwitchNode(Host, parser, data.body, true, depth + 1),
-        else => {},
-    };
+/// The span of `node`'s first token, when it is a word; its first character otherwise.
+fn firstToken(comptime Host: type, parser: anytype, node: Host.NodeIndex) Host.Span {
+    const source = Host.source(parser);
+    const start = Host.nodeSpan(parser, node).start;
+    var end = start;
+    while (end < source.len and (std.ascii.isAlphanumeric(source[end]) or source[end] == '_' or source[end] == '$')) end += 1;
+    return .{ .start = start, .end = if (end == start) start + 1 else end };
 }
 
-fn validateSwitchNode(comptime Host: type, parser: anytype, node: Host.NodeIndex, inside_loop: bool, depth: u8) Host.ErrorType!void {
+fn validateSwitch(comptime Host: type, parser: anytype, range: Host.IndexRange, inside_loop: bool, depth: u8) Host.ErrorType!void {
+    return validateSwitchStatements(Host, parser, range, inside_loop, .case, depth);
+}
+
+fn validateSwitchStatements(comptime Host: type, parser: anytype, range: Host.IndexRange, inside_loop: bool, at: SwitchReturn, depth: u8) Host.ErrorType!void {
+    if (depth == 64) return;
+    for (Host.extra(parser, range)) |node| try validateSwitchNode(Host, parser, node, inside_loop, at, depth);
+}
+
+fn validateSwitchNode(comptime Host: type, parser: anytype, node: Host.NodeIndex, inside_loop: bool, at: SwitchReturn, depth: u8) Host.ErrorType!void {
     switch (Host.data(parser, node)) {
-        .block_statement => |data| try validateSwitch(Host, parser, data.body, inside_loop, depth),
-        .break_statement => if (!inside_loop) try Host.report(parser, Host.nodeSpan(parser, node), "`break` is invalid inside `@switch` cases."),
-        .return_statement => try Host.report(parser, Host.nodeSpan(parser, node), "`return` is invalid inside `@switch` cases."),
+        // core raises both at the keyword
+        .break_statement => if (!inside_loop) try Host.report(parser, firstToken(Host, parser, node), "`break` is invalid inside `@switch` cases."),
+        .return_statement => switch (at) {
+            .case => try Host.report(parser, firstToken(Host, parser, node), "`return` is invalid inside `@switch` cases."),
+            .allowed => {},
+        },
+        .block_statement => |data| if (at == .case)
+            try validateCaseContainer(Host, parser, data.body)
+        else
+            try validateSwitchStatements(Host, parser, data.body, inside_loop, .allowed, depth + 1),
+        .if_statement => |data| {
+            try validateSwitchNode(Host, parser, data.consequent, inside_loop, .allowed, depth + 1);
+            if (data.alternate != .null) try validateSwitchNode(Host, parser, data.alternate, inside_loop, .allowed, depth + 1);
+        },
+        .for_statement => |data| try validateSwitchNode(Host, parser, data.body, true, .allowed, depth + 1),
+        .for_in_statement => |data| try validateSwitchNode(Host, parser, data.body, true, .allowed, depth + 1),
+        .for_of_statement => |data| try validateSwitchNode(Host, parser, data.body, true, .allowed, depth + 1),
         else => {},
     }
 }
