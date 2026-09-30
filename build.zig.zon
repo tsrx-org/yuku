@@ -1,6 +1,6 @@
 .{
     .name = .yuku_tsrx,
-    .version = "0.5.0",
+    .version = "0.6.0",
     .dependencies = .{
         .yuku = .{ .path = "../yuku-minimal-seam" },
         .napi_zig = .{
