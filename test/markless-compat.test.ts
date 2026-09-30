@@ -300,7 +300,10 @@ test("keyed repeat clause labels preserve nested Markless shape", () => {
 	expect(errors).toEqual([]);
 	expect(directive?.statement.type).toBe("ForOfStatement");
 	if (directive?.statement.type !== "ForOfStatement") throw new Error("missing keyed repeat");
-	expect(directive.statement).toBe(statement);
+	// The walk reaches the loop's parts through core's fields on the directive;
+	// `statement` stays readable but is not a listed child.
+	expect(statement).toBeUndefined();
+	expect(Object.keys(directive)).not.toContain("statement");
 	expect(directive.statement.index).toBeNull();
 	expect(directive.statement.key).toBe(key);
 	expect(directive.statement.key).toMatchObject({

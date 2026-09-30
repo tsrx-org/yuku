@@ -1,5 +1,6 @@
 import binding from "./binding.js";
 import {
+  addCoreNodeShapes,
   addInnerComments,
   addMappedTypeParameters,
   applyCoreShape,
@@ -8,6 +9,7 @@ import {
   decodeJsxReferences,
   DYNAMIC_TAG_EXPRESSION_MESSAGE,
   narrowTemplateElements,
+  withEstreeShapes,
   withSelfClosingScriptContent,
 } from "./core-compat.js";
 import { authoredDiagnosticSpan } from "./diagnostic-spans.js";
@@ -54,10 +56,13 @@ export function parse(source, options = {}) {
  * Encodes `program` for the code generator. A self-closing `<script />` has no
  * body, and core gives it no `content`, where the wire format carries an empty
  * string; a missing `content` there encodes as that empty string, whatever
- * built the tree.
+ * built the tree. The node shapes `parseModule` gives as `@tsrx/core` does
+ * encode as the typescript-estree nodes they are, in a copy of its tree too.
  */
 export function encode(program) {
-  return withSelfClosingScriptContent(program, () => encodeWire(program));
+  return withEstreeShapes(program, () =>
+    withSelfClosingScriptContent(program, () => encodeWire(program)),
+  );
 }
 
 // acorn reports these at one position, and core's error spans the one
@@ -248,6 +253,9 @@ export function parseModule(source, filename, options = {}) {
     // every filename, as `@tsrx/core`'s parseModule does. `parse` and
     // `analyze` keep standard JSX for `.tsx` and `.jsx`.
     tsrx: parseOptions.tsrx ?? true,
+    // Read with the parentheses and drop them below, where a type's are kept
+    // as core keeps them.
+    preserveParens: true,
     sourceType: "module",
     loose,
     // A module boundary owes its caller the scope-dependent early errors, not
@@ -263,6 +271,9 @@ export function parseModule(source, filename, options = {}) {
   if (comments) comments.push(...result.comments);
   addInnerComments(result.program, text, result.comments);
   addMappedTypeParameters(result.program, text);
+  // acorn, which core parses with, drops a parenthesized expression's
+  // parentheses: `(a, b)` is the SequenceExpression inside them.
+  addCoreNodeShapes(result.program, text, { preserveParens: parseOptions.preserveParens === true });
   decodeJsxReferences(result.program, text);
   // The decoder spans a TypeScript tree's template text as typescript-estree does.
   if (lang !== "js" && lang !== "jsx") narrowTemplateElements(result.program, text);

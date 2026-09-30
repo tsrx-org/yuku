@@ -17,7 +17,14 @@ test("parses accepted TSRX through the public native ArrayBuffer wire", () => {
 	const parsed = parse(source, { lang: "tsx", sourceType: "module" });
 	const module = parseModule(source, "fixture.tsrx");
 	expect(parsed).toEqual(direct);
-	expect(module).toEqual(direct.program);
+	// parseModule gives the same tree @tsrx/core's shape, parentheses dropped,
+	// and that shape encodes back to it.
+	const unparenthesized = parse(source, {
+		lang: "tsx",
+		sourceType: "module",
+		preserveParens: false,
+	});
+	expect(decode(encode(module), source).program).toEqual(unparenthesized.program);
 	expect(module.type).toBe("Program");
 	expect(module).not.toHaveProperty("program");
 	expect(parsed.diagnostics).toEqual([]);
@@ -88,11 +95,20 @@ test("walks every runtime TSRX record name in the accepted corpus", () => {
 
 test("generated encode and decode preserve production program and dialect fields", () => {
 	const source = fixture("control-flow-for.module.tsrx");
-	const program = parseModule(source, "control-flow-for.module.tsrx");
+	const { program } = parse(source, { lang: "tsx", tsrx: true, sourceType: "module" });
 	const encoded = encode(program);
 	expect(encoded).toBeInstanceOf(ArrayBuffer);
 	const restored = decode(encoded, source);
 	expect(restored.program).toEqual(program);
+	// parseModule's core shape, parentheses dropped, encodes as the same tree.
+	const module = parseModule(source, "control-flow-for.module.tsrx");
+	const unparenthesized = parse(source, {
+		lang: "tsx",
+		tsrx: true,
+		sourceType: "module",
+		preserveParens: false,
+	});
+	expect(decode(encode(module), source).program).toEqual(unparenthesized.program);
 
 	const packageSources = ["index.js", "binding.js", "walk.js"].map((name) =>
 		readFileSync(`npm/yuku/${name}`, "utf8"),

@@ -46,6 +46,8 @@ Pass `lang: "tsx"` for TSRX. `parse` defaults to JavaScript and doesn't infer a 
 
 `parseModule` infers the language from the filename: `.tsrx` and `.tsx` select `tsx`, `.jsx` selects `jsx`, `.d.ts` selects `dts`, and `.ts` selects `ts`. Other extensions select `js`. An explicit `lang` overrides this choice. It also uses module mode and enables scope-dependent early-error checks. Unlike the current upstream filename helpers, this wrapper does not infer CommonJS from `.cjs` or `.cts`, or TypeScript from `.mts` / `.cts`. For these files, use `parse` with explicit `lang` and `sourceType`.
 
+`parseModule` also gives the tree `@tsrx/core`'s node shapes where they differ from TypeScript-ESTree's. It drops a parenthesized expression's `ParenthesizedExpression` unless you pass `preserveParens: true`. A TSRX loop, `@switch` or `@try` keeps its fields on the node itself, with core's `statementType`. A signature or function type has `parameters` and `typeAnnotation`. An abstract or `accessor` class member is a `MethodDefinition` or `PropertyDefinition` flagged `abstract` or `accessor`.
+
 ## Explore the tree
 
 Edit the source to update the tree. Select a node in the read-only AST to highlight the source it came from.

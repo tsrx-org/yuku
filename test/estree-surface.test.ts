@@ -3,6 +3,7 @@ import {
 	duplicateBindingDiagnostics,
 	duplicateBindings,
 	normalizeProgram,
+	parse,
 	parseModule,
 	sourceLocation,
 	sourcePosition,
@@ -58,9 +59,11 @@ test("sourceLocation places a real diagnostic where the source reads it", () => 
 });
 
 test("normalizeProgram aliases dialect wrapper fields onto the wrapper", () => {
-	const program = parseModule(
+	// `parse` keeps the wrapper's statement as its one child; parseModule
+	// already gives the wrapper core's fields (test/core-shape-gaps.test.ts).
+	const { program } = parse(
 		"export function App() @{ @for (const item of items) { <li>{item}</li> } }",
-		"App.tsrx",
+		{ lang: "tsx", tsrx: true },
 	);
 	normalizeProgram(program);
 
