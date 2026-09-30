@@ -97,12 +97,12 @@ If you analyzed before editing, the semantic tables still describe the original 
 
 ## Use familiar loop fields
 
-A TSRX loop stores its fields under `statement`: `loop.statement.left`, for example. `normalizeProgram` adds convenient aliases on the wrapper:
+`parse` and `analyze` store a TSRX loop's fields under `statement`: `loop.statement.left`, for example. `normalizeProgram` adds convenient aliases on the wrapper:
 
 ```js
-import { normalizeProgram, parseModule } from "@tsrx/yuku";
+import { normalizeProgram, parse } from "@tsrx/yuku";
 
-const program = parseModule("@for (const item of items) { <li/> }", "list.tsrx");
+const { program } = parse("@for (const item of items) { <li/> }", { lang: "tsx", tsrx: true });
 const loop = program.body[0];
 normalizeProgram(program);
 
@@ -111,5 +111,7 @@ console.log(Object.keys(loop).includes("left")); // false
 ```
 
 The aliases are non-enumerable, so JSON output and tree walkers still see only the original fields. This doesn't make a TSRX tree compatible with every ESTree tool; visitors still need to recognize TSRX node types.
+
+`parseModule` gives the loop `@tsrx/core`'s shape instead: `left`, `right`, `body` and the rest are the wrapper's own fields, so a walker visits them there, and `statement` stays readable but isn't listed.
 
 The [API reference](/reference/api) also covers `duplicateBindings` and `duplicateBindingDiagnostics`, helpers for finding repeated variable declarations within a statement list.

@@ -65,6 +65,8 @@ export interface SwitchCase extends BaseNode {
 	type: "SwitchCase";
 	test: Expression | null;
 	consequent: Statement[];
+	/** `parseModule` only, in a `@switch` expression: the `@case` or `@default`. */
+	keyword?: KeywordSpan;
 }
 
 export interface SwitchStatement extends Statement {
@@ -92,28 +94,68 @@ export interface JSXCodeBlock extends Expression {
 	render: Expression | TSRXExpression | null;
 }
 
+/** The `{ start, end }` of a keyword such as `@else`, as `@tsrx/core` records it. */
+export interface KeywordSpan {
+	start: number;
+	end: number;
+}
+
 export interface JSXIfExpression extends Expression {
 	type: "JSXIfExpression";
 	test: Expression;
 	consequent: BlockStatement;
 	alternate: JSXIfExpression | BlockStatement | null;
+	/** `parseModule` only, as in `@tsrx/core`. */
+	statementType?: "IfStatement";
+	/** `parseModule` only: the `@else`, when there is an `alternate`. */
+	alternateKeyword?: KeywordSpan;
 }
 
+/**
+ * `parse` and `analyze` hold the loop in `statement`. `parseModule` gives the
+ * node `@tsrx/core`'s shape instead: the loop's fields and `statementType` are
+ * the node's own, and `statement` stays readable but is not an enumerable key.
+ */
 export interface JSXForExpression extends Expression {
 	type: "JSXForExpression";
 	statement: ForOfStatement | ForStatement;
 	empty: BlockStatement | null;
+	statementType?: "ForOfStatement" | "ForStatement";
+	await?: boolean;
+	left?: ForOfStatement["left"];
+	right?: Expression;
+	index?: Expression | null;
+	key?: Expression | null;
+	init?: ForStatement["init"];
+	test?: Expression | null;
+	update?: Expression | null;
+	body?: Statement;
+	/** `parseModule` only: the `@empty`, when there is an `empty` block. */
+	emptyKeyword?: KeywordSpan;
 }
 
+/** See `JSXForExpression` for the fields `parseModule` gives it. */
 export interface JSXSwitchExpression extends Expression {
 	type: "JSXSwitchExpression";
 	statement: SwitchStatement;
+	statementType?: "SwitchStatement";
+	discriminant?: Expression;
+	cases?: SwitchCase[];
 }
 
+/** See `JSXForExpression` for the fields `parseModule` gives it. */
 export interface JSXTryExpression extends Expression {
 	type: "JSXTryExpression";
 	statement: TryStatement;
 	pending: BlockStatement | null;
+	statementType?: "TryStatement";
+	block?: BlockStatement;
+	handler?: CatchClause | null;
+	finalizer?: BlockStatement | null;
+	/** `parseModule` only: the `@pending`, when there is a `pending` block. */
+	pendingKeyword?: KeywordSpan;
+	/** `parseModule` only: the `@catch`, when there is a `handler`. */
+	handlerKeyword?: KeywordSpan;
 }
 
 export interface TSRXExpression extends Expression {

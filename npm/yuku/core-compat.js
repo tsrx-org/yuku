@@ -536,3 +536,239 @@ export function applyCoreShape(view, text) {
   });
   return view;
 }
+
+// The field `@tsrx/core` names a control-flow expression's statement after,
+// for each dialect wrapper.
+const STATEMENT_TYPES = {
+  JSXIfExpression: "IfStatement",
+  JSXSwitchExpression: "SwitchStatement",
+  JSXTryExpression: "TryStatement",
+};
+
+// The fields core puts on a control-flow expression itself, for the statement
+// yuku keeps under `statement`: a `@for`'s `await` among them.
+const STATEMENT_FIELDS = {
+  ForOfStatement: ["await", "left", "right", "index", "key", "body"],
+  ForStatement: ["init", "test", "update", "body"],
+  SwitchStatement: ["discriminant", "cases"],
+  TryStatement: ["block", "handler", "finalizer"],
+};
+
+// The signatures core reads with acorn-typescript's names: `parameters` for
+// typescript-estree's `params` and `typeAnnotation` for its `returnType`.
+const SIGNATURE_TYPES = new Set([
+  "TSCallSignatureDeclaration",
+  "TSConstructSignatureDeclaration",
+  "TSMethodSignature",
+  "TSFunctionType",
+  "TSConstructorType",
+]);
+
+// typescript-estree's class members, and the core type and flags each is.
+const CLASS_MEMBERS = {
+  TSAbstractMethodDefinition: ["MethodDefinition", { abstract: true }],
+  TSAbstractPropertyDefinition: ["PropertyDefinition", { abstract: true }],
+  AccessorProperty: ["PropertyDefinition", { accessor: true }],
+  TSAbstractAccessorProperty: ["PropertyDefinition", { abstract: true, accessor: true }],
+};
+
+/**
+ * Defines `name` on `node` as an accessor that reads and writes
+ * `target[field]`, so an edit through either name reaches both.
+ */
+function alias(node, name, target, field, enumerable) {
+  if (Object.hasOwn(node, name)) return;
+  Object.defineProperty(node, name, {
+    configurable: true,
+    enumerable,
+    get: () => target[field],
+    set: (value) => {
+      target[field] = value;
+    },
+  });
+}
+
+/**
+ * The `{ start, end }` of the `@keyword` that the source reads first at or
+ * after `offset`, past whitespace and comments, as core records it; or
+ * `undefined` when the text there is not one.
+ */
+function keywordAt(text, offset) {
+  const pattern = /(?:\s+|\/\/[^\n\r\u2028\u2029]*|\/\*[\s\S]*?\*\/)*(@[A-Za-z]+)/y;
+  pattern.lastIndex = offset;
+  const match = pattern.exec(text);
+  if (match === null) return undefined;
+  const end = pattern.lastIndex;
+  return { start: end - match[1].length, end };
+}
+
+function setKeyword(node, name, text, offset) {
+  const keyword = keywordAt(text, offset);
+  if (keyword !== undefined) node[name] = keyword;
+}
+
+/** Gives a control-flow expression core's flat fields, its `statementType` and its keyword spans. */
+function addControlFlowFields(node, text) {
+  const { statement } = node;
+  if (node.type === "JSXIfExpression") {
+    node.statementType = STATEMENT_TYPES.JSXIfExpression;
+    if (node.alternate) setKeyword(node, "alternateKeyword", text, node.consequent.end);
+    return;
+  }
+  if (!statement || typeof statement !== "object") return;
+  // Core's fields are the node's children, and `statement` stays readable but
+  // unlisted, so a walker or serializer sees each child once, under core's name.
+  for (const field of STATEMENT_FIELDS[statement.type] ?? []) {
+    alias(node, field, statement, field, true);
+  }
+  Object.defineProperty(node, "statement", { enumerable: false });
+  node.statementType = statement.type;
+  switch (node.type) {
+    case "JSXForExpression":
+      if (node.empty) setKeyword(node, "emptyKeyword", text, statement.body.end);
+      break;
+    case "JSXSwitchExpression":
+      for (const arm of statement.cases) setKeyword(arm, "keyword", text, arm.start);
+      break;
+    case "JSXTryExpression":
+      if (node.pending) setKeyword(node, "pendingKeyword", text, statement.block.end);
+      if (statement.handler) setKeyword(node, "handlerKeyword", text, statement.handler.start);
+      break;
+  }
+}
+
+/**
+ * Gives `program` the node shapes `@tsrx/core`'s parseModule gives, where
+ * yuku's decoder has typescript-estree's:
+ *
+ * - A control-flow expression (`@if`, `@for`, `@switch`, `@try` read as an
+ *   expression) has core's `statementType`, a `@for`'s `await`, and the
+ *   `@else`/`@empty`/`@pending`/`@catch`/`@case` keyword spans. The fields of
+ *   the statement yuku keeps under `statement` are the node's own, as core has
+ *   them, and `statement` stays on the node, unlisted.
+ * - A call, construct or method signature and a function or constructor type
+ *   has `parameters` and `typeAnnotation` (its return type), with `params` and
+ *   `returnType` kept as non-enumerable aliases for the encoder.
+ * - A `JSXMemberExpression` has `computed: false`.
+ * - An abstract or `accessor` class member is a `MethodDefinition` or
+ *   `PropertyDefinition` flagged `abstract`/`accessor`, and a method without a
+ *   body has a `TSDeclareMethod` value. `encode` reads them back.
+ */
+export function addCoreNodeShapes(program, text, { preserveParens = false } = {}) {
+  const unwrap = !preserveParens && text.includes("(");
+  forEachNode(
+    program,
+    (node) => typeof node.type === "string",
+    (node) => {
+      addCoreNodeShape(node, text);
+      if (unwrap) unwrapParentheses(node);
+    },
+  );
+}
+
+function addCoreNodeShape(node, text) {
+  const { type } = node;
+  if (type === "JSXMemberExpression") {
+    node.computed = false;
+  } else if (type === "JSXForExpression" || Object.hasOwn(STATEMENT_TYPES, type)) {
+    addControlFlowFields(node, text);
+  } else if (SIGNATURE_TYPES.has(type)) {
+    if (!Object.hasOwn(node, "parameters")) {
+      node.parameters = node.params;
+      node.typeAnnotation = node.returnType ?? null;
+      node.typeParameters ??= null;
+      delete node.params;
+      delete node.returnType;
+      alias(node, "params", node, "parameters", false);
+      alias(node, "returnType", node, "typeAnnotation", false);
+    }
+  } else if (Object.hasOwn(CLASS_MEMBERS, type)) {
+    const [coreType, flags] = CLASS_MEMBERS[type];
+    node.type = coreType;
+    Object.assign(node, flags);
+  } else if (type === "TSEmptyBodyFunctionExpression") {
+    node.type = "TSDeclareMethod";
+  }
+}
+
+/**
+ * The expression inside `node`'s parentheses, or `node` itself. Comments
+ * attached to the parentheses move to that expression, in source order.
+ */
+function unparenthesized(node) {
+  const levels = [];
+  let inner = node;
+  while (inner?.type === "ParenthesizedExpression") {
+    levels.push(inner.comments ?? []);
+    inner = inner.expression;
+  }
+  if (levels.some((comments) => comments.length > 0)) {
+    const before = (comment) => comment.position === "before";
+    const after = (comment) => comment.position !== "before";
+    const own = inner.comments ?? [];
+    inner.comments = [
+      ...levels.flatMap((comments) => comments.filter(before)),
+      ...own.filter(before),
+      ...own.filter(after),
+      ...levels.reverse().flatMap((comments) => comments.filter(after)),
+    ];
+  }
+  return inner;
+}
+
+/**
+ * Replaces each `ParenthesizedExpression` among `node`'s children with the
+ * expression inside it, as acorn reads it. A type's parentheses stay a
+ * `TSParenthesizedType`, as core has them.
+ */
+function unwrapParentheses(node) {
+  for (const key in node) {
+    if (key === "comments") continue;
+    const value = node[key];
+    if (Array.isArray(value)) {
+      for (let index = 0; index < value.length; index++) {
+        if (value[index]?.type === "ParenthesizedExpression") {
+          value[index] = unparenthesized(value[index]);
+        }
+      }
+    } else if (value?.type === "ParenthesizedExpression") {
+      node[key] = unparenthesized(value);
+    }
+  }
+}
+
+/**
+ * Runs `callback` with every class member in `program` that has core's shape
+ * (see `addCoreNodeShapes`) typed as typescript-estree types it, which is what
+ * the encoder reads, and types them back afterwards.
+ *
+ * @template T
+ * @param {object} program
+ * @param {() => T} callback
+ * @returns {T}
+ */
+export function withEstreeClassMembers(program, callback) {
+  const retyped = [];
+  const retype = (node, type) => {
+    retyped.push([node, node.type]);
+    node.type = type;
+  };
+  forEachNode(
+    program,
+    (node) =>
+      node.type === "TSDeclareMethod" ||
+      (node.type === "MethodDefinition" && node.abstract === true) ||
+      (node.type === "PropertyDefinition" && (node.abstract === true || node.accessor === true)),
+    (node) => {
+      if (node.type === "TSDeclareMethod") retype(node, "TSEmptyBodyFunctionExpression");
+      else if (node.type === "MethodDefinition") retype(node, "TSAbstractMethodDefinition");
+      else if (node.accessor !== true) retype(node, "TSAbstractPropertyDefinition");
+      else retype(node, node.abstract ? "TSAbstractAccessorProperty" : "AccessorProperty");
+    },
+  );
+  try {
+    return callback();
+  } finally {
+    for (const [node, type] of retyped) node.type = type;
+  }
+}
