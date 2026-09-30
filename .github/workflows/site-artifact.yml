@@ -171,4 +171,12 @@ jobs:
               --title "site: pin wasm ${short}" \
               --body "Pins the docs wasm built from ${GITHUB_SHA} (src tree ${src_tree}) for yuku.tsrx.dev. Opened by site-artifact.yml; needs one approving review."
           fi
+          # Only the newest pin may merge: an older one would pin wasm for a src
+          # tree main has moved past, and fetch-docs-wasm fails the Vercel build
+          # on it. So every other open pin pull request is closed as superseded.
+          gh pr list --state open --json number,headRefName \
+            --jq ".[] | select(.headRefName | startswith(\"site/wasm-pin-\")) | select(.headRefName != \"${branch}\") | .number" |
+            while read -r stale; do
+              gh pr close "${stale}" --delete-branch --comment "Superseded by the pin for src tree ${src_tree} on ${branch}."
+            done
           echo "::notice::pin pull request open on ${branch}"
