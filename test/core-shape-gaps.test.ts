@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { generate, parse, parseModule, type Comment } from "@tsrx/yuku";
+import { decode, encode, generate, parse, parseModule, type Comment } from "@tsrx/yuku";
 
 // Regression tests for the node shapes parseModule gives where yuku's decoder
 // had typescript-estree's: a control-flow expression's `statementType`, flat
@@ -1425,4 +1425,18 @@ test("generate prints parseModule's core shapes as it prints parse's", () => {
 		// Encoding reads the typescript-estree types back and leaves core's in place.
 		expect(JSON.stringify(program), source).toBe(before);
 	}
+});
+
+test("a JSON copy of parseModule's tree, which loses the unlisted fields, encodes as the tree does", () => {
+	const source =
+		"const c = @for (const x of xs; index i; key x) {\n\t<p />\n} @empty {\n\t<b />\n};\nconst d = @switch (a) {\n\t@case 1: {\n\t\t<p />\n\t}\n};\nconst e = @try {\n\t<p />\n} @pending {\n\t<b />\n} @catch (e) {\n\t<i />\n};\nconst f = @try {\n\t<p />\n} @pending {\n\t<b />\n};\nconst g = @for (let i = 0; i < 3; i++) {\n\t<p />\n};\ninterface I {\n\t(a: A): R;\n\tm?<T>(a: T): R;\n}\ntype F = (a: A) => R;\nabstract class K {\n\tabstract x(): R;\n\taccessor r = 1;\n\tm(): void;\n}";
+	const program = parseModule(source, "App.tsrx");
+	const copy = JSON.parse(JSON.stringify(program));
+	// The decoder marks a TypeScript program with a symbol, which JSON drops too.
+	const typescript = Symbol.for("yuku.estree.transfer.ts");
+	Object.defineProperty(copy, typescript, Object.getOwnPropertyDescriptor(program, typescript)!);
+	const before = JSON.stringify(copy);
+	expect(decode(encode(copy), source).program).toEqual(decode(encode(program), source).program);
+	expect(generate(copy).code).toBe(generate(program).code);
+	expect(JSON.stringify(copy)).toBe(before);
 });

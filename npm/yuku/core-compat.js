@@ -603,6 +603,8 @@ function keywordAt(text, offset) {
 }
 
 function setKeyword(node, name, text, offset) {
+  // a recovered tree can lack the part the keyword follows
+  if (typeof offset !== "number") return;
   const keyword = keywordAt(text, offset);
   if (keyword !== undefined) node[name] = keyword;
 }
@@ -612,7 +614,7 @@ function addControlFlowFields(node, text) {
   const { statement } = node;
   if (node.type === "JSXIfExpression") {
     node.statementType = STATEMENT_TYPES.JSXIfExpression;
-    if (node.alternate) setKeyword(node, "alternateKeyword", text, node.consequent.end);
+    if (node.alternate) setKeyword(node, "alternateKeyword", text, node.consequent?.end);
     return;
   }
   if (!statement || typeof statement !== "object") return;
@@ -625,13 +627,13 @@ function addControlFlowFields(node, text) {
   node.statementType = statement.type;
   switch (node.type) {
     case "JSXForExpression":
-      if (node.empty) setKeyword(node, "emptyKeyword", text, statement.body.end);
+      if (node.empty) setKeyword(node, "emptyKeyword", text, statement.body?.end);
       break;
     case "JSXSwitchExpression":
-      for (const arm of statement.cases) setKeyword(arm, "keyword", text, arm.start);
+      for (const arm of statement.cases ?? []) setKeyword(arm, "keyword", text, arm.start);
       break;
     case "JSXTryExpression":
-      if (node.pending) setKeyword(node, "pendingKeyword", text, statement.block.end);
+      if (node.pending) setKeyword(node, "pendingKeyword", text, statement.block?.end);
       if (statement.handler) setKeyword(node, "handlerKeyword", text, statement.handler.start);
       break;
   }
@@ -737,38 +739,82 @@ function unwrapParentheses(node) {
   }
 }
 
+// The typescript-estree type the encoder reads for each class member in core's shape.
+function estreeClassMemberType(node) {
+  if (node.type === "TSDeclareMethod") return "TSEmptyBodyFunctionExpression";
+  if (node.type === "MethodDefinition") {
+    return node.abstract === true ? "TSAbstractMethodDefinition" : undefined;
+  }
+  if (node.type !== "PropertyDefinition") return undefined;
+  if (node.accessor === true) {
+    return node.abstract === true ? "TSAbstractAccessorProperty" : "AccessorProperty";
+  }
+  return node.abstract === true ? "TSAbstractPropertyDefinition" : undefined;
+}
+
+// The statement a control-flow expression in core's shape holds, rebuilt from
+// its own fields, for a copy that lost the unlisted `statement` (a JSON or
+// structured clone, say).
+function rebuiltStatement(node) {
+  const type = node.statementType;
+  const fields = STATEMENT_FIELDS[type];
+  if (fields === undefined || node.type === "JSXIfExpression") return undefined;
+  const statement = { type, start: node.start + 1, end: node.end };
+  for (const field of fields) if (field in node) statement[field] = node[field];
+  // a loop's statement ends at its body, before any `@empty`
+  if (node.type === "JSXForExpression") statement.end = node.body?.end ?? node.end;
+  return statement;
+}
+
 /**
- * Runs `callback` with every class member in `program` that has core's shape
- * (see `addCoreNodeShapes`) typed as typescript-estree types it, which is what
- * the encoder reads, and types them back afterwards.
+ * Runs `callback` with every node in `program` that has a shape of core's the
+ * encoder doesn't read (see `addCoreNodeShapes`) in typescript-estree's shape,
+ * and restores core's afterwards. A class member is typed as typescript-estree
+ * types it. A signature or control-flow expression that lost its unlisted
+ * `params`, `returnType` or `statement` in a copy gets them back from core's
+ * fields.
  *
  * @template T
  * @param {object} program
  * @param {() => T} callback
  * @returns {T}
  */
-export function withEstreeClassMembers(program, callback) {
-  const retyped = [];
-  const retype = (node, type) => {
-    retyped.push([node, node.type]);
-    node.type = type;
-  };
+export function withEstreeShapes(program, callback) {
+  const undo = [];
   forEachNode(
     program,
-    (node) =>
-      node.type === "TSDeclareMethod" ||
-      (node.type === "MethodDefinition" && node.abstract === true) ||
-      (node.type === "PropertyDefinition" && (node.abstract === true || node.accessor === true)),
+    (node) => typeof node.type === "string",
     (node) => {
-      if (node.type === "TSDeclareMethod") retype(node, "TSEmptyBodyFunctionExpression");
-      else if (node.type === "MethodDefinition") retype(node, "TSAbstractMethodDefinition");
-      else if (node.accessor !== true) retype(node, "TSAbstractPropertyDefinition");
-      else retype(node, node.abstract ? "TSAbstractAccessorProperty" : "AccessorProperty");
+      const type = estreeClassMemberType(node);
+      if (type !== undefined) {
+        const coreType = node.type;
+        node.type = type;
+        undo.push(() => {
+          node.type = coreType;
+        });
+      } else if (SIGNATURE_TYPES.has(node.type)) {
+        if (node.params === undefined && Array.isArray(node.parameters)) {
+          node.params = node.parameters;
+          node.returnType = node.typeAnnotation ?? null;
+          undo.push(() => {
+            delete node.params;
+            delete node.returnType;
+          });
+        }
+      } else if (node.statement === undefined && typeof node.statementType === "string") {
+        const statement = rebuiltStatement(node);
+        if (statement !== undefined) {
+          node.statement = statement;
+          undo.push(() => {
+            delete node.statement;
+          });
+        }
+      }
     },
   );
   try {
     return callback();
   } finally {
-    for (const [node, type] of retyped) node.type = type;
+    for (const restore of undo) restore();
   }
 }

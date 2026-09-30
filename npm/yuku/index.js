@@ -9,7 +9,7 @@ import {
   decodeJsxReferences,
   DYNAMIC_TAG_EXPRESSION_MESSAGE,
   narrowTemplateElements,
-  withEstreeClassMembers,
+  withEstreeShapes,
   withSelfClosingScriptContent,
 } from "./core-compat.js";
 import { authoredDiagnosticSpan } from "./diagnostic-spans.js";
@@ -56,11 +56,11 @@ export function parse(source, options = {}) {
  * Encodes `program` for the code generator. A self-closing `<script />` has no
  * body, and core gives it no `content`, where the wire format carries an empty
  * string; a missing `content` there encodes as that empty string, whatever
- * built the tree. An abstract or `accessor` class member and a `TSDeclareMethod`
- * in core's shape encode as the typescript-estree nodes they are.
+ * built the tree. The node shapes `parseModule` gives as `@tsrx/core` does
+ * encode as the typescript-estree nodes they are, in a copy of its tree too.
  */
 export function encode(program) {
-  return withEstreeClassMembers(program, () =>
+  return withEstreeShapes(program, () =>
     withSelfClosingScriptContent(program, () => encodeWire(program)),
   );
 }
