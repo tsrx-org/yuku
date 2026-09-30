@@ -134,3 +134,48 @@ test("analyze gives a template-block return core's code", () => {
 		analyze("export function App() @{\n\treturn;\n\t<p />\n}", "App.tsrx").diagnostics,
 	).toEqual([]);
 });
+
+test("core searches no expression block's rendered node, and a nested one twice, as core does", () => {
+	// [source, core 0.5.2's collected [code, pos, end]]
+	const cases: [string, [string, number, number][]][] = [
+		// the rendered node is not searched: an `@if` or `@for` there may return
+		["export const v = @{\n\t@if (x) { return; <p /> }\n};", []],
+		["export const v = @{\n\t<div>@if (x) { return; <p /> }</div>\n};", []],
+		["export const v = @{\n\t@for (const i of items) { return; <p /> }\n};", []],
+		// under a `@try` everything is, a nested code block's rendered node too
+		[
+			"export function App({ x }) @{\n\t@try {\n\t\t@{ <div>@if (x) { return; <b/> }</div> }\n\t} @catch (e) { <b /> }\n}",
+			[["TSRX2001", 58, 65]],
+		],
+		// a nested block reports its own, and the one around it again
+		[
+			"export function App({ x }) @{\n\t@try {\n\t\t@{ return; <b/> }\n\t} @catch (e) { <b /> }\n}",
+			[
+				["TSRX2001", 43, 50],
+				["TSRX2001", 43, 50],
+			],
+		],
+		[
+			"export const v = @{\n\tconst a = <div>@{ return; <b/> }</div>;\n\t<p />\n};",
+			[
+				["TSRX2001", 39, 46],
+				["TSRX2001", 39, 46],
+			],
+		],
+		[
+			"export function App({ x }) @{\n\t@try {\n\t\t@try { return; <b/> } @catch (e) { <b/> }\n\t} @catch (e) { <b /> }\n}",
+			[
+				["TSRX2001", 47, 54],
+				["TSRX2001", 47, 54],
+			],
+		],
+	];
+	for (const [source, expected] of cases) {
+		const errors: CoreError[] = [];
+		parseModule(source, "App.tsrx", { collect: true, errors });
+		expect(
+			errors.map(({ code, pos, end }) => [code, pos, end]),
+			source,
+		).toEqual(expected);
+	}
+});
