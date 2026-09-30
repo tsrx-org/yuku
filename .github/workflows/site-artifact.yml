@@ -27,6 +27,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
+      # main is protected, so the pin lands through a pull request.
+      pull-requests: write
     steps:
       - name: Check out the exact source revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
@@ -158,8 +160,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "site: pin wasm ${short}"
-          # The build rewrote tracked files (the site's vercel.json); the rebase needs a clean tree.
-          git stash push --include-untracked --quiet || true
-          git fetch origin main
-          git rebase FETCH_HEAD
-          git push origin HEAD:main
+          # main is protected (GH006 on a direct push), so the pin goes up as a
+          # branch and a pull request, as oxc's site-artifact.yml does. The
+          # asset above is already uploaded, so until the pull request merges
+          # the site keeps serving the previously pinned wasm.
+          branch="site/wasm-pin-${short}"
+          git push --force origin "HEAD:refs/heads/${branch}"
+          if gh pr list --head "${branch}" --state open --json number --jq 'length' | grep -q '^0$'; then
+            gh pr create --base main --head "${branch}" \
+              --title "site: pin wasm ${short}" \
+              --body "Pins the docs wasm built from ${GITHUB_SHA} (src tree ${src_tree}) for yuku.tsrx.dev. Opened by site-artifact.yml; needs one approving review."
+          fi
+          echo "::notice::pin pull request open on ${branch}"
