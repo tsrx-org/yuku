@@ -549,6 +549,7 @@ const STATEMENT_TYPES = {
 // yuku keeps under `statement`: a `@for`'s `await` among them.
 const STATEMENT_FIELDS = {
   ForOfStatement: ["await", "left", "right", "index", "key", "body"],
+  ForInStatement: ["left", "right", "body"],
   ForStatement: ["init", "test", "update", "body"],
   SwitchStatement: ["discriminant", "cases"],
   TryStatement: ["block", "handler", "finalizer"],
@@ -620,10 +621,12 @@ function addControlFlowFields(node, text) {
   if (!statement || typeof statement !== "object") return;
   // Core's fields are the node's children, and `statement` stays readable but
   // unlisted, so a walker or serializer sees each child once, under core's name.
-  for (const field of STATEMENT_FIELDS[statement.type] ?? []) {
-    alias(node, field, statement, field, true);
+  // A statement of a kind this doesn't know stays the listed child.
+  const fields = STATEMENT_FIELDS[statement.type];
+  if (fields !== undefined) {
+    for (const field of fields) alias(node, field, statement, field, true);
+    Object.defineProperty(node, "statement", { enumerable: false });
   }
-  Object.defineProperty(node, "statement", { enumerable: false });
   node.statementType = statement.type;
   switch (node.type) {
     case "JSXForExpression":

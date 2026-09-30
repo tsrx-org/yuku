@@ -379,6 +379,68 @@ const cases: [string, string, string, unknown][] = [
 		},
 	],
 	[
+		"a @for...in expression",
+		"const c = @for (const k in obj) {\n\t<p>{(k)}</p>\n};",
+		"body[0].declarations[0].init",
+		{
+			type: "JSXForExpression",
+			start: 10,
+			end: 49,
+			left: {
+				type: "VariableDeclaration",
+				start: 16,
+				end: 23,
+				declarations: [
+					{
+						type: "VariableDeclarator",
+						start: 22,
+						end: 23,
+						id: { type: "Identifier", start: 22, end: 23, name: "k" },
+						init: null,
+					},
+				],
+				kind: "const",
+			},
+			right: { type: "Identifier", start: 27, end: 30, name: "obj" },
+			body: {
+				type: "BlockStatement",
+				start: 32,
+				end: 49,
+				body: [
+					{
+						type: "JSXElement",
+						start: 35,
+						end: 47,
+						children: [
+							{
+								type: "JSXExpressionContainer",
+								start: 38,
+								end: 43,
+								expression: { type: "Identifier", start: 40, end: 41, name: "k" },
+							},
+						],
+						openingElement: {
+							type: "JSXOpeningElement",
+							start: 35,
+							end: 38,
+							attributes: [],
+							name: { type: "JSXIdentifier", start: 36, end: 37, name: "p" },
+							selfClosing: false,
+						},
+						closingElement: {
+							type: "JSXClosingElement",
+							start: 43,
+							end: 47,
+							name: { type: "JSXIdentifier", start: 45, end: 46, name: "p" },
+						},
+					},
+				],
+			},
+			statementType: "ForInStatement",
+			empty: null,
+		},
+	],
+	[
 		"a classic @for expression",
 		"const c = @for (let i = 0; i < 3; i++) {\n\t<p />\n};",
 		"body[0].declarations[0].init",
@@ -1429,7 +1491,7 @@ test("generate prints parseModule's core shapes as it prints parse's", () => {
 
 test("a JSON copy of parseModule's tree, which loses the unlisted fields, encodes as the tree does", () => {
 	const source =
-		"const c = @for (const x of xs; index i; key x) {\n\t<p />\n} @empty {\n\t<b />\n};\nconst d = @switch (a) {\n\t@case 1: {\n\t\t<p />\n\t}\n};\nconst e = @try {\n\t<p />\n} @pending {\n\t<b />\n} @catch (e) {\n\t<i />\n};\nconst f = @try {\n\t<p />\n} @pending {\n\t<b />\n};\nconst g = @for (let i = 0; i < 3; i++) {\n\t<p />\n};\ninterface I {\n\t(a: A): R;\n\tm?<T>(a: T): R;\n}\ntype F = (a: A) => R;\nabstract class K {\n\tabstract x(): R;\n\taccessor r = 1;\n\tm(): void;\n}";
+		"const c = @for (const x of xs; index i; key x) {\n\t<p />\n} @empty {\n\t<b />\n};\nconst d = @switch (a) {\n\t@case 1: {\n\t\t<p />\n\t}\n};\nconst e = @try {\n\t<p />\n} @pending {\n\t<b />\n} @catch (e) {\n\t<i />\n};\nconst f = @try {\n\t<p />\n} @pending {\n\t<b />\n};\nconst g = @for (let i = 0; i < 3; i++) {\n\t<p />\n};\nconst h = @for (const k in obj) {\n\t<p />\n};\ninterface I {\n\t(a: A): R;\n\tm?<T>(a: T): R;\n}\ntype F = (a: A) => R;\nabstract class K {\n\tabstract x(): R;\n\taccessor r = 1;\n\tm(): void;\n}";
 	const program = parseModule(source, "App.tsrx");
 	const copy = JSON.parse(JSON.stringify(program));
 	// The decoder marks a TypeScript program with a symbol, which JSON drops too.

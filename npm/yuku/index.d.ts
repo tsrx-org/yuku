@@ -120,7 +120,7 @@ export interface JSXForExpression extends Expression {
 	type: "JSXForExpression";
 	statement: ForOfStatement | ForStatement;
 	empty: BlockStatement | null;
-	statementType?: "ForOfStatement" | "ForStatement";
+	statementType?: "ForOfStatement" | "ForInStatement" | "ForStatement";
 	await?: boolean;
 	left?: ForOfStatement["left"];
 	right?: Expression;
