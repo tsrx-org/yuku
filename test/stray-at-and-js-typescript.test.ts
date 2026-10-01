@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { parseModule } from "@tsrx/yuku";
+import { analyze, parse, parseModule } from "@tsrx/yuku";
 
 // Every expected `code`, `pos`, `raisedAt` and `loc` below is what @tsrx/core
 // 0.5.2's parseModule gives the same source. Messages keep yuku's wording, so
@@ -32,6 +32,19 @@ function expectAcornError(source: string, expected: Expected) {
 	expect(error.message, source).toMatch(
 		new RegExp(`\\(${expected.loc.line}:${expected.loc.column}\\)$`),
 	);
+}
+
+// The spans of every TemplateElement under `root`, in source order.
+function templateElements(root: unknown): [number, number][] {
+	const spans: [number, number][] = [];
+	const visit = (value: unknown) => {
+		if (value === null || typeof value !== "object") return;
+		const node = value as { type?: string; start?: number; end?: number };
+		if (node.type === "TemplateElement") spans.push([node.start!, node.end!]);
+		for (const [key, child] of Object.entries(value)) if (key !== "loc") visit(child);
+	};
+	visit(root);
+	return spans.sort((a, b) => a[0] - b[0]);
 }
 
 const at = (code: string, pos: number, raisedAt: number, line: number, column: number) => ({
@@ -184,4 +197,96 @@ test("a shorthand attribute with no `}` is raised where core's tag tokenizer sto
 		expectAcornError(`<div ${attribute} />`, at("TS1005", pos, raisedAt, 1, pos));
 	}
 	expectAcornError("<a{b>x</a>", at("TS1005", 4, 5, 1, 4));
+});
+
+test("parseModule reads TypeScript in .js and .jsx files, as @tsrx/core 0.5.2 does", () => {
+	for (const filename of ["App.js", "App.jsx", "App.JS", "src/app.js?raw"]) {
+		const [declaration] = parseModule("const x: number = 1;", filename).body as any[];
+		expect(declaration.declarations[0].id.typeAnnotation.typeAnnotation, filename).toMatchObject({
+			type: "TSNumberKeyword",
+			start: 9,
+			end: 15,
+		});
+		expect(parseModule("type T = string;", filename).body[0], filename).toMatchObject({
+			type: "TSTypeAliasDeclaration",
+			start: 0,
+			end: 16,
+			id: { type: "Identifier", name: "T", start: 5, end: 6 },
+		});
+		expect(templateElements(parseModule("type T = `a${string}b`;", filename)), filename).toEqual([
+			[10, 11],
+			[20, 21],
+		]);
+		// JSX too
+		expect(
+			(parseModule("const v = <p>{x}</p>;", filename).body[0] as any).declarations[0].init.type,
+			filename,
+		).toBe("JSXElement");
+		// a call with type arguments
+		const [call] = parseModule("f<T>(x);", filename).body as any[];
+		expect(call.expression, filename).toMatchObject({
+			type: "CallExpression",
+			typeArguments: { type: "TSTypeParameterInstantiation", start: 1, end: 4 },
+			arguments: [{ type: "Identifier", name: "x" }],
+		});
+	}
+});
+
+test("plain JavaScript in a .js file keeps its tree", () => {
+	const shapes: [string, object][] = [
+		[
+			"a < b > c;",
+			{
+				type: "BinaryExpression",
+				operator: ">",
+				left: { type: "BinaryExpression", operator: "<", start: 0, end: 5 },
+				right: { type: "Identifier", name: "c" },
+			},
+		],
+		[
+			"x = (a) => a < b;",
+			{
+				type: "AssignmentExpression",
+				right: {
+					type: "ArrowFunctionExpression",
+					params: [{ type: "Identifier", name: "a", start: 5, end: 6 }],
+					body: { type: "BinaryExpression", operator: "<" },
+				},
+			},
+		],
+		["x = y / z / w;", { right: { type: "BinaryExpression", operator: "/" } }],
+		["type = 1;", { type: "AssignmentExpression", left: { type: "Identifier", name: "type" } }],
+		[
+			"declare = 1;",
+			{ type: "AssignmentExpression", left: { type: "Identifier", name: "declare" } },
+		],
+		["x = a ? (b) : c;", { right: { type: "ConditionalExpression", consequent: { name: "b" } } }],
+		[
+			"x = `a${b}c`;",
+			{
+				right: {
+					type: "TemplateLiteral",
+					quasis: [
+						{ start: 5, end: 6 },
+						{ start: 10, end: 11 },
+					],
+				},
+			},
+		],
+	];
+	for (const [source, expression] of shapes) {
+		expect((parseModule(source, "App.js").body[0] as any).expression, source).toMatchObject(
+			expression,
+		);
+	}
+});
+
+test("parse and analyze still read .js as plain JavaScript", () => {
+	expect(parse("const x: number = 1;").diagnostics.length).toBeGreaterThan(0);
+	expect(parse("const x: number = 1;", { lang: "js" }).diagnostics.length).toBeGreaterThan(0);
+	expect(analyze("const x: number = 1;", "App.js").diagnostics.length).toBeGreaterThan(0);
+	expect(analyze("const v = <p/>;", "App.js").diagnostics.length).toBeGreaterThan(0);
+	expect(analyze("const v = <p/>;", "App.jsx").diagnostics).toEqual([]);
+	// an explicit `lang` still wins in parseModule
+	expect(() => parseModule("const x: number = 1;", "App.js", { lang: "js" })).toThrow();
 });

@@ -57,8 +57,9 @@ test("generated npm host infers TSRX through query and hash suffixes", async () 
 		expect(parseModule(source, filename).type).toBe("Program");
 	}
 
-	expect(() => parseModule(source, "module.js?name=.tsrx")).toThrow(/Unexpected token '<'/);
-	expect(parseModule(source, "module.js?name=.tsrx", { lang: "tsx" }).type).toBe("Program");
+	// `.mjs` is plain JavaScript; `.js` reads as `tsx`, as in @tsrx/core
+	expect(() => parseModule(source, "module.mjs?name=.tsrx")).toThrow(/Unexpected token '<'/);
+	expect(parseModule(source, "module.mjs?name=.tsrx", { lang: "tsx" }).type).toBe("Program");
 	expect(() => parseModule(source, "module.tsrx?markless-route", { lang: "js" })).toThrow(
 		/Unexpected token '<'/,
 	);

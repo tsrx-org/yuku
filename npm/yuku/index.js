@@ -36,6 +36,19 @@ function inferLang(filename) {
 }
 
 /**
+ * The dialect `parseModule` reads `filename` in. `@tsrx/core` reads every
+ * module as TypeScript with JSX, so a `.js` or `.jsx` file is read as `tsx`
+ * here: type annotations, `type` aliases and the rest of TypeScript parse in
+ * it as they do in core. `parse` and `analyze` keep `inferLang`'s plain
+ * JavaScript reading of those files.
+ */
+function moduleLang(filename) {
+  const lower = filename.split(/[?#]/, 1)[0].toLowerCase();
+  if (lower.endsWith(".js") || lower.endsWith(".jsx")) return "tsx";
+  return inferLang(filename);
+}
+
+/**
  * Whether `filename` names a `.tsrx` file. Only there is a comment in JSX text
  * a comment, as `@tsrx/core` reads it; in `.tsx` and `.jsx` it is text.
  */
@@ -175,8 +188,8 @@ function syntaxError(diagnostic, source, filename) {
  * The second argument is either a filename or the options object, so the
  * `analyze(source, options)` shape that shipped in 0.1.1 keeps working
  * unchanged. `lang` resolves in this order: an explicit `options.lang` wins,
- * then inference from `filename` (the same `inferLang` `parseModule` uses),
- * then the analyzer's own default.
+ * then inference from `filename` (`inferLang`; `parseModule` reads `.js` and
+ * `.jsx` as `tsx` instead), then the analyzer's own default.
  *
  * @param {string | Uint8Array} source Source text or its UTF-8 bytes.
  * @param {string | import("./index.d.ts").ParseOptions} [filename]
@@ -246,7 +259,7 @@ export function generate(program, options) {
 export function parseModule(source, filename, options = {}) {
   const { collect = false, loose = false, errors, comments, ...parseOptions } = options;
   const text = sourceText(source);
-  const lang = parseOptions.lang ?? inferLang(filename);
+  const lang = parseOptions.lang ?? moduleLang(filename);
   const result = parse(source, {
     ...parseOptions,
     lang,

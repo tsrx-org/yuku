@@ -581,8 +581,9 @@ export function parse(source: string | Uint8Array, options?: ParseOptions): Pars
  * 2. otherwise the dialect inferred from `filename` -- `.tsrx` and `.tsx` give
  *    `tsx`, `.jsx` gives `jsx`, `.d.ts` gives `dts`, `.ts` gives `ts`, and
  *    anything else gives `js`. Any `?query` or `#hash` suffix is ignored, so a
- *    build-tool id like `view.tsrx?raw` still resolves `tsx`. This is the same
- *    inference `parseModule` applies;
+ *    build-tool id like `view.tsrx?raw` still resolves `tsx`. `parseModule`
+ *    infers the same way, except that it reads `.js` and `.jsx` as `tsx`, as
+ *    `@tsrx/core` does;
  * 3. otherwise the analyzer's own default.
  */
 export function analyze(
