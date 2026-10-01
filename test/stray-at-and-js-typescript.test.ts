@@ -190,6 +190,12 @@ test("a branch without its `@` is found past a nested header and a `//` in a str
 		["@if (a) {} else {} // c", "TSRX1009", 49, 53, 12],
 		['@if (a === "//") /* c */', "TSRX1008", 63, 64, 0],
 		["@if (f(a)) x", "TSRX1008", 49, 50, 12],
+		// a paren or brace in a string or a comment pairs with nothing
+		['@if (a === ")") {} else {}', "TSRX1009", 57, 61, 20],
+		['@for (const x of f(")")) {} empty {}', "TSRX1009", 66, 71, 29],
+		["@if (/* ) */ a) {} else {}", "TSRX1009", 57, 61, 20],
+		['@if (a === "\\")") {} else {}', "TSRX1009", 59, 63, 22],
+		['@if (a) { <p>{"}"}</p> } else {}', "TSRX1009", 63, 67, 26],
 	];
 	for (const [body, code, pos, raisedAt, column] of cases) {
 		const line = code === "TSRX1008" && column === 0 ? 3 : 2;

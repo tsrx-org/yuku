@@ -247,16 +247,54 @@ function directiveBlockBefore(text, offset) {
 }
 
 /**
- * The offset of the `open` that the `close` at `offset` closes, counting the
- * pairs between as written, or -1.
+ * The offset of the `open` that the `close` at `offset` closes, or -1. The
+ * pairs between are counted as written, past strings and comments.
  */
 function matchingOpen(text, offset, open, close) {
   let depth = 0;
+  let lineStart = offset + 1;
+  let comment = -1;
   for (let index = offset; index >= 0; index--) {
-    if (text[index] === close) depth++;
-    else if (text[index] === open && --depth === 0) return index;
+    if (index < lineStart) {
+      lineStart = index;
+      while (lineStart > 0 && !/[\n\r\u2028\u2029]/.test(text[lineStart - 1])) lineStart--;
+      comment = lineCommentBefore(text, lineStart, index + 1);
+    }
+    // the loop's decrement steps off the string or comment's first character
+    if (comment !== -1 && index >= comment) {
+      index = comment;
+      continue;
+    }
+    const character = text[index];
+    if (character === '"' || character === "'" || character === "`") {
+      index = quoteBefore(text, index);
+      continue;
+    }
+    if (character === "/" && text[index - 1] === "*") {
+      const start = text.lastIndexOf("/*", index - 2);
+      if (start !== -1) {
+        index = start;
+        continue;
+      }
+    }
+    if (character === close) depth++;
+    else if (character === open && --depth === 0) return index;
   }
   return -1;
+}
+
+/**
+ * The offset of the quote that opens the string whose closing quote is at
+ * `offset`, or `offset` itself when there is none.
+ */
+function quoteBefore(text, offset) {
+  for (let index = offset - 1; index >= 0; index--) {
+    if (text[index] !== text[offset]) continue;
+    let backslashes = 0;
+    while (text[index - 1 - backslashes] === "\\") backslashes++;
+    if (backslashes % 2 === 0) return index;
+  }
+  return offset;
 }
 
 // The branch each directive takes after its block, written with an `@`.
