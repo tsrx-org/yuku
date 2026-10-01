@@ -27,12 +27,18 @@ fn dispatch(comptime Host: type, parser: anytype, comptime jsx_keyword_boundary:
 }
 
 fn matchesDirective(comptime Host: type, parser: anytype, expected: []const u8, comptime keyword_boundary: bool) bool {
-    return if (keyword_boundary) directive(Host, parser, expected) else directivePrefix(Host, parser, expected);
+    return if (keyword_boundary) childDirective(Host, parser, expected) else directivePrefix(Host, parser, expected);
 }
 
 fn directive(comptime Host: type, parser: anytype, expected: []const u8) bool {
     const span = Host.currentSpan(parser);
     return jsx_text.keywordAfterAt(Host.source(parser), span.start, expected);
+}
+
+/// Among JSX children a control-flow keyword opens a directive only with its
+/// header after it, as in core; `<p>@if</p>` is text.
+fn childDirective(comptime Host: type, parser: anytype, expected: []const u8) bool {
+    return jsx_text.controlFlowDirectiveAt(Host.source(parser), Host.currentSpan(parser).start, expected);
 }
 
 fn directivePrefix(comptime Host: type, parser: anytype, expected: []const u8) bool {
