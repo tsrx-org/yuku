@@ -7,6 +7,7 @@ import {
   bareAtDiagnostic,
   coreDiagnostic,
   corePosition,
+  directiveEnds,
   decodeJsxReferences,
   DYNAMIC_TAG_EXPRESSION_MESSAGE,
   narrowTemplateElements,
@@ -299,10 +300,15 @@ export function parseModule(source, filename, options = {}) {
   // agree with each other and with what a reader would underline. See
   // ./diagnostic-spans.js for which shapes this covers and why it is here
   // rather than at the seam that assigns the spans.
+  const directiveEndingAt = directiveEnds(result.program);
   let fatal = result.diagnostics
     .filter((diagnostic) => diagnostic.severity === "error")
     .map((diagnostic) =>
-      coreDiagnostic({ ...diagnostic, ...authoredDiagnosticSpan(diagnostic, text) }, text),
+      coreDiagnostic(
+        { ...diagnostic, ...authoredDiagnosticSpan(diagnostic, text) },
+        text,
+        directiveEndingAt,
+      ),
     );
   // A bare `@` opening a statement fails core's parse at the token after it,
   // before anything later is read, so what the native parser reported from

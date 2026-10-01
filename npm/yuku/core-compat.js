@@ -222,79 +222,47 @@ function tokenEnd(text, offset) {
  * its name and where it starts, or `undefined`.
  */
 function directiveBefore(text, offset) {
-  let index = skipTriviaBefore(text, offset);
-  if (text[index - 1] === ")") {
-    const open = matchingOpen(text, index - 1, "(", ")");
-    if (open === -1) return undefined;
-    index = skipTriviaBefore(text, open);
+  const end = skipTriviaBefore(text, offset);
+  if (text[end - 1] === ")") return headedDirectiveBefore(text, end);
+  let start = end;
+  while (start > 0 && /[a-z]/.test(text[start - 1])) start--;
+  if (start === end || text[start - 1] !== "@") return undefined;
+  return { keyword: text.slice(start, end), start };
+}
+
+/**
+ * The `@keyword ( … )` whose header's `)` ends at `end`: the nearest `@`
+ * before it with a name and a `(` after it whose `)`, read forward past
+ * strings, template literals and comments, is that one.
+ */
+function headedDirectiveBefore(text, end) {
+  for (let at = text.lastIndexOf("@", end - 1); at !== -1; at = text.lastIndexOf("@", at - 1)) {
+    const keyword = /^[a-z]+/.exec(text.slice(at + 1, at + 16))?.[0];
+    if (keyword === undefined) continue;
+    const open = skipTriviaAfter(text, at + 1 + keyword.length);
+    if (text[open] === "(" && closingParen(text, open) === end - 1) {
+      return { keyword, start: at + 1 };
+    }
   }
-  const end = index;
-  while (index > 0 && /[a-z]/.test(text[index - 1])) index--;
-  if (index === end || text[index - 1] !== "@") return undefined;
-  return { keyword: text.slice(index, end), start: index };
+  return undefined;
 }
 
-/**
- * The directive whose block's `}` ends right before `offset`, give or take
- * whitespace and comments, or `undefined`. The braces between are matched as
- * written.
- */
-function directiveBlockBefore(text, offset) {
-  const close = skipTriviaBefore(text, offset) - 1;
-  if (text[close] !== "}") return undefined;
-  const open = matchingOpen(text, close, "{", "}");
-  return open === -1 ? undefined : directiveBefore(text, open);
-}
-
-/**
- * The offset of the `open` that the `close` at `offset` closes, or -1. The
- * pairs between are counted as written, past strings and comments.
- */
-function matchingOpen(text, offset, open, close) {
+/** The offset of the `)` that closes the `(` at `open`, read forward, or -1. */
+function closingParen(text, open) {
   let depth = 0;
-  let lineStart = offset + 1;
-  let comment = -1;
-  for (let index = offset; index >= 0; index--) {
-    if (index < lineStart) {
-      lineStart = index;
-      while (lineStart > 0 && !/[\n\r\u2028\u2029]/.test(text[lineStart - 1])) lineStart--;
-      comment = lineCommentBefore(text, lineStart, index + 1);
-    }
-    // the loop's decrement steps off the string or comment's first character
-    if (comment !== -1 && index >= comment) {
-      index = comment;
-      continue;
-    }
+  for (let index = open; index < text.length; index++) {
     const character = text[index];
     if (character === '"' || character === "'" || character === "`") {
-      index = quoteBefore(text, index);
-      continue;
+      index = skipQuoted(text, index) - 1;
+    } else if (character === "/" && (text[index + 1] === "/" || text[index + 1] === "*")) {
+      index = skipComment(text, index) - 1;
+    } else if (character === "(") {
+      depth++;
+    } else if (character === ")" && --depth === 0) {
+      return index;
     }
-    if (character === "/" && text[index - 1] === "*") {
-      const start = text.lastIndexOf("/*", index - 2);
-      if (start !== -1) {
-        index = start;
-        continue;
-      }
-    }
-    if (character === close) depth++;
-    else if (character === open && --depth === 0) return index;
   }
   return -1;
-}
-
-/**
- * The offset of the quote that opens the string whose closing quote is at
- * `offset`, or `offset` itself when there is none.
- */
-function quoteBefore(text, offset) {
-  for (let index = offset - 1; index >= 0; index--) {
-    if (text[index] !== text[offset]) continue;
-    let backslashes = 0;
-    while (text[index - 1 - backslashes] === "\\") backslashes++;
-    if (backslashes % 2 === 0) return index;
-  }
-  return offset;
 }
 
 // The branch each directive takes after its block, written with an `@`.
@@ -330,18 +298,15 @@ function keywordReadAsName(text, offset) {
 
 /**
  * A directive branch written without its `@` (`@if (a) {} else {}`) at
- * `offset`, which core reports as TSRX1009 over the word: the diagnostic for
- * it, or `undefined`.
+ * `offset`, after a block of the `directive` keyword, which core reports as
+ * TSRX1009 over the word: the diagnostic for it, or `undefined`.
  */
-function branchWithoutAt(diagnostic, text, offset) {
+function branchWithoutAt(diagnostic, text, offset, directive) {
   const word = wordAt(text, offset);
-  const directive = directiveBlockBefore(text, offset);
-  if (word === undefined || !DIRECTIVE_BRANCHES[directive?.keyword]?.includes(word)) {
-    return undefined;
-  }
+  if (word === undefined || !DIRECTIVE_BRANCHES[directive]?.includes(word)) return undefined;
   return {
     ...diagnostic,
-    message: `Expected '@${word}' after the '@${directive.keyword}' block`,
+    message: `Expected '@${word}' after the '@${directive}' block`,
     code: "TSRX1009",
     start: offset,
     end: offset + word.length,
@@ -364,15 +329,17 @@ function branchWithoutAt(diagnostic, text, offset) {
  * @template {{ message: string, start: number, end: number, code?: string }} D
  * @param {D} diagnostic
  * @param {string} text Source text the diagnostic was produced from.
+ * @param {(end: number) => string | undefined} [directiveEndingAt] The
+ *   keyword (`if`, `for`) of the directive the parsed tree ends at `end`.
  * @returns {D & { raisedAt: number }}
  */
-export function coreDiagnostic(diagnostic, text) {
+export function coreDiagnostic(diagnostic, text, directiveEndingAt = () => undefined) {
   const reported = { ...withDiagnosticCode(diagnostic), raisedAt: diagnostic.end };
   const { message } = diagnostic;
   if (reported.code === "TSRX1010" && text[diagnostic.start] === "@") {
     // `@try {} catch {}`: the branch without its `@`
     const after = skipTriviaAfter(text, diagnostic.end);
-    const branch = branchWithoutAt(reported, text, after);
+    const branch = branchWithoutAt(reported, text, after, "try");
     if (branch !== undefined) return branch;
     // a `@try` with neither `@pending` nor `@catch` is reported at its
     // keyword, once acorn has read the token after its block
@@ -383,10 +350,12 @@ export function coreDiagnostic(diagnostic, text) {
     const before = skipTriviaBefore(text, diagnostic.start);
     let start = before;
     while (start > 0 && /[a-z]/.test(text[start - 1])) start--;
-    return branchWithoutAt(reported, text, start) ?? reported;
+    const directive = directiveEndingAt(skipTriviaBefore(text, start));
+    return branchWithoutAt(reported, text, start, directive) ?? reported;
   }
   if (["TS1359", "TS1212", "TS1262"].includes(reported.code) && / is reserved /.test(message)) {
-    const branch = branchWithoutAt(reported, text, diagnostic.start);
+    const directive = directiveEndingAt(skipTriviaBefore(text, diagnostic.start));
+    const branch = branchWithoutAt(reported, text, diagnostic.start, directive);
     if (branch !== undefined) return branch;
     // a keyword read as a name, after an `@` or as a declared name: acorn
     // raises once it has read the token after it
@@ -420,6 +389,38 @@ export function coreDiagnostic(diagnostic, text) {
     return reported;
   }
   return { ...reported, code: "TS1359", start: directive.start };
+}
+
+// The keyword of each control-flow expression, for a branch core expects after its block.
+const DIRECTIVE_TYPES = {
+  JSXIfExpression: "if",
+  JSXForExpression: "for",
+  JSXForOfExpression: "for",
+  JSXForInExpression: "for",
+  JSXTryExpression: "try",
+};
+
+/**
+ * The `directiveEndingAt` `coreDiagnostic` reads for `program`: the keyword
+ * of the control-flow expression that ends at an offset. The tree is walked
+ * once, on the first call.
+ *
+ * @param {object} program
+ * @returns {(end: number) => string | undefined}
+ */
+export function directiveEnds(program) {
+  let ends;
+  return (end) => {
+    if (ends === undefined) {
+      ends = new Map();
+      forEachNode(
+        program,
+        (node) => Object.hasOwn(DIRECTIVE_TYPES, node.type),
+        (node) => ends.set(node.end, DIRECTIVE_TYPES[node.type]),
+      );
+    }
+    return ends.get(end);
+  };
 }
 
 /**

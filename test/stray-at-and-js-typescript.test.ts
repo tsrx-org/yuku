@@ -196,6 +196,12 @@ test("a branch without its `@` is found past a nested header and a `//` in a str
 		["@if (/* ) */ a) {} else {}", "TSRX1009", 57, 61, 20],
 		['@if (a === "\\")") {} else {}', "TSRX1009", 59, 63, 22],
 		['@if (a) { <p>{"}"}</p> } else {}', "TSRX1009", 63, 67, 26],
+		// a quote in element text, or a regular expression ending in `*/`, in the block
+		["@if (a) { <p>it's</p> } else {}", "TSRX1009", 62, 66, 25],
+		["@if (a) { <p>{/a*/.test(x)}</p> } else {}", "TSRX1009", 72, 76, 35],
+		["@if (a) { @if (b) {} } else {}", "TSRX1009", 61, 65, 24],
+		['@if (a === ")") x', "TSRX1008", 54, 55, 17],
+		['@if ("@if (") x', "TSRX1008", 52, 53, 15],
 	];
 	for (const [body, code, pos, raisedAt, column] of cases) {
 		const line = code === "TSRX1008" && column === 0 ? 3 : 2;
