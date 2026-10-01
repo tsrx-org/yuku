@@ -180,6 +180,26 @@ test("every malformed directive tsrx-org/oxc#176 checks throws core's code at co
 	);
 });
 
+test("a branch without its `@` is found past a nested header and a `//` in a string", () => {
+	// [body, code, pos, raisedAt, column]
+	const cases: [string, string, number, number, number][] = [
+		["@if (f(a)) {} else {}", "TSRX1009", 52, 56, 15],
+		["@for (const x of f(items)) {} empty {}", "TSRX1009", 68, 73, 31],
+		['@if (a === "http://x") {} else {}', "TSRX1009", 64, 68, 27],
+		["@try {} catch {} // http://x", "TSRX1009", 46, 51, 9],
+		["@if (a) {} else {} // c", "TSRX1009", 49, 53, 12],
+		['@if (a === "//") /* c */', "TSRX1008", 63, 64, 0],
+		["@if (f(a)) x", "TSRX1008", 49, 50, 12],
+	];
+	for (const [body, code, pos, raisedAt, column] of cases) {
+		const line = code === "TSRX1008" && column === 0 ? 3 : 2;
+		expectAcornError(
+			`export function App({ a, items }) @{\n\t${body}\n}`,
+			at(code, pos, raisedAt, line, column),
+		);
+	}
+});
+
 test("a shorthand attribute with no `}` is raised where core's tag tokenizer stops", () => {
 	// [attribute, pos, raisedAt]
 	const cases: [string, number, number][] = [

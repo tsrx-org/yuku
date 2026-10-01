@@ -120,8 +120,8 @@ function skipTriviaBefore(text, offset) {
     const before = index;
     let lineStart = index;
     while (lineStart > 0 && !/[\n\r\u2028\u2029]/.test(text[lineStart - 1])) lineStart--;
-    const lineComment = text.indexOf("//", lineStart);
-    if (lineComment !== -1 && lineComment < index) index = lineComment;
+    const lineComment = lineCommentBefore(text, lineStart, index);
+    if (lineComment !== -1) index = lineComment;
     while (index > 0 && /\s/.test(text[index - 1])) index--;
     if (text[index - 1] === "/" && text[index - 2] === "*") {
       const open = text.lastIndexOf("/*", index - 3);
@@ -129,6 +129,25 @@ function skipTriviaBefore(text, offset) {
     }
     if (index === before) return index;
   }
+}
+
+/**
+ * The offset of the `//` that starts a comment on the line from `lineStart`
+ * running to `offset`, or -1. A `//` in a string or in a block comment there
+ * starts none.
+ */
+function lineCommentBefore(text, lineStart, offset) {
+  for (let index = lineStart; index < offset; index++) {
+    const character = text[index];
+    if (character === '"' || character === "'" || character === "`") {
+      index = skipQuoted(text, index) - 1;
+    } else if (character === "/" && text[index + 1] === "*") {
+      index = skipComment(text, index) - 1;
+    } else if (character === "/" && text[index + 1] === "/") {
+      return index;
+    }
+  }
+  return -1;
 }
 
 /** The offset of the first token at or after `offset`, past whitespace and comments. */
@@ -205,7 +224,7 @@ function tokenEnd(text, offset) {
 function directiveBefore(text, offset) {
   let index = skipTriviaBefore(text, offset);
   if (text[index - 1] === ")") {
-    const open = text.lastIndexOf("(", index - 1);
+    const open = matchingOpen(text, index - 1, "(", ")");
     if (open === -1) return undefined;
     index = skipTriviaBefore(text, open);
   }
@@ -223,12 +242,21 @@ function directiveBefore(text, offset) {
 function directiveBlockBefore(text, offset) {
   const close = skipTriviaBefore(text, offset) - 1;
   if (text[close] !== "}") return undefined;
+  const open = matchingOpen(text, close, "{", "}");
+  return open === -1 ? undefined : directiveBefore(text, open);
+}
+
+/**
+ * The offset of the `open` that the `close` at `offset` closes, counting the
+ * pairs between as written, or -1.
+ */
+function matchingOpen(text, offset, open, close) {
   let depth = 0;
-  for (let index = close; index >= 0; index--) {
-    if (text[index] === "}") depth++;
-    else if (text[index] === "{" && --depth === 0) return directiveBefore(text, index);
+  for (let index = offset; index >= 0; index--) {
+    if (text[index] === close) depth++;
+    else if (text[index] === open && --depth === 0) return index;
   }
-  return undefined;
+  return -1;
 }
 
 // The branch each directive takes after its block, written with an `@`.
