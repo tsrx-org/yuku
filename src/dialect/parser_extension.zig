@@ -120,7 +120,28 @@ pub fn Container(comptime Parser: type) type {
         /// parse. Inside one, a statement that opens with a JSX element is a
         /// render node, which ends at its closing tag.
         template_body_depth: u32 = 0,
+        /// Diagnostics below this index outlive the decline of an owned element
+        /// and of each child parse enclosing it: a directive among its children
+        /// committed at `@` and failed, and the host, re-reading those
+        /// children, would only report the `@`.
+        kept_diagnostics_len: usize = 0,
+        /// Counts those failures, so an element keeps only what failed while
+        /// it was parsing, never a stale mark from an earlier one.
+        failed_directives: u32 = 0,
     };
+}
+
+/// Rewind to `entry` after an owned element, a fragment or a child parse
+/// declines, keeping what a directive that failed among children since then
+/// reported.
+fn rewindDeclined(parser: anytype, entry: anytype, entry_store: Store.Checkpoint, failed_directives: u32) void {
+    var restore = entry;
+    if (container(parser).failed_directives != failed_directives) {
+        const kept = @min(container(parser).kept_diagnostics_len, parser.diagnostics.items.len);
+        restore.diagnostics_len = @max(restore.diagnostics_len, kept);
+    }
+    parser.rewind(restore);
+    container(parser).store.rewind(entry_store);
 }
 
 fn container(parser: anytype) *Container(@TypeOf(parser.*)) {
@@ -546,6 +567,7 @@ pub fn Host(comptime Parser: type) type {
 
             const saved = p.checkpoint();
             const saved_store = container(p).store.checkpoint();
+            const saved_failures = container(p).failed_directives;
             const whole_source = p.source;
             p.source = whole_source[0..end];
             p.lexer.source = whole_source[0..end];
@@ -578,8 +600,7 @@ pub fn Host(comptime Parser: type) type {
                 p.tree.span(child).start == start and
                 p.tree.span(child).end == end;
             if (!parsed_exactly_one) {
-                p.rewind(saved);
-                container(p).store.rewind(saved_store);
+                rewindDeclined(p, saved, saved_store, saved_failures);
                 return null;
             }
 
@@ -718,11 +739,9 @@ pub fn Host(comptime Parser: type) type {
 
             const saved = p.checkpoint();
             const saved_store = container(p).store.checkpoint();
+            const saved_failures = container(p).failed_directives;
             var owned = false;
-            defer if (!owned) {
-                p.rewind(saved);
-                container(p).store.rewind(saved_store);
-            };
+            defer if (!owned) rewindDeclined(p, saved, saved_store, saved_failures);
 
             p.setLexerMode(.normal);
             try p.advance() orelse return null;
@@ -1573,9 +1592,9 @@ fn parseExtendedJsxChildren(
             },
             .left_brace => try H.parseJsxChildExpressionContainer(parser) orelse return false,
             .at => switch (try code_block.jsxChild(H, parser)) {
-                .handled => |node| node orelse return false,
+                .handled => |node| node orelse return failedDirective(parser),
                 .unhandled => switch (try control_flow.jsxChild(H, parser)) {
-                    .handled => |node| node orelse return false,
+                    .handled => |node| node orelse return failedDirective(parser),
                     // Clause words only become constructs while their parent
                     // directive is consuming them. At ordinary child position
                     // the boundary hook may still stop on one, so resume the
@@ -1597,6 +1616,14 @@ fn parseExtendedJsxChildren(
         run_start = scan_from;
         code_end = if (block) text.codeAfterBlock(H.source(parser), scan_from) else 0;
     }
+}
+
+/// Decline the children after a directive among them committed at `@` and
+/// failed, keeping what it reported through the element's rewind.
+fn failedDirective(parser: anytype) bool {
+    container(parser).kept_diagnostics_len = parser.diagnostics.items.len;
+    container(parser).failed_directives +%= 1;
+    return false;
 }
 
 /// The first comment that starts in `[from, to)` of a text run that began at
@@ -1731,11 +1758,9 @@ fn parseExtendedJsxElement(comptime H: type, parser: anytype, opening: H.NodeInd
     // already consumed children, so every failure below rewinds to entry.
     const entry_parser = parser.checkpoint();
     const entry_store = container(parser).store.checkpoint();
+    const entry_failures = container(parser).failed_directives;
     var owned = false;
-    defer if (!owned) {
-        parser.rewind(entry_parser);
-        container(parser).store.rewind(entry_store);
-    };
+    defer if (!owned) rewindDeclined(parser, entry_parser, entry_store, entry_failures);
 
     var children: std.ArrayList(H.NodeIndex) = .empty;
     defer children.deinit(H.allocator(parser));
@@ -1808,11 +1833,9 @@ fn parseExtendedJsxFragment(comptime H: type, parser: anytype, opening: H.NodeIn
 
     const entry_parser = parser.checkpoint();
     const entry_store = container(parser).store.checkpoint();
+    const entry_failures = container(parser).failed_directives;
     var owned = false;
-    defer if (!owned) {
-        parser.rewind(entry_parser);
-        container(parser).store.rewind(entry_store);
-    };
+    defer if (!owned) rewindDeclined(parser, entry_parser, entry_store, entry_failures);
 
     var children: std.ArrayList(H.NodeIndex) = .empty;
     defer children.deinit(H.allocator(parser));
