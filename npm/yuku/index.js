@@ -4,6 +4,7 @@ import {
   addInnerComments,
   addMappedTypeParameters,
   applyCoreShape,
+  bareAtDiagnostic,
   coreDiagnostic,
   corePosition,
   decodeJsxReferences,
@@ -285,11 +286,16 @@ export function parseModule(source, filename, options = {}) {
   // agree with each other and with what a reader would underline. See
   // ./diagnostic-spans.js for which shapes this covers and why it is here
   // rather than at the seam that assigns the spans.
-  const fatal = result.diagnostics
+  let fatal = result.diagnostics
     .filter((diagnostic) => diagnostic.severity === "error")
     .map((diagnostic) =>
       coreDiagnostic({ ...diagnostic, ...authoredDiagnosticSpan(diagnostic, text) }, text),
     );
+  // A bare `@` opening a statement fails core's parse at the token after it,
+  // before anything later is read, so what the native parser reported from
+  // there on is never reached. See bareAtDiagnostic in ./core-compat.js.
+  const bare = fatal.length > 0 ? bareAtDiagnostic(text, fatal[0].start) : undefined;
+  if (bare !== undefined) fatal = [bare];
   if (fatal.length > 0) {
     if (collect || loose) {
       const recordedErrors = errorRecorder(text);

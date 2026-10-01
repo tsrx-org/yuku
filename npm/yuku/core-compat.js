@@ -38,6 +38,8 @@ const MESSAGE_CODES = [
     "TS1005",
   ],
   [/^Unexpected token\b/, "TS1012"],
+  // a `@for` tail clause with no value, where acorn reads a token
+  [/^Expected an expression after a for-of tail clause$/, "TS1012"],
   // a directive's header or `@switch` body that isn't what the grammar reads
   [
     /^(?:Expected (?:a condition after '@if \('|'\)' after '@if' condition|an expression after '@switch \('|'\)' after '@switch' expression|'@case' or '@default' in TSRX switch body|a value after '@case'|':' after TSRX switch clause)$)/,
@@ -108,21 +110,104 @@ export function withDiagnosticCode(diagnostic) {
 }
 
 /**
+ * The offset before the whitespace and comments that end right before
+ * `offset`. A `//` earlier on the line is read as a comment running to
+ * `offset`.
+ */
+function skipTriviaBefore(text, offset) {
+  let index = offset;
+  for (;;) {
+    const before = index;
+    let lineStart = index;
+    while (lineStart > 0 && !/[\n\r\u2028\u2029]/.test(text[lineStart - 1])) lineStart--;
+    const lineComment = text.indexOf("//", lineStart);
+    if (lineComment !== -1 && lineComment < index) index = lineComment;
+    while (index > 0 && /\s/.test(text[index - 1])) index--;
+    if (text[index - 1] === "/" && text[index - 2] === "*") {
+      const open = text.lastIndexOf("/*", index - 3);
+      if (open !== -1) index = open;
+    }
+    if (index === before) return index;
+  }
+}
+
+/** The offset of the first token at or after `offset`, past whitespace and comments. */
+function skipTriviaAfter(text, offset) {
+  let index = offset;
+  while (index < text.length) {
+    if (/\s/.test(text[index])) index++;
+    else if (text[index] === "/" && (text[index + 1] === "/" || text[index + 1] === "*")) {
+      index = skipComment(text, index);
+    } else break;
+  }
+  return index;
+}
+
+/** The offset after the comment that starts at `start`. */
+function skipComment(text, start) {
+  if (text[start + 1] === "*") {
+    const close = text.indexOf("*/", start + 2);
+    return close === -1 ? text.length : close + 2;
+  }
+  const newline = /[\n\r\u2028\u2029]/g;
+  newline.lastIndex = start + 2;
+  return newline.exec(text)?.index ?? text.length;
+}
+
+/** The offset after the string literal whose quote is at `start`. */
+function skipQuoted(text, start) {
+  const quote = text[start];
+  let index = start + 1;
+  while (index < text.length) {
+    if (text[index] === "\\") index += 2;
+    else if (text[index] === quote) return index + 1;
+    else index++;
+  }
+  return text.length;
+}
+
+const IDENTIFIER = /[\p{ID_Start}$_\\](?:[\p{ID_Continue}$\\]|\u200c|\u200d)*/uy;
+const NUMBER = /(?:\d[\w.]*|\.\d[\w]*)(?:[eE][+-]\d+)?/y;
+// acorn's punctuators, longest first; any other character is a token of its own
+const PUNCTUATOR =
+  />>>=|\.\.\.|===|!==|\*\*=|<<=|>>=|>>>|&&=|\|\|=|\?\?=|=>|==|!=|<=|>=|&&|\|\||\?\?|\?\.(?!\d)|\+\+|--|[-+*/%&|^]=|\*\*|<<|>>/y;
+
+/** The identifier or keyword that starts at `offset`, or `undefined`. */
+function wordAt(text, offset) {
+  IDENTIFIER.lastIndex = offset;
+  return IDENTIFIER.exec(text)?.[0];
+}
+
+/**
+ * The end of the token acorn reads at `offset`: a name, a private name, a
+ * string or a number whole, a punctuator, and any other character alone (a
+ * backtick, the `/` of a regular expression, a JSX `<`).
+ */
+function tokenEnd(text, offset) {
+  if (offset >= text.length) return text.length;
+  const character = text[offset];
+  const word = wordAt(text, character === "#" ? offset + 1 : offset);
+  if (word !== undefined) return offset + (character === "#" ? 1 : 0) + word.length;
+  if (character === '"' || character === "'") return skipQuoted(text, offset);
+  for (const pattern of [NUMBER, PUNCTUATOR]) {
+    pattern.lastIndex = offset;
+    const match = pattern.exec(text);
+    if (match !== null) return offset + match[0].length;
+  }
+  return offset + 1;
+}
+
+/**
  * The directive keyword (`if`, `for`, `try`, …) right after an `@` that ends
- * before `offset`, give or take whitespace and a `( … )` header: its name and
- * where it starts, or `undefined`.
+ * before `offset`, give or take whitespace, comments and a `( … )` header:
+ * its name and where it starts, or `undefined`.
  */
 function directiveBefore(text, offset) {
-  let index = offset;
-  const skipSpace = () => {
-    while (index > 0 && /\s/.test(text[index - 1])) index--;
-  };
-  skipSpace();
+  let index = skipTriviaBefore(text, offset);
   if (text[index - 1] === ")") {
     const open = text.lastIndexOf("(", index - 1);
     if (open === -1) return undefined;
-    index = open;
-    skipSpace();
+    index = skipTriviaBefore(text, open);
   }
   const end = index;
   while (index > 0 && /[a-z]/.test(text[index - 1])) index--;
@@ -131,15 +216,84 @@ function directiveBefore(text, offset) {
 }
 
 /**
+ * The directive whose block's `}` ends right before `offset`, give or take
+ * whitespace and comments, or `undefined`. The braces between are matched as
+ * written.
+ */
+function directiveBlockBefore(text, offset) {
+  const close = skipTriviaBefore(text, offset) - 1;
+  if (text[close] !== "}") return undefined;
+  let depth = 0;
+  for (let index = close; index >= 0; index--) {
+    if (text[index] === "}") depth++;
+    else if (text[index] === "{" && --depth === 0) return directiveBefore(text, index);
+  }
+  return undefined;
+}
+
+// The branch each directive takes after its block, written with an `@`.
+const DIRECTIVE_BRANCHES = { if: ["else"], for: ["empty"], try: ["pending", "catch"] };
+
+// The words acorn reads as keywords, which it reports as `Unexpected keyword`
+// where a name should be.
+const KEYWORDS = new Set(
+  (
+    "break case catch continue debugger default do else finally for function if return switch " +
+    "throw try var while with null true false instanceof typeof void delete new in this const " +
+    "class extends export import super"
+  ).split(" "),
+);
+// The words reserved only in strict mode, which acorn reports as TS1212.
+const STRICT_RESERVED = new Set(
+  "implements interface let package private protected public static yield".split(" "),
+);
+
+/**
+ * Whether the word at `offset` comes right after an `@` (a decorator's name,
+ * or a directive keyword core doesn't read as one) or after the keyword that
+ * declares it (`const`, `let`, `var`, `using`, `function`), where acorn reads
+ * a name and raises on a keyword once it has read the token after it.
+ */
+function keywordReadAsName(text, offset) {
+  const before = skipTriviaBefore(text, offset);
+  if (text[before - 1] === "@") return true;
+  let start = before;
+  while (start > 0 && /[a-z]/.test(text[start - 1])) start--;
+  return /^(?:const|let|var|using|function)$/.test(text.slice(start, before));
+}
+
+/**
+ * A directive branch written without its `@` (`@if (a) {} else {}`) at
+ * `offset`, which core reports as TSRX1009 over the word: the diagnostic for
+ * it, or `undefined`.
+ */
+function branchWithoutAt(diagnostic, text, offset) {
+  const word = wordAt(text, offset);
+  const directive = directiveBlockBefore(text, offset);
+  if (word === undefined || !DIRECTIVE_BRANCHES[directive?.keyword]?.includes(word)) {
+    return undefined;
+  }
+  return {
+    ...diagnostic,
+    message: `Expected '@${word}' after the '@${directive.keyword}' block`,
+    code: "TSRX1009",
+    start: offset,
+    end: offset + word.length,
+    raisedAt: offset + word.length,
+  };
+}
+
+/**
  * `diagnostic` (with its code) as `@tsrx/core` reports the mistake: where
  * core's error points and the code core gives it, when the message alone
- * doesn't say. `raisedAt` is where acorn stopped reading, the end of the
- * token the diagnostic is on.
+ * doesn't say. `raisedAt` is where acorn stopped reading: the end of the
+ * token the diagnostic is on, or, for a keyword where a name should be, the
+ * end of the token after it.
  *
  * A directive keyword with no `(` or `{` after it (`@if`, `@for`, `@switch`,
  * `@try`) is acorn's `Unexpected keyword`, TS1359, at the keyword; the body
  * of a `@catch` or `@pending` that doesn't open with `{` is `Unexpected
- * token`, TS1012.
+ * token`, TS1012. A branch written without its `@` is TSRX1009.
  *
  * @template {{ message: string, start: number, end: number, code?: string }} D
  * @param {D} diagnostic
@@ -149,16 +303,50 @@ function directiveBefore(text, offset) {
 export function coreDiagnostic(diagnostic, text) {
   const reported = { ...withDiagnosticCode(diagnostic), raisedAt: diagnostic.end };
   const { message } = diagnostic;
-  // a `@try` with neither `@pending` nor `@catch` is reported at its keyword
   if (reported.code === "TSRX1010" && text[diagnostic.start] === "@") {
-    return { ...reported, start: diagnostic.start + 1 };
+    // `@try {} catch {}`: the branch without its `@`
+    const after = skipTriviaAfter(text, diagnostic.end);
+    const branch = branchWithoutAt(reported, text, after);
+    if (branch !== undefined) return branch;
+    // a `@try` with neither `@pending` nor `@catch` is reported at its
+    // keyword, once acorn has read the token after its block
+    return { ...reported, start: diagnostic.start + 1, raisedAt: tokenEnd(text, after) };
+  }
+  // `@for (…) {} empty {}`: the `{` after the branch without its `@`
+  if (reported.code === "TS1005" && message.startsWith("Expected a semicolon ")) {
+    const before = skipTriviaBefore(text, diagnostic.start);
+    let start = before;
+    while (start > 0 && /[a-z]/.test(text[start - 1])) start--;
+    return branchWithoutAt(reported, text, start) ?? reported;
+  }
+  if (["TS1359", "TS1212", "TS1262"].includes(reported.code) && / is reserved /.test(message)) {
+    const branch = branchWithoutAt(reported, text, diagnostic.start);
+    if (branch !== undefined) return branch;
+    // a keyword read as a name, after an `@` or as a declared name: acorn
+    // raises once it has read the token after it
+    if (keywordReadAsName(text, diagnostic.start)) {
+      return { ...reported, raisedAt: tokenEnd(text, skipTriviaAfter(text, diagnostic.end)) };
+    }
+    return reported;
+  }
+  // a shorthand attribute with no `}`: core's tag tokenizer has read the
+  // attribute's text up to its `}`, or through the tag's `>`
+  if (reported.code === "TS1005" && /shorthand attribute/.test(message)) {
+    const close = /}|(?<!=)>/g;
+    close.lastIndex = diagnostic.start;
+    const found = close.exec(text);
+    const raisedAt = found === null ? text.length : found.index + (found[0] === ">" ? 1 : 0);
+    return { ...reported, raisedAt };
   }
   const keywordError =
     /^Expected '\(' after '@(?:if|switch)'$|^Expected '\(' after 'for', /.test(message) ||
     reported.code === "TSRX1008";
   if (!keywordError) return reported;
   const directive = directiveBefore(text, diagnostic.start);
-  if (directive === undefined) return reported;
+  if (directive === undefined) {
+    // `@else if x`: an `if` with no `@` is acorn's, which reads a token there
+    return reported.code === "TS1359" ? { ...reported, code: "TS1012" } : reported;
+  }
   if (reported.code === "TSRX1008") {
     if (directive.keyword === "catch" || directive.keyword === "pending") reported.code = "TS1012";
     if (directive.keyword !== "try") return reported;
@@ -166,6 +354,97 @@ export function coreDiagnostic(diagnostic, text) {
     return reported;
   }
   return { ...reported, code: "TS1359", start: directive.start };
+}
+
+/**
+ * The first `@` before `limit` that opens a statement of a code block or a
+ * block with nothing after it that acorn reads as a decorator's name: no
+ * name, no `(`, and no directive keyword or `{` right after it. Acorn fails
+ * at the token after that `@`, before it reads anything later, so a later
+ * diagnostic of the native parser never hides it. An `@` in element text is
+ * text, and an `@` followed by a name is a decorator.
+ *
+ * Returns the diagnostic core raises there, or `undefined`:
+ * - a keyword is TS1359, or TS1212 for one reserved only in strict mode, or
+ *   TS1262 for `await`, raised once acorn has read the token after it;
+ * - any other token is TS1012.
+ *
+ * @param {string} text
+ * @param {number} limit Start of the first diagnostic the native parser reported.
+ * @returns {{ message: string, code: string, start: number, end: number, raisedAt: number, severity: "error", labels: [], help: null } | undefined}
+ */
+export function bareAtDiagnostic(text, limit) {
+  for (let index = 0; index < limit; index++) {
+    const character = text[index];
+    if (character === '"' || character === "'" || character === "`") {
+      index = skipQuoted(text, index) - 1;
+      continue;
+    }
+    if (character === "/" && (text[index + 1] === "/" || text[index + 1] === "*")) {
+      index = skipComment(text, index) - 1;
+      continue;
+    }
+    if (character !== "@" || text[index + 1] === "{" || wordAt(text, index + 1) !== undefined) {
+      continue;
+    }
+    // only where a statement starts: right after the `{` of a code block or
+    // of a block (a directive's, a function's, an `if`'s), not in element text
+    const open = skipTriviaBefore(text, index) - 1;
+    if (text[open] !== "{") continue;
+    const opener = text[skipTriviaBefore(text, open) - 1];
+    if (opener !== "@" && opener !== ")" && directiveBefore(text, open) === undefined) continue;
+    const next = skipTriviaAfter(text, index + 1);
+    if (next > limit) return undefined;
+    // `@(…)` is a decorator
+    if (text[next] === "(") return undefined;
+    const word = wordAt(text, next);
+    const end = tokenEnd(text, next);
+    const diagnostic = {
+      start: next,
+      end,
+      raisedAt: end,
+      severity: "error",
+      labels: [],
+      help: null,
+    };
+    if (word === undefined) {
+      const found = next >= text.length ? "end of file" : text.slice(next, end);
+      return {
+        ...diagnostic,
+        message: `Expected a decorator name after '@', but found '${found}'`,
+        code: "TS1012",
+      };
+    }
+    const raisedAt = tokenEnd(text, skipTriviaAfter(text, end));
+    if (KEYWORDS.has(word)) {
+      return {
+        ...diagnostic,
+        raisedAt,
+        message: `'${word}' is reserved and cannot be used as an identifier`,
+        code: "TS1359",
+      };
+    }
+    if (STRICT_RESERVED.has(word)) {
+      return {
+        ...diagnostic,
+        raisedAt,
+        message: `'${word}' is reserved in strict mode and cannot be used as an identifier`,
+        code: "TS1212",
+      };
+    }
+    if (word === "await") {
+      return {
+        ...diagnostic,
+        raisedAt,
+        message:
+          "'await' is reserved in an async/module context and cannot be used as an identifier",
+        code: "TS1262",
+      };
+    }
+    // a name: the `@` is a decorator
+    return undefined;
+  }
+  return undefined;
 }
 
 /**
