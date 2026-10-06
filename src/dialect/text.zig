@@ -10,10 +10,33 @@ pub fn startsDirective(source: []const u8, cursor: u32) bool {
     if (cursor >= source.len or source[cursor] != '@') return false;
     const after_at = cursor + 1;
     if (after_at < source.len and source[after_at] == '{') return true;
-    inline for (.{ "if", "for", "switch", "try", "else", "empty", "case", "default", "pending", "catch" }) |keyword| {
+    inline for (.{ "if", "for", "switch", "try" }) |keyword| {
+        if (controlFlowDirectiveAt(source, cursor, keyword)) return true;
+    }
+    inline for (.{ "else", "empty", "case", "default", "pending", "catch" }) |keyword| {
         if (keywordAfterAt(source, cursor, keyword)) return true;
     }
     return false;
+}
+
+/// Whether `@keyword` at `cursor` opens a control-flow directive among JSX
+/// children, as `@tsrx/core` reads it: its header must follow, past any
+/// whitespace and comments - `{` after `@try`, `(` after `@if`, `@switch` and
+/// `@for`, or `await (` after `@for`. Otherwise it is text: `<p>@if</p>`.
+pub fn controlFlowDirectiveAt(source: []const u8, cursor: u32, keyword: []const u8) bool {
+    if (!keywordAfterAt(source, cursor, keyword)) return false;
+    const next = codeAfterBlock(source, cursor + 1 + keyword.len);
+    if (next >= source.len) return false;
+    if (std.mem.eql(u8, keyword, "try")) return source[next] == '{';
+    if (source[next] == '(') return true;
+    if (!std.mem.eql(u8, keyword, "for") or !keywordAt(source, next, "await")) return false;
+    const after_await = codeAfterBlock(source, next + "await".len);
+    return after_await < source.len and source[after_await] == '(';
+}
+
+fn keywordAt(source: []const u8, at: usize, keyword: []const u8) bool {
+    const end = at + keyword.len;
+    return std.mem.startsWith(u8, source[at..], keyword) and (end == source.len or !isIdentifierByte(source[end]));
 }
 
 pub fn keywordAfterAt(source: []const u8, cursor: u32, keyword: []const u8) bool {
