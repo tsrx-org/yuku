@@ -3,7 +3,7 @@ let modulePromise = null
 
 export function ready() {
   modulePromise ??= import(
-    new URL(`./yuku-tsrx.js${document.documentElement.dataset.assetVersion ?? ''}`, import.meta.url)
+    new URL('./yuku-tsrx.js', import.meta.url)
   )
   return modulePromise
 }

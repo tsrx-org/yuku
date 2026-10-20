@@ -9,7 +9,7 @@ const firstLoad = () =>
 async function highlighter() {
   await firstLoad()
   highlighterPromise ??= import(
-    new URL(`./demo-highlighter.js${document.documentElement.dataset.assetVersion ?? ''}`, import.meta.url)
+    new URL('./demo-highlighter.js', import.meta.url)
   ).then((module) => module.createDemoHighlighter())
   return highlighterPromise
 }

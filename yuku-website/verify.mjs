@@ -1,6 +1,6 @@
 // Opens the built site in Chrome and checks every page loads clean and the editor runs @tsrx/yuku. Run: node verify.mjs
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
@@ -42,7 +42,7 @@ try {
       page.on('requestfailed', (request) => failures.push(`${request.url()}: ${request.failure()?.errorText}`))
       page.on('request', (request) => {
         const url = new URL(request.url())
-        if (url.origin === origin && url.pathname.startsWith('/assets/') && !url.searchParams.has('v')) unversioned.add(url.pathname)
+        if (url.origin === origin && url.pathname.startsWith('/assets/') && !/^\/assets\/[0-9a-f]{12}\//.test(url.pathname)) unversioned.add(url.pathname)
       })
       for (const route of routes) {
         const response = await page.goto(origin + route)
@@ -93,15 +93,8 @@ try {
   server.kill()
 }
 
-// an asset fetched without ?v= can't be cached as immutable, or a release pairs new files with stale ones
-const vercel = JSON.parse(readFileSync(path.join(docsDir, 'vercel.json'), 'utf8'))
-for (const rule of vercel.headers ?? []) {
-  const immutable = rule.headers.some((header) => /immutable/.test(header.value))
-  const pattern = new RegExp(`^${rule.source.replace('(.*)', '.*')}$`)
-  for (const asset of unversioned) {
-    if (immutable && pattern.test(asset)) failures.push(`vercel.json caches ${asset} as immutable, but it is fetched unversioned`)
-  }
-}
+// every asset comes from the build's hashed directory, the only place cached as immutable
+for (const asset of unversioned) failures.push(`${asset} is fetched outside /assets/<hash>/`)
 
 if (failures.length > 0) {
   console.error(failures.join('\n'))
