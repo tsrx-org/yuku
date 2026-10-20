@@ -19,7 +19,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # build.zig.zon pins Yuku and yuku-css by commit and hash, so zig build fetches them
+      # build.zig.zon pins Yuku by commit and hash, so zig build fetches it
       - name: Set up Zig 0.17.0
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
