@@ -1,0 +1,262 @@
+// Decorative rocket-fuel plume. Never logs: on failure the CSS fill shows.
+
+const VERT = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}'
+
+const FRAG = `precision mediump float;
+uniform vec2 uR;uniform float uT;uniform float uX;uniform float uC;uniform float uL;
+float h(vec2 p){return fract(sin(dot(p,vec2(41.3,289.1)))*43758.5453);}
+float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*f*(f*(f*6.-15.)+10.);
+return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+float fbm(vec2 p){float s=0.,a=.5;for(int k=0;k<4;k++){s+=a*vn(p);p*=2.03;a*=.5;}return s;}
+vec3 ramp(float t){float k=uL*(1.-uC);
+float A=mix(.06,.055,k),B=mix(.15,.115,k),C=mix(.30,.27,k),D=mix(.55,.52,k),E=mix(.78,.76,k);
+vec3 s1=mix(mix(vec3(.600,.122,.031),vec3(.949,.251,.059),uL),mix(vec3(.204,.180,.475),vec3(.157,.267,.769),uL),uC);
+vec3 c=mix(vec3(.102),s1,uL);
+c=mix(c,s1,smoothstep(0.,A,t));
+c=mix(c,mix(mix(vec3(1.,.239,.078),vec3(1.,.239,.078),uL),mix(vec3(.188,.361,.702),vec3(.188,.361,.702),uL),uC),smoothstep(A,B,t));
+c=mix(c,mix(mix(vec3(1.,.478,.102),vec3(1.,.478,.102),uL),mix(vec3(.200,.541,.800),vec3(.200,.541,.800),uL),uC),smoothstep(B,C,t));
+c=mix(c,mix(mix(vec3(1.,.655,.149),vec3(1.,.655,.149),uL),mix(vec3(.243,.702,.769),vec3(.243,.702,.769),uL),uC),smoothstep(C,D,t));
+c=mix(c,mix(mix(vec3(1.,.878,.4),vec3(1.,.878,.4),uL),mix(vec3(.565,.851,.886),vec3(.286,.741,.827),uL),uC),smoothstep(D,E,t));
+c=mix(c,mix(mix(vec3(1.,.984,.91),vec3(1.,.769,0.),uL),mix(vec3(.878,.953,.973),vec3(.0,.663,.757),uL),uC),smoothstep(E,1.,t));return c;}
+void main(){vec2 p=gl_FragCoord.xy/uR.y*2.4;
+float q=fbm(p+vec2(-uT*.7,uT*.55));
+float r=fbm(p+q*1.2+vec2(-uT*1.1,uT*.8));
+float n=fbm(p+r*1.5+vec2(-uT*1.5,uT*.4));
+float x=gl_FragCoord.x/uX-(r-.45)*.95;
+float e=1.-x*.5;
+float heat=clamp(e*(.45+1.28*n)-.06,0.,1.)+.35*exp(-x/.22);
+heat*=.84+.125*p.y;
+float v=abs(p.y/1.2-1.);
+float aD=max(clamp(heat*7.,0.,1.),smoothstep(0.,.34,e)*.88);
+aD*=1.-.5*smoothstep(.58,1.,v)*smoothstep(.2,1.4,x);
+float aL=smoothstep(0.,.07,e);
+float a=mix(aD,aL,uL);
+float d=1.-.22*uC;
+gl_FragColor=vec4(ramp(clamp(heat,0.,1.))*a*d,a*mix(1.,d,uL));}`
+
+// Vertical feathering is nearly off in light (.12 vs .5). It multiplies alpha
+// down along the plume's top and bottom; at .5 alpha a saturated red-orange
+// composited over a WHITE track becomes pale salmon, so the feather drew two
+// washed bands down every bar. On dark it just softens the edge.
+// Light uses dark's vivid stops. It used to darken every stop for contrast
+// against the track, which made the fire read as mustard and brick instead of
+// gold and orange: much darker and more desaturated than dark theme. This is a
+// decorative plume, not text, so saturated brights are fine on white. Only the
+// two endpoints differ: the near-white core would vanish on white so it is a
+// bright amber, and the coolest stop would be a dark blob on white so it is a
+// bright red-orange. Same treatment for the cool lane.
+// No vertical shrink on the light silhouette. It used to subtract a v-term,
+// which pulled alpha to zero near the track's top and bottom so the plume sat
+// inset with white above and below it, while dark filled the pill edge to
+// edge. The track's own overflow:hidden and radius do the rounding.
+// LIGHT IS OPAQUE, DARK IS TRANSLUCENT. Proven by an A/B: with the canvas
+// deleted the plain opaque CSS bar showed no wash, the shader did. Over a dark
+// track a partial-alpha pixel blends toward near-black and reads as smoke;
+// over WHITE the same pixel blends toward white and reads as a wash. So light
+// gets a near-binary silhouette (smoothstep over a 0.07 band): solid inside,
+// clear outside, and the turbulence is carried by COLOUR rather than opacity.
+// The outline still wanders because x is noise-advected by r above.
+// Tried driving light alpha from the envelope instead of heat, to stop the
+// noise punching white holes. It was worse: a partial-alpha envelope over
+// white produces a large pale haze at the trailing edge, which reads dirtier
+// than the speckle it replaced. Kept heat-driven alpha, just far steeper.
+// Alpha ramps far steeper in light (heat*26 vs heat*7). On a dark track a
+// half-alpha pixel blends toward near-black and reads as smoke; on a WHITE
+// track the identical pixel blends toward white and reads as washed out. So
+// light must spend as few pixels as possible at partial alpha: it saturates
+// almost immediately, then falls off, instead of ramping gradually.
+// The .88 alpha floor is the DARK pill's body: it keeps a near-black backing
+// under and just past the flame. Light has no pill, its base is white, so the
+// same floor painted an 88%-opaque white slab over a white track, roughly
+// 1.32*reach wide. Invisible in a headless capture, a real translucent layer
+// on screen. *(1.-uL) removes it in light: there, alpha is heat alone, so the
+// canvas is fully transparent wherever there is no flame.
+// Both themes are orange/red/yellow fire with no magenta. The reference video
+// had a magenta tail, but the brief was always "orange, red, and yellowish",
+// and at partial alpha magenta reads as pink over either background.
+// The dark stops end in near-white, invisible on the light track. uL swaps in
+// a darkened light ramp instead, the same fix the gate meters already ship.
+// Light needs narrower bands too, not just darker stops: on a white track a
+// half-transparent crimson turns pastel pink, so the cool tail was reading as
+// the whole plume. k = uL*(1-uC) shrinks the red and magenta bands for the
+// light fire lane only, and mix(x,y,0.) returns x bit-exactly, so dark theme
+// and the cool lane keep the stops they had.
+const lit = () => (document.documentElement.classList.contains('dark') ? 0 : 1)
+
+// The dark field dissolves into the track, so the canvas is transparent and the
+// shader writes premultiplied colour to match premultipliedAlpha.
+// prettier-ignore
+const CTX = { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false, powerPreference: 'low-power' }
+
+function shader(gl, type, src) {
+  const s = gl.createShader(type)
+  gl.shaderSource(s, src)
+  gl.compileShader(s)
+  return gl.getShaderParameter(s, gl.COMPILE_STATUS) ? s : null
+}
+
+function build(row, dpr) {
+  const track = row.querySelector('.comp-track')
+  const fill = row.querySelector('.comp-fill')
+  if (!track || !fill) return null
+  const canvas = document.createElement('canvas')
+  canvas.setAttribute('aria-hidden', 'true')
+  const gl = canvas.getContext('webgl', CTX)
+  if (!gl) return null
+  const vs = shader(gl, gl.VERTEX_SHADER, VERT)
+  const fs = shader(gl, gl.FRAGMENT_SHADER, FRAG)
+  if (!vs || !fs) return null
+  const program = gl.createProgram()
+  gl.attachShader(program, vs)
+  gl.attachShader(program, fs)
+  gl.linkProgram(program)
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return null
+  gl.useProgram(program)
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer())
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW)
+  const attr = gl.getAttribLocation(program, 'a')
+  gl.enableVertexAttribArray(attr)
+  gl.vertexAttribPointer(attr, 2, gl.FLOAT, false, 0, 0)
+  // The @tsrx/core lane is the same fire after it burned out: cool palette,
+  // slower. It is the only lane that is not ours, so it is the only cool one.
+  const cool = row.dataset.key === 'tsrxCore'
+  const u = (n) => gl.getUniformLocation(program, n)
+  gl.uniform1f(u('uC'), cool ? 1 : 0)
+  gl.uniform1f(u('uL'), lit())
+  const item = {
+    gl,
+    canvas,
+    fill,
+    track,
+    dpr,
+    speed: cool ? 0.45 : 1,
+    frac: (parseFloat(fill.style.width) || 8) / 100,
+    uR: u('uR'),
+    uT: u('uT'),
+    uX: u('uX'),
+    uL: u('uL'),
+    w: 0,
+    h: 0,
+    seen: false,
+    dead: false,
+  }
+  canvas.addEventListener('webglcontextlost', (event) => {
+    event.preventDefault()
+    item.dead = true
+  })
+  return item
+}
+
+// Where the silhouette stops, in multiples of uX. The shader carries
+// e = 1 - x*0.5 into both alpha curves, and both reach zero at e = 0: light is
+// smoothstep(0, .07, e), dark floors at smoothstep(0, .34, e) * .88, so either
+// way the plume is gone by x = 2 and measures the same on screen. Dividing uX
+// by this puts the end of the opaque plume on the end of the measured bar, and
+// everything past it reads as tail rather than as length. Checked against a
+// capture in both themes: with the yuku-tsrx lane at 28.8% of the track, the
+// painted plume ends at 29%.
+const SOLID = 1.88
+
+// Pill = the bar's own length plus a dissipation tail, never wider than the
+// track. Every lane on this page is one absolute time against another, so the
+// tail is a fixed 90px on both and the opaque parts stay in the ratio the
+// numbers are in. The flat 300px ceiling this carried before belonged to a
+// chart whose lanes were all short: here the slow lane fills the whole track,
+// and a shared ceiling painted a 29% lane and a 100% lane as the same pill,
+// which is the one thing the chart exists to tell apart.
+function resize(item) {
+  const box = item.track.getBoundingClientRect()
+  const reach = Math.max(box.width * item.frac, 14)
+  const wide = Math.min(reach + 90, box.width)
+  const w = Math.max(Math.round(wide * item.dpr), 1)
+  const h = Math.max(Math.round(box.height * item.dpr), 1)
+  if (w === item.w && h === item.h) return false
+  item.w = w
+  item.h = h
+  item.canvas.width = w
+  item.canvas.height = h
+  item.canvas.style.width = `${wide.toFixed(1)}px`
+  item.gl.viewport(0, 0, w, h)
+  item.gl.uniform2f(item.uR, w, h)
+  item.gl.uniform1f(item.uX, (reach / SOLID) * item.dpr)
+  return true
+}
+
+function paint(item, seconds) {
+  if (item.dead) return
+  item.gl.uniform1f(item.uT, seconds * item.speed)
+  item.gl.drawArrays(item.gl.TRIANGLES, 0, 3)
+}
+
+export function init(rows, cleanups) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2)
+  const items = []
+  for (const row of rows) {
+    const item = build(row, dpr)
+    if (!item) continue
+    resize(item)
+    paint(item, 0)
+    if (item.dead) continue
+    item.track.append(item.canvas)
+    // The CSS fill is the no-JS fallback only. Left visible it sits opaque
+    // under a canvas that has alpha, so the plume composites over a solid
+    // gradient and can never read clean. Hidden here, restored on cleanup.
+    item.fill.style.visibility = 'hidden'
+    items.push(item)
+  }
+  if (!items.length) return
+
+  const start = performance.now()
+  // Wrapped: an unbounded clock eventually costs the hash its precision.
+  const clock = () => ((performance.now() - start) / 1000) % 300
+  const awake = () => items.some((it) => it.seen)
+  let raf = 0
+
+  const frame = () => {
+    raf = 0
+    const seconds = clock()
+    for (const item of items) paint(item, seconds)
+    if (awake()) raf = requestAnimationFrame(frame)
+  }
+  const wake = () => {
+    if (!raf && awake()) raf = requestAnimationFrame(frame)
+  }
+  const io = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const item = items.find((it) => it.track === entry.target)
+      if (item) item.seen = entry.isIntersecting
+    }
+    wake()
+  })
+  const ro = new ResizeObserver(() => {
+    for (const item of items) if (resize(item) && !raf) paint(item, clock())
+  })
+  // app.js toggles html.dark with no event, so the class is the only hook.
+  const mo = new MutationObserver(() => {
+    const light = lit()
+    const seconds = clock()
+    for (const item of items) {
+      if (item.dead) continue
+      item.gl.uniform1f(item.uL, light)
+      paint(item, seconds)
+    }
+  })
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  for (const item of items) {
+    io.observe(item.track)
+    ro.observe(item.track)
+  }
+
+  cleanups.push(() => {
+    if (raf) cancelAnimationFrame(raf)
+    raf = 0
+    io.disconnect()
+    ro.disconnect()
+    mo.disconnect()
+    for (const item of items) {
+      item.seen = false
+      item.canvas.remove()
+      item.fill.style.visibility = ''
+    }
+  })
+}
