@@ -6,6 +6,20 @@ A fast [TSRX](https://tsrx.dev) parser, analyzer, and code generator, built on [
 npm install @tsrx/yuku
 ```
 
+[Documentation](https://yuku.tsrx.dev) · [Playground](https://yuku.tsrx.dev/playground)
+
+## Why
+
+**Fast.** 9.2x faster than the official parser, `@tsrx/core`, on the TSRX test suite, and 4.8x on the pages of tsrx.dev. See [Benchmark](#benchmark).
+
+**ESTree.** The tree is ESTree, with TSRX's node types as `@tsrx/core` names them, and errors carry the `TSRXnnnn` codes `@tsrx/core` reports.
+
+**Correct.** Every TSRX source of the TSRX repository and of `@tsrx/core`'s tests parses, or fails, as `@tsrx/core` parses it, except where it accepts what TypeScript rejects.
+
+**Small.** One WebAssembly module, 746 kB and about 221 kB gzipped, with no native addons and no dependency but Yuku.
+
+**Anywhere.** Node.js 16.4 or newer, Bun, Deno, Workers, and browsers, on every platform.
+
 ## Usage
 
 ```ts
@@ -33,6 +47,12 @@ generate(program).code;
 It runs in Node.js 16.4 or newer, Bun, Deno, Workers, and browsers.
 
 Coming from 0.7? See [docs/migrating-from-0.7.md](docs/migrating-from-0.7.md). 0.7 stays on the [`legacy-0.7`](https://github.com/tsrx-org/yuku/tree/legacy-0.7) branch.
+
+## Built on Yuku
+
+[Yuku](https://github.com/yuku-toolchain/yuku) is a JavaScript and TypeScript compiler toolchain written in Zig, documented at [yuku.fyi](https://yuku.fyi). TSRX is a [Yuku dialect](https://yuku.fyi/parser/dialect/): one Zig file, [`src/tsrx.zig`](src/tsrx.zig), compiled into Yuku's parser. Yuku parses, analyzes, and prints the JavaScript and TypeScript around it, and the tree crosses into JavaScript in one buffer, decoded when you read `program`. [How it works](https://yuku.tsrx.dev/architecture/how-it-works) has the details.
+
+In 0.9, each `<style>` gets a CSS tree, parsed in the same pass by [yuku-css](https://github.com/thejackshelton/yuku-css), once [yuku#280](https://github.com/yuku-toolchain/yuku/pull/280) lands. Today its CSS is one `JSXText`, as in `@tsrx/core`.
 
 ## Benchmark
 
