@@ -646,11 +646,10 @@ async function swapPage(html, url, ownsHead) {
   initPage()
   const announcer = document.getElementById('route-announcer')
   if (announcer) announcer.textContent = doc.title
-  if (url.hash) {
-    document.getElementById(decodeURIComponent(url.hash.slice(1)))?.scrollIntoView()
-  } else {
-    window.scrollTo(0, 0)
-  }
+  // a playground hash such as #code=... names no element
+  const target = url.hash ? document.getElementById(decodeURIComponent(url.hash.slice(1))) : null
+  if (target) target.scrollIntoView()
+  else window.scrollTo(0, 0)
   // Only move focus if the previously focused element was swapped away.
   if (!document.activeElement || document.activeElement === document.body) {
     const main = document.getElementById('main-content')
