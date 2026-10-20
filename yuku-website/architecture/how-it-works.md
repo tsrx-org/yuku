@@ -5,7 +5,7 @@ description: TSRX as a Yuku dialect in one Zig file, compiled to WebAssembly, an
 
 # How it works
 
-`@tsrx/yuku` is TSRX written as a [Yuku dialect](https://yuku.fyi/parser/dialect/). [Yuku](https://yuku.fyi) is Arshad Yaseen's JavaScript and TypeScript compiler toolchain in Zig: a parser, a semantic analyzer, a traverser, and a code generator, with no dependencies. A dialect adds syntax to it. You write only the new syntax, in one Zig file, and Yuku parses, analyzes, walks, and prints the rest of the language, and your nodes with it.
+`@tsrx/yuku` is TSRX written as a [Yuku dialect](https://yuku.fyi/parser/dialect/). [Yuku](https://yuku.fyi) is a JavaScript and TypeScript compiler toolchain in Zig: a parser, a semantic analyzer, a traverser, and a code generator, with no dependencies. A dialect adds syntax to it. You write only the new syntax, in one Zig file, and Yuku parses, analyzes, walks, and prints the rest of the language, and your nodes with it.
 
 ## One Zig file
 
@@ -55,9 +55,9 @@ The test suite is every `.tsrx` file of the [TSRX repository](https://github.com
 
 It parses the test suite {{suiteSpeedup}}x faster than `@tsrx/core`, and the pages of tsrx.dev {{pagesSpeedup}}x faster. [Benchmarks](/reference/benchmarks) has the numbers and how to run them.
 
-## Next: CSS in 0.9
+## Next: CSS trees
 
-In 0.8 a `<style>` keeps its CSS as one `JSXText`, as `@tsrx/core` does. 0.9 will give each `<style>` a CSS tree, parsed in the same pass by [yuku-css](https://github.com/thejackshelton/yuku-css), a CSS parser written in Zig the same way, which builds css-tree's AST. That needs a dialect to hand its own data to JavaScript, which [yuku#280](https://github.com/yuku-toolchain/yuku/pull/280) adds to Yuku. It ships once that lands.
+Today a `<style>` keeps its CSS as one `JSXText`, as `@tsrx/core` does. Next, each `<style>` gets a CSS tree, parsed in the same pass by [yuku-css](https://github.com/thejackshelton/yuku-css), a CSS parser written in Zig the same way, which builds css-tree's AST. That needs a dialect to hand its own data to JavaScript, which [yuku#280](https://github.com/yuku-toolchain/yuku/pull/280) adds to Yuku. It ships once that lands.
 
 ## Work on it
 
@@ -76,4 +76,4 @@ To work on Yuku and the dialect together, check Yuku out next to this repository
 
 ## Credits
 
-`@tsrx/yuku` 0.8 is [yuku-tsrx](https://github.com/arshad-yaseen/yuku-tsrx), written by [Arshad Yaseen](https://github.com/arshad-yaseen), who also wrote [Yuku](https://github.com/yuku-toolchain/yuku). It is published from [tsrx-org/yuku](https://github.com/tsrx-org/yuku), where 0.7 stays on the [`legacy-0.7`](https://github.com/tsrx-org/yuku/tree/legacy-0.7) branch.
+`@tsrx/yuku` is maintained by [Jack Shelton](https://github.com/thejackshelton), on [tsrx-org/yuku](https://github.com/tsrx-org/yuku). Thanks to [Arshad Yaseen](https://github.com/arshad-yaseen) for his help.

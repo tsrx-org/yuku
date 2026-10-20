@@ -97,7 +97,7 @@ export const examples = [
   {
     id: 'style',
     label: 'Style element',
-    note: 'A JSXStyleElement keeps its CSS as one JSXText. CSS trees come in 0.9.',
+    note: 'A JSXStyleElement keeps its CSS as one JSXText. A CSS tree is next.',
     source: `export function Card({ title }) @{
   <section class="card">
     <h2>{title}</h2>

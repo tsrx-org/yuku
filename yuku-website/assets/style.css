@@ -1689,19 +1689,6 @@ p.home-upstream-link {
   text-align: center;
   font-size: 14px;
 }
-.hero-release {
-  margin: 22px 0 0;
-  font-size: 13.5px;
-}
-.hero-release a {
-  color: var(--c-text-2);
-  text-decoration: underline;
-  text-decoration-color: var(--c-divider);
-  text-underline-offset: 3px;
-}
-.hero-release a:hover {
-  color: var(--c-brand);
-}
 .feature-details a {
   color: var(--c-brand);
 }
@@ -1710,12 +1697,6 @@ p.home-upstream-link {
   margin: 0 auto;
   padding: 24px 24px 56px;
   text-align: center;
-}
-.home-credit h2 {
-  margin: 0 0 10px;
-  font-family: var(--font-display);
-  font-size: 22px;
-  letter-spacing: -0.01em;
 }
 .home-credit p {
   margin: 0 auto 12px;
@@ -2708,9 +2689,9 @@ html.dark .comp-fill.comp-mixed {
 /* Home release-gate stat cards. */
 .gate-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  max-width: 920px;
+  max-width: 720px;
   margin: 0 auto;
 }
 .gate-card {
@@ -2860,18 +2841,14 @@ html.dark .gate-card .gate-meter-fill.fail {
 html.dark .gate-status {
   color: #f87171;
 }
-/* Four cards need about 940px before the longest value ("33,708 parses/s")
-   starts wrapping inside its card, so they fold to two rows of two first and
-   only then to one column. */
 @media (max-width: 940px) {
   .gate-grid {
-    grid-template-columns: repeat(2, 1fr);
     max-width: 640px;
   }
 }
 @media (max-width: 720px) {
   .gate-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 460px) {

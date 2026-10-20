@@ -1,6 +1,6 @@
 # Agent instructions
 
-`@tsrx/yuku` is Arshad Yaseen's [yuku-tsrx](https://github.com/arshad-yaseen/yuku-tsrx). Write changes the way he writes Yuku and yuku-tsrx: the grammar in Zig (`src/tsrx.zig`), a thin TypeScript layer over one WebAssembly module, no runtime dependency beyond Yuku and yuku-css, short comments only where the code can't say why, and a test in `test/` for every fix. [Yuku's AGENTS.md](https://github.com/yuku-toolchain/yuku/blob/main/AGENTS.md) is the rulebook.
+`@tsrx/yuku` is maintained by [Jack Shelton](https://github.com/thejackshelton). Write changes the way Yuku is written: the grammar in Zig (`src/tsrx.zig`), a thin TypeScript layer over one WebAssembly module, no runtime dependency beyond Yuku and yuku-css, short comments only where the code can't say why, and a test in `test/` for every fix. [Yuku's AGENTS.md](https://github.com/yuku-toolchain/yuku/blob/main/AGENTS.md) is the rulebook.
 
 The tree must match `@tsrx/core`, the official parser: `bun run sync` rebuilds `test/suite` from the TSRX repository at the release of the installed `@tsrx/core`, and every source must parse, or fail, as it does. A change that makes parsing slower needs `bun run bench` numbers before and after, on a quiet machine.
 
