@@ -86,7 +86,8 @@ export async function initDemo(panel) {
   try {
     await ready()
   } catch (error) {
-    setStatus('in-browser parser unavailable', 'error')
+    console.error('@tsrx/yuku did not load in this tab', error)
+    setStatus(`in-browser parser unavailable: ${error.message}`, 'error')
     if (hintEl) hintEl.textContent = 'read only'
     if (outputStatus) outputStatus.textContent = `in-browser parser unavailable: ${error.message}`
     return cleanup

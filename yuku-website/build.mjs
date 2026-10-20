@@ -1,6 +1,7 @@
 // Builds yuku.tsrx.dev: Markdown in this folder to HTML in dist/. Run: node build.mjs
 import { createHash } from 'node:crypto'
-import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from '@tsrx/yuku'
@@ -114,19 +115,10 @@ async function readPagesBenchmark() {
       throw new Error(`README.md: the ${header[column + 1]} total is not the sum of its pages`)
     }
   }
-  const legacyPages = pages.filter((row) => typeof row.values[2] === 'number')
   const pagesSpeedup = total.values[1] / total.values[0]
-  const legacySpeedup = sum(2, legacyPages) / sum(0, legacyPages)
   const pagesClaim = `${pagesSpeedup.toFixed(1)}x faster than \`@tsrx/core\``
-  const legacyClaim = `${Math.round(legacySpeedup)}x faster than 0.7 on the ${numberWord(legacyPages.length)} pages 0.7 parses`
-  for (const claim of [pagesClaim, legacyClaim]) {
-    if (!readme.includes(claim)) throw new Error(`README.md: expected "${claim}" from the pages table`)
-  }
-  return { header, pages, total, pagesSpeedup, legacySpeedup, legacyPages: legacyPages.length }
-}
-
-function numberWord(n) {
-  return ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven'][n] ?? String(n)
+  if (!readme.includes(pagesClaim)) throw new Error(`README.md: expected "${pagesClaim}" from the pages table`)
+  return { header, pages, total, pagesSpeedup }
 }
 
 const suite = await readSuiteBenchmark()
@@ -146,8 +138,6 @@ const facts = {
   pagesSpeedup: pagesBench.pagesSpeedup.toFixed(1),
   pagesYuku: `${pagesBench.total.values[0]} ms`,
   pagesCore: `${pagesBench.total.values[1]} ms`,
-  legacySpeedup: String(Math.round(pagesBench.legacySpeedup)),
-  legacyPages: numberWord(pagesBench.legacyPages),
 }
 const fillFacts = (text) =>
   text.replace(/\{\{(\w+)\}\}/g, (match, name) => {
@@ -171,14 +161,14 @@ const highlighter = await getDocsHighlighter()
 const highlightHtml = (code, lang) => highlightWith(highlighter, code, lang)
 
 const styleSource = await readFile(path.join(docsDir, 'assets', 'style.css'), 'utf8')
-const assetVersionHash = createHash('sha256').update(styleSource).update(yukuVersion)
-for (const entry of (await readdir(path.join(docsDir, 'assets'), { recursive: true }))
-  .filter((entry) => entry.endsWith('.js'))
-  .sort()) {
-  assetVersionHash.update(entry).update(await readFile(path.join(docsDir, 'assets', entry)))
+
+// Every asset is served from /assets/<hash of all assets>/, cached as immutable, so a page
+// can only ever load the files of its own build. build() sets the hash before any page renders.
+let assetHash = null
+const asset = (file) => {
+  if (assetHash === null) throw new Error(`asset(${file}) before the assets were hashed`)
+  return `/assets/${assetHash}/${file}`
 }
-assetVersionHash.update(await readFile(path.join(docsDir, 'demo-highlighter-entry.mjs')))
-const assetVersion = assetVersionHash.digest('hex').slice(0, 10)
 
 const CSS_SHELLS = ['doc', 'home', 'playground']
 
@@ -421,11 +411,6 @@ const themeInit = `(() => {
   } catch {}
 })()`
 
-const socialImageVersion = createHash('sha256')
-  .update(await readFile(path.join(docsDir, 'assets', 'social-card.png')))
-  .digest('hex')
-  .slice(0, 10)
-const socialImage = `${config.origin}/assets/social-card.png?v=${socialImageVersion}`
 
 const canonicalUrl = (pathname) => `${config.origin}${pathname}`
 
@@ -451,7 +436,7 @@ function headerHtml() {
     <button id="menu-toggle" class="menu-toggle" aria-label="Navigation menu" aria-expanded="false" aria-controls="sidebar">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
     </button>
-    <a class="site-title" href="/"><img class="site-logo" src="/assets/logo.svg" alt="" width="26" height="26" />${config.title}</a>
+    <a class="site-title" href="/"><img class="site-logo" src="${asset('logo.svg')}" alt="" width="26" height="26" />${config.title}</a>
     <div class="navbar-spacer"></div>
     <button id="search-button" class="search-button" aria-label="Search documentation">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -484,20 +469,20 @@ function pageShell({ title, description, pathname, shell, bodyClass, main }) {
 <meta property="og:url" content="${canonical}" />
 <meta property="og:title" content="${escapeHtml(fullTitle)}" />
 <meta property="og:description" content="${escapeHtml(summary)}" />
-<meta property="og:image" content="${socialImage}" />
+<meta property="og:image" content="${config.origin}${asset('social-card.png')}" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta property="og:image:alt" content="${escapeHtml(config.title)}" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="${escapeHtml(fullTitle)}" />
 <meta name="twitter:description" content="${escapeHtml(summary)}" />
-<meta name="twitter:image" content="${socialImage}" />
+<meta name="twitter:image" content="${config.origin}${asset('social-card.png')}" />
 <meta name="color-scheme" content="light dark" />
-<link rel="icon" href="/assets/logo.svg" />
-<link rel="preload" href="/assets/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
-<link rel="preload" href="/assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="icon" href="${asset('logo.svg')}" />
+<link rel="preload" href="${asset('fonts/space-grotesk-latin.woff2')}" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="${asset('fonts/inter-latin.woff2')}" as="font" type="font/woff2" crossorigin />
 <script>${themeInit}</script>
-<link rel="stylesheet" href="/assets/style-${shell}.css?v=${assetVersion}" />
+<link rel="stylesheet" href="${asset(`style-${shell}.css`)}" />
 </head>
 <body class="${bodyClass}">
 <a class="skip-link" href="#main-content">Skip to content</a>
@@ -505,7 +490,7 @@ ${headerHtml()}
 ${main}
 ${searchDialog}
 <div id="route-announcer" class="visually-hidden" aria-live="polite"></div>
-<script type="module" src="/assets/app.js?v=${assetVersion}"></script>
+<script type="module" src="${asset('app.js')}"></script>
 </body>
 </html>
 `
@@ -545,7 +530,7 @@ const BRAND_IMAGES = { tsrx: 'brands/tsrx.svg', '@tsrx/yuku': 'logo.svg' }
 
 function brandIconHtml(name) {
   const image = BRAND_IMAGES[name]
-  if (image) return `<img src="/assets/${image}" alt="" width="16" height="16" loading="lazy">`
+  if (image) return `<img src="${asset(image)}" alt="" width="16" height="16" loading="lazy">`
   const d = BRAND_ICONS[name]
   return d ? `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${d}"/></svg>` : ''
 }
@@ -590,7 +575,7 @@ function pageMenuHtml(link) {
 }
 
 const footerHtml = () => `<footer class="site-footer">
-  <p>Written by <a href="https://github.com/arshad-yaseen" target="_blank" rel="noreferrer">Arshad Yaseen</a>, the author of <a href="https://yuku.fyi" target="_blank" rel="noreferrer">Yuku</a>, as <a href="https://github.com/arshad-yaseen/yuku-tsrx" target="_blank" rel="noreferrer">yuku-tsrx</a>. MIT licensed, on <a href="${config.repository}" target="_blank" rel="noreferrer">GitHub</a>.</p>
+  <p>Maintained by <a href="https://github.com/thejackshelton" target="_blank" rel="noreferrer">Jack Shelton</a>. Thanks to <a href="https://github.com/arshad-yaseen" target="_blank" rel="noreferrer">Arshad Yaseen</a> for his help. MIT licensed, on <a href="${config.repository}" target="_blank" rel="noreferrer">GitHub</a>.</p>
 </footer>`
 
 function renderDocPage({ page, article, headings, pageIndex, flat, leadWords }) {
@@ -631,9 +616,9 @@ const BLOCKS = {
   },
   'suite-chart': {
     html: () =>
-      `<figure class="bench-figure"><img src="/assets/bench/chart.svg" alt="Time per file to parse the ${facts.suiteFiles} sources of the test suite: @tsrx/yuku ${facts.suiteYuku}, @tsrx/core ${facts.suiteCore}, ${suite.speedup}x as long" width="640" height="52"></figure>`,
+      `<figure class="bench-figure"><img src="${asset('bench/chart.svg')}" alt="Time per file to parse the ${facts.suiteFiles} sources of the test suite: @tsrx/yuku ${facts.suiteYuku}, @tsrx/core ${facts.suiteCore}, ${suite.speedup}x as long" width="640" height="52"></figure>`,
     markdown: () =>
-      `![Time per file to parse the test suite: @tsrx/yuku ${facts.suiteYuku}, @tsrx/core ${facts.suiteCore}](${config.origin}/assets/bench/chart.svg)`,
+      `![Time per file to parse the test suite: @tsrx/yuku ${facts.suiteYuku}, @tsrx/core ${facts.suiteCore}](${config.origin}${asset('bench/chart.svg')})`,
   },
 }
 const BLOCK_PATTERN = /<!-- block:([a-z-]+) -->/g
@@ -667,12 +652,6 @@ function homeBenchCards() {
       label: 'faster than @tsrx/core on the pages of tsrx.dev',
       budget: `${facts.pagesYuku} against ${facts.pagesCore} for all ${pagesBench.pages.length} pages`,
       note: 'The total of the tsrx.dev pages table in the README, 319 kB of TSRX.',
-    },
-    {
-      value: `${facts.legacySpeedup}&times;`,
-      label: 'faster than @tsrx/yuku 0.7',
-      budget: `on the ${facts.legacyPages} tsrx.dev pages 0.7 parses`,
-      note: 'The same table: 0.7 throws on the other pages.',
     },
     {
       value: facts.suiteTotal,
@@ -763,7 +742,7 @@ function editorPanelHtml(file, actions) {
         </div>
         <div class="code-panel-status">
           <span id="demo-status" aria-live="polite">a TSRX component, highlighted with the TSRX grammar</span>
-          <span id="demo-meta">@tsrx/yuku ${yukuVersion}</span>
+          <span id="demo-meta">@tsrx/yuku</span>
         </div>
       </div>`
 }
@@ -791,7 +770,7 @@ function renderPlaygroundPage() {
   <section class="pg" aria-label="Playground">
     <header class="pg-topbar">
       <h1 class="pg-title">TSRX Playground</h1>
-      <p class="pg-tagline">The published @tsrx/yuku ${yukuVersion}, running in this tab: parse, analyze, generate.</p>
+      <p class="pg-tagline">The published @tsrx/yuku, running in this tab: parse, analyze, generate.</p>
     </header>
     <div class="pg-toolbar pg-examples-bar" id="pg-side">
       <div class="pg-examples" role="group" aria-label="Examples">
@@ -824,14 +803,13 @@ function renderHomePage({ description }) {
   const main = `
 <main id="main-content" class="home">
   <section class="hero">
-    <img class="hero-logo" src="/assets/logo.svg" alt="" width="64" height="64" />
+    <img class="hero-logo" src="${asset('logo.svg')}" alt="" width="64" height="64" />
     <h1 class="hero-name">${hero.name}</h1>
     <p class="hero-text">${hero.text}</p>
     <p class="hero-tagline">${hero.tagline}</p>
     <div class="hero-actions">
       ${hero.actions.map((action) => `<a class="action action-${action.theme}" href="${action.link}">${action.text}</a>`).join('\n')}
     </div>
-    <p class="hero-release"><a href="/guide/migrating">${yukuVersion} is a new implementation by Arshad Yaseen. Coming from 0.7?</a></p>
   </section>
   <section class="band" aria-label="TSRX example">
     <div class="pg-panes hero-panes">
@@ -862,10 +840,9 @@ function renderHomePage({ description }) {
         .join('\n')}
     </ul>
   </section>
-  <section class="home-credit" aria-label="Author">
-    <h2>Made by Arshad Yaseen</h2>
-    <p>${'@tsrx/yuku'} is <a href="https://github.com/arshad-yaseen/yuku-tsrx" target="_blank" rel="noreferrer">yuku-tsrx</a>, written by <a href="https://github.com/arshad-yaseen" target="_blank" rel="noreferrer">Arshad Yaseen</a> on <a href="https://yuku.fyi" target="_blank" rel="noreferrer">Yuku</a>, his JavaScript and TypeScript compiler toolchain in Zig. It is published from <a href="${config.repository}" target="_blank" rel="noreferrer">tsrx-org/yuku</a>.</p>
-    <p class="home-next"><strong>Next, in 0.9:</strong> a CSS tree for every <code>&lt;style&gt;</code>, parsed in the same pass by <a href="https://github.com/thejackshelton/yuku-css" target="_blank" rel="noreferrer">yuku-css</a>, once <a href="https://github.com/yuku-toolchain/yuku/pull/280" target="_blank" rel="noreferrer">yuku#280</a> lands.</p>
+  <section class="home-credit" aria-label="Credits">
+    <p>Maintained by <a href="https://github.com/thejackshelton" target="_blank" rel="noreferrer">Jack Shelton</a>, on <a href="${config.repository}" target="_blank" rel="noreferrer">tsrx-org/yuku</a>. Thanks to <a href="https://github.com/arshad-yaseen" target="_blank" rel="noreferrer">Arshad Yaseen</a> for his help.</p>
+    <p class="home-next"><strong>Next:</strong> a CSS tree for every <code>&lt;style&gt;</code>, parsed in the same pass by <a href="https://github.com/thejackshelton/yuku-css" target="_blank" rel="noreferrer">yuku-css</a>, once <a href="https://github.com/yuku-toolchain/yuku/pull/280" target="_blank" rel="noreferrer">yuku#280</a> lands.</p>
   </section>
   <footer class="home-footer">
     <p class="footer-links"><a href="${config.repository}" target="_blank" rel="noreferrer">GitHub<span class="visually-hidden"> (opens in new tab)</span></a> · <a href="https://www.npmjs.com/package/@tsrx/yuku" target="_blank" rel="noreferrer">npm<span class="visually-hidden"> (opens in new tab)</span></a> · <a href="https://yuku.fyi" target="_blank" rel="noreferrer">yuku.fyi<span class="visually-hidden"> (opens in new tab)</span></a> · <a href="https://tsrx.dev" target="_blank" rel="noreferrer">tsrx.dev<span class="visually-hidden"> (opens in new tab)</span></a></p>
@@ -914,6 +891,48 @@ async function bundleBrowserAssets(assetsOut) {
   })
 }
 
+// ---------- assets ----------
+
+async function writeAssets() {
+  const staging = path.join(outDir, 'assets', 'staging')
+  await cp(path.join(docsDir, 'assets'), staging, { recursive: true })
+  await mkdir(path.join(staging, 'bench'), { recursive: true })
+  await cp(path.join(repoRoot, 'bench', 'chart.svg'), path.join(staging, 'bench', 'chart.svg'))
+  await bundleBrowserAssets(staging)
+  await rm(path.join(staging, 'style.css'))
+  for (const [shell, lines] of splitStylesheet(styleSource)) {
+    await writeFile(
+      path.join(staging, `style-${shell}.css`),
+      lines.join('\n').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\n{3,}/g, '\n\n'),
+    )
+  }
+  await cp(path.join(docsDir, 'node_modules', 'minisearch', 'dist', 'es'), path.join(staging, 'minisearch'), { recursive: true })
+  const hash = createHash('sha256')
+  for (const file of (await readdir(staging, { recursive: true })).sort()) {
+    const full = path.join(staging, file)
+    if ((await stat(full)).isFile()) hash.update(file).update(await readFile(full))
+  }
+  const digest = hash.digest('hex').slice(0, 12)
+  await rename(staging, path.join(outDir, 'assets', digest))
+  return digest
+}
+
+// Fails on any /assets/ URL in the output that isn't in this build's hashed directory.
+async function checkAssetReferences() {
+  const unhashed = []
+  for (const file of await readdir(outDir, { recursive: true })) {
+    if (!/\.(html|md|txt|xml|json|css|js)$/.test(file)) continue
+    const text = await readFile(path.join(outDir, file), 'utf8')
+    for (const [reference] of text.matchAll(/\/assets\/[^"'`)\s<>]+/g)) {
+      const [pathname] = reference.split(/[?#]/)
+      if (!pathname.startsWith(`/assets/${assetHash}/`) || !existsSync(path.join(outDir, pathname))) {
+        unhashed.push(`${file}: ${reference}`)
+      }
+    }
+  }
+  if (unhashed.length > 0) throw new Error(`asset URLs outside /assets/${assetHash}/:\n${unhashed.join('\n')}`)
+}
+
 // ---------- build ----------
 
 async function build() {
@@ -930,6 +949,8 @@ async function build() {
       if (file.endsWith('.md') && !claimed.has(sourcePath)) throw new Error(`a page missing from the sidebar: ${section}/${file}`)
     }
   }
+
+  assetHash = await writeAssets()
 
   const searchDocs = []
   const markdownPages = []
@@ -999,20 +1020,8 @@ async function build() {
     await writeFile(path.join(outDir, `${name}.html`), html)
   }
 
-  const assetsOut = path.join(outDir, 'assets')
-  await cp(path.join(docsDir, 'assets'), assetsOut, { recursive: true })
-  await mkdir(path.join(assetsOut, 'bench'), { recursive: true })
-  await cp(path.join(repoRoot, 'bench', 'chart.svg'), path.join(assetsOut, 'bench', 'chart.svg'))
-  await bundleBrowserAssets(assetsOut)
-  await rm(path.join(assetsOut, 'style.css'))
-  for (const [shell, lines] of splitStylesheet(styleSource)) {
-    await writeFile(
-      path.join(assetsOut, `style-${shell}.css`),
-      lines.join('\n').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\n{3,}/g, '\n\n'),
-    )
-  }
-  await cp(path.join(docsDir, 'node_modules', 'minisearch', 'dist', 'es'), path.join(assetsOut, 'minisearch'), { recursive: true })
   await writeFile(path.join(outDir, 'search-index.json'), JSON.stringify(searchDocs))
+  await checkAssetReferences()
 
   const publicPaths = ['/', PLAYGROUND_ROUTE, ...pages.map(({ link }) => link)]
   const expectedRedirects = Object.entries(REDIRECTS).flatMap(([from, to]) => {

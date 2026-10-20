@@ -4,7 +4,6 @@
 // ---------- theme toggle (persistent chrome) ----------
 const themeToggle = document.getElementById('theme-toggle')
 const root = document.documentElement
-root.dataset.assetVersion = new URL(import.meta.url).search
 
 function syncThemeButton() {
   themeToggle.setAttribute('aria-pressed', String(root.classList.contains('dark')))
@@ -280,7 +279,14 @@ function initPage() {
           else pendingScenario?.click()
           pendingScenario = null
         })
-        .catch(() => {})
+        .catch((error) => {
+          console.error('the editor did not load', error)
+          const status = demo.querySelector('#demo-status')
+          if (status) {
+            status.textContent = `in-browser parser unavailable: ${error.message}`
+            status.dataset.tone = 'error'
+          }
+        })
     })
     pageCleanupCallbacks.push(() => {
       disposed = true
@@ -716,7 +722,7 @@ function loadSearch() {
   searchReady ??= (async () => {
     const [{ default: MiniSearch }, response] = await Promise.all([
       import(new URL('./minisearch/index.js', import.meta.url)),
-      fetch(new URL('../search-index.json', import.meta.url)),
+      fetch('/search-index.json'),
     ])
     const documents = await response.json()
     searchEngine = new MiniSearch({
