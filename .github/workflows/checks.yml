@@ -36,12 +36,16 @@ jobs:
       - name: Check Zig formatting
         run: zig fmt --check build.zig build.zig.zon src
 
+      # the tests and the typecheck import the built package by its name
+      - name: Build
+        run: bun run build
+
       - name: Typecheck
         run: bun run typecheck
 
-      # builds the WebAssembly and the package, then parses every source of test/suite
+      # parses every source of test/suite
       - name: Test
-        run: bun run test
+        run: bun test
 
       # the WebAssembly uses SIMD, which Node.js runs from 16.4
       - name: Run on the minimum Node.js

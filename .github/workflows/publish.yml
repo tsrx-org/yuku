@@ -102,8 +102,9 @@ jobs:
 
       - name: Test
         run: |
+          bun run build
           bun run typecheck
-          bun run test
+          bun test
 
       - name: Pack
         shell: bash
