@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import type { ParseResult } from "yuku";
-import { generate, parse } from "yuku-tsrx";
+import { generate, parse } from "@tsrx/yuku";
 
 const errors = ({ diagnostics }: ParseResult) =>
   diagnostics.filter((d) => d.severity === "error").map((d) => d.message);

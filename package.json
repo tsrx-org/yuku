@@ -1,11 +1,25 @@
 {
-  "name": "yuku-tsrx",
-  "version": "0.1.0",
+  "name": "@tsrx/yuku",
+  "version": "0.8.0",
   "description": "A fast TSRX parser, analyzer, and code generator, built on Yuku",
+  "keywords": [
+    "tsrx",
+    "parser",
+    "analyzer",
+    "codegen",
+    "estree",
+    "jsx",
+    "typescript",
+    "yuku",
+    "webassembly"
+  ],
+  "homepage": "https://github.com/tsrx-org/yuku#readme",
+  "bugs": "https://github.com/tsrx-org/yuku/issues",
   "license": "MIT",
+  "author": "Arshad Yaseen <arshadpyaseen@gmail.com> (https://arshad.fyi)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yuku-toolchain/yuku-tsrx.git"
+    "url": "git+https://github.com/tsrx-org/yuku.git"
   },
   "type": "module",
   "sideEffects": false,
@@ -38,9 +52,12 @@
     "typescript": "7.0.2"
   },
   "engines": {
-    "node": ">=14.18.0"
+    "node": ">=16.4.0"
   },
   "dependencies": {
     "yuku": "0.20.1"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

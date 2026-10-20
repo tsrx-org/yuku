@@ -13,10 +13,10 @@ const FIXTURES = new URL("../test/suite/pass/", import.meta.url);
 
 const PARSERS: Parser[] = [
   {
-    name: "yuku-tsrx",
+    name: "@tsrx/yuku",
     color: "#FF6B35",
     async load() {
-      const { parse } = await import("yuku-tsrx");
+      const { parse } = await import("@tsrx/yuku");
       // reading `program` builds the AST
       return (source, path) => parse(source, { path }).program;
     },
