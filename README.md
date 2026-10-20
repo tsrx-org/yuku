@@ -26,7 +26,7 @@ analyze(source).rootScope.find("List");
 generate(program).code;
 ```
 
-`parse` builds an ESTree program with TSRX's own nodes, the tree [`@tsrx/core`](https://www.npmjs.com/package/@tsrx/core) builds, and never throws: errors are in `diagnostics`, with the `TSRXnnnn` code `@tsrx/core` reports. It takes Yuku's options, `path`, `sourceType`, `semanticErrors`, `attachComments`, and `tokens`, and `preserveParens`, which is `false` as in `@tsrx/core`.
+`parse` builds an ESTree program with TSRX's own nodes, as [`@tsrx/core`](https://www.npmjs.com/package/@tsrx/core) names them, and never throws: errors are in `diagnostics`, with the `TSRXnnnn` code `@tsrx/core` reports. It takes Yuku's options, `path`, `sourceType`, `semanticErrors`, `attachComments`, and `tokens`, and `preserveParens`, which is `false` as in `@tsrx/core`.
 
 `analyze` gives Yuku's semantic model, and `Analyzer` analyzes a project of files with their imports and exports. `generate` prints TSRX back.
 

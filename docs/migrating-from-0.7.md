@@ -27,7 +27,7 @@ The options are Yuku's: `path`, `sourceType`, `preserveParens`, `semanticErrors`
 
 ## The tree
 
-The tree is ESTree with TSRX's nodes, as `@tsrx/core` builds it. What differs from 0.7:
+The tree is ESTree with TSRX's node types, as `@tsrx/core` names them. What differs from 0.7:
 
 - `@else if` is an `IfStatement` in the `alternate` of the `JSXIfExpression`, as in `@tsrx/core`. 0.7 nested another `JSXIfExpression`.
 - `<script>` is a plain `JSXElement` whose body is one `JSXText`, kept as written. 0.7 had a `JSXScriptElement`.
@@ -45,7 +45,7 @@ The 0.7 helpers are gone. Their replacements:
 | `walk` | `walk` from `yuku/ast` |
 | `analyze` | `analyze(source, { path })`, Yuku's semantic model |
 | `generate` | `generate(node)`, which prints TSRX back |
-| `normalizeProgram` | not needed: the tree is already in `@tsrx/core`'s shape |
+| `normalizeProgram` | not needed: the tree already has `@tsrx/core`'s node types |
 | `sourceLocation`, `sourcePosition` | compute lines from `start` and `end` |
 | `duplicateBindings`, `duplicateBindingDiagnostics` | `parse(source, { semanticErrors: true })` |
 | `isEventAttribute`, `normalizeEventName` | `isEventAttribute` and `normalizeEventName` from `@tsrx/core` |
