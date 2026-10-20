@@ -20,7 +20,3 @@ The package is an ES module. The module's bytes are inlined in its JavaScript, s
 ## In the browser
 
 Bundle it like any ES module. The [playground](/playground) on this site runs the published package in your tab, with its `.wasm` served as a file next to the bundle instead of inlined.
-
-## Coming from 0.7
-
-0.7 shipped native addons for macOS on Apple Silicon and Linux x64, and needed Node.js 22. Those packages, `@tsrx/yuku-darwin-arm64` and `@tsrx/yuku-linux-x64-gnu`, are no longer installed or published. See [Migrating from 0.7](/guide/migrating).

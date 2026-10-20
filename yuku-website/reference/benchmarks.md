@@ -1,6 +1,6 @@
 ---
 title: Benchmarks
-description: Parse times against @tsrx/core and 0.7, on the TSRX test suite and the pages of tsrx.dev.
+description: Parse times against @tsrx/core, on the TSRX test suite and the pages of tsrx.dev.
 ---
 
 # Benchmarks
@@ -17,11 +17,11 @@ Parsing the {{suiteFiles}} TSRX sources of the [test suite](https://github.com/t
 
 ## The pages of tsrx.dev
 
-The pages of [tsrx.dev](https://tsrx.dev), 319 kB in all, in milliseconds, the same way over 5 runs. "throws" is a page 0.7 can't parse.
+The pages of [tsrx.dev](https://tsrx.dev), 319 kB in all, in milliseconds, the same way over 5 runs.
 
 <!-- block:pages-table -->
 
-{{pagesSpeedup}}x faster than `@tsrx/core` in all, {{pagesYuku}} against {{pagesCore}}, and {{legacySpeedup}}x faster than 0.7 on the {{legacyPages}} pages 0.7 parses.
+{{pagesSpeedup}}x faster than `@tsrx/core` in all, {{pagesYuku}} against {{pagesCore}}.
 
 ## Run them
 

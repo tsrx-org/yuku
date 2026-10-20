@@ -1,6 +1,6 @@
 # @tsrx/yuku
 
-A fast [TSRX](https://tsrx.dev) parser, analyzer, and code generator, built on [Yuku](https://yuku.fyi). Written by [Arshad Yaseen](https://github.com/arshad-yaseen) as [yuku-tsrx](https://github.com/arshad-yaseen/yuku-tsrx).
+A fast [TSRX](https://tsrx.dev) parser, analyzer, and code generator, built on [Yuku](https://yuku.fyi). Maintained by [Jack Shelton](https://github.com/thejackshelton).
 
 ```bash
 npm install @tsrx/yuku
@@ -46,13 +46,11 @@ generate(program).code;
 
 It runs in Node.js 16.4 or newer, Bun, Deno, Workers, and browsers.
 
-Coming from 0.7? See [docs/migrating-from-0.7.md](docs/migrating-from-0.7.md). 0.7 stays on the [`legacy-0.7`](https://github.com/tsrx-org/yuku/tree/legacy-0.7) branch.
-
 ## Built on Yuku
 
 [Yuku](https://github.com/yuku-toolchain/yuku) is a JavaScript and TypeScript compiler toolchain written in Zig, documented at [yuku.fyi](https://yuku.fyi). TSRX is a [Yuku dialect](https://yuku.fyi/parser/dialect/): one Zig file, [`src/tsrx.zig`](src/tsrx.zig), compiled into Yuku's parser. Yuku parses, analyzes, and prints the JavaScript and TypeScript around it, and the tree crosses into JavaScript in one buffer, decoded when you read `program`. [How it works](https://yuku.tsrx.dev/architecture/how-it-works) has the details.
 
-In 0.9, each `<style>` gets a CSS tree, parsed in the same pass by [yuku-css](https://github.com/thejackshelton/yuku-css), once [yuku#280](https://github.com/yuku-toolchain/yuku/pull/280) lands. Today its CSS is one `JSXText`, as in `@tsrx/core`.
+Next, each `<style>` gets a CSS tree, parsed in the same pass by [yuku-css](https://github.com/thejackshelton/yuku-css), once [yuku#280](https://github.com/yuku-toolchain/yuku/pull/280) lands. Today its CSS is one `JSXText`, as in `@tsrx/core`.
 
 ## Benchmark
 
@@ -64,22 +62,22 @@ Median time per file over 3 runs, each in a fresh Node.js 24 process on an Apple
 
 The pages of [tsrx.dev](https://tsrx.dev), 319 kB in all, in milliseconds, the same way over 5 runs:
 
-| page | @tsrx/yuku 0.8 | @tsrx/core 0.5.5 | @tsrx/yuku 0.7 |
-| --- | ---: | ---: | ---: |
-| specification | 0.554 | 1.949 | throws |
-| getting-started | 0.431 | 2.059 | throws |
-| features | 0.376 | 1.726 | throws |
-| compiler-demo | 0.145 | 1.451 | 2.705 |
-| blog-rethinking-tsrx | 0.094 | 0.396 | throws |
-| blog-removing-lazy-destructuring | 0.084 | 0.301 | 1.512 |
-| index | 0.083 | 0.385 | 1.696 |
-| blog-simplifying-tsrx-after-feedback | 0.069 | 0.334 | 1.572 |
-| blog | 0.028 | 0.127 | 0.548 |
-| playground | 0.013 | 0.093 | 0.319 |
-| layout | 0.006 | 0.176 | 0.384 |
-| total | 1.883 | 8.998 | |
+| page | @tsrx/yuku | @tsrx/core 0.5.5 |
+| --- | ---: | ---: |
+| specification | 0.554 | 1.949 |
+| getting-started | 0.431 | 2.059 |
+| features | 0.376 | 1.726 |
+| compiler-demo | 0.145 | 1.451 |
+| blog-rethinking-tsrx | 0.094 | 0.396 |
+| blog-removing-lazy-destructuring | 0.084 | 0.301 |
+| index | 0.083 | 0.385 |
+| blog-simplifying-tsrx-after-feedback | 0.069 | 0.334 |
+| blog | 0.028 | 0.127 |
+| playground | 0.013 | 0.093 |
+| layout | 0.006 | 0.176 |
+| total | 1.883 | 8.998 |
 
-4.8x faster than `@tsrx/core` in all, and 20x faster than 0.7 on the seven pages 0.7 parses.
+4.8x faster than `@tsrx/core` in all.
 
 ## Development
 
@@ -94,6 +92,10 @@ bun run sync       # syncs test/suite with the TSRX repository at the release of
 ```
 
 The test suite is every `.tsrx` file of the [TSRX repository](https://github.com/tsrx-org/tsrx) and every case in the tests of `@tsrx/core`, each expected to parse, or fail, as the official parser parses it, except where it accepts what TypeScript rejects.
+
+## Thanks
+
+Thanks to [Arshad Yaseen](https://github.com/arshad-yaseen), the author of Yuku, for his help.
 
 ## License
 

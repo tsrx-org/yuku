@@ -20,7 +20,6 @@ export default {
       text: 'Start here',
       items: [
         { text: 'Quick start', link: '/guide/quick-start' },
-        { text: 'Migrating from 0.7', link: '/guide/migrating' },
       ],
     },
     {
@@ -47,7 +46,7 @@ export default {
       ],
     },
   ],
-  // Routes of the 0.7 site, sent to the page that covers the same ground in 0.8.
+  // Older routes, sent to the page that covers the same ground.
   redirects: {
     '/guide/introduction': '/guide/quick-start',
     '/guide/getting-started': '/guide/quick-start',

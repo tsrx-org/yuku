@@ -16,7 +16,10 @@
   "homepage": "https://github.com/tsrx-org/yuku#readme",
   "bugs": "https://github.com/tsrx-org/yuku/issues",
   "license": "MIT",
-  "author": "Arshad Yaseen <arshadpyaseen@gmail.com> (https://arshad.fyi)",
+  "author": "Jack Shelton <me@jackshelton.com> (https://github.com/thejackshelton)",
+  "maintainers": [
+    "Jack Shelton <me@jackshelton.com> (https://github.com/thejackshelton)"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tsrx-org/yuku.git"

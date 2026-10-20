@@ -58,7 +58,7 @@ export function List({ items }) @{
 The function's body is a `JSXCodeBlock` that renders the `<ul>`, and the loop is a `JSXForExpression` among its children, with `index` and `key` set.
 
 <!-- details:CSS in <style> -->
-In 0.8 a `<style>` keeps its CSS as text, as `@tsrx/core` does. 0.9 will add a CSS tree for each `<style>`, parsed in the same pass by [yuku-css](https://github.com/thejackshelton/yuku-css), once [yuku#280](https://github.com/yuku-toolchain/yuku/pull/280) lands in Yuku.
+A `<style>` keeps its CSS as text, as `@tsrx/core` does. A CSS tree for each `<style>` is next, parsed in the same pass by [yuku-css](https://github.com/thejackshelton/yuku-css), once [yuku#280](https://github.com/yuku-toolchain/yuku/pull/280) lands in Yuku.
 <!-- /details -->
 
 ## Walk the tree

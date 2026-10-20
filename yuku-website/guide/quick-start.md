@@ -5,7 +5,7 @@ description: Install @tsrx/yuku, parse a component, find a binding, and print it
 
 # Quick start
 
-`@tsrx/yuku` is a fast [TSRX](https://tsrx.dev) parser, analyzer, and code generator, built on [Yuku](https://yuku.fyi). It is [Arshad Yaseen](https://github.com/arshad-yaseen)'s [yuku-tsrx](https://github.com/arshad-yaseen/yuku-tsrx), published as `@tsrx/yuku`.
+`@tsrx/yuku` is a fast [TSRX](https://tsrx.dev) parser, analyzer, and code generator, built on [Yuku](https://yuku.fyi).
 
 ## Install
 
@@ -50,5 +50,4 @@ The arrow above renders a `JSXCodeBlock` whose output is a `JSXForExpression`. P
 | Resolve names, in one file or across files | [Analyze](/guide/analyze) |
 | Print a changed tree, strip types, or emit a source map | [Generate](/guide/generate) |
 | Show errors with their codes | [Diagnostics](/guide/diagnostics) |
-| Move a project from 0.7 | [Migrating from 0.7](/guide/migrating) |
 | See why it's fast | [How it works](/architecture/how-it-works) |
