@@ -1,0 +1,1 @@
+function App(a: string) @{ 'use strict'; <div /> }

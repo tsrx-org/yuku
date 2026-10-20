@@ -1,0 +1,1 @@
+function App() @{ <script>const tag = "<\/script>";</script> }

@@ -1,0 +1,1 @@
+export function* nodes() { yield @for (const x of xs) { <div /> }; }

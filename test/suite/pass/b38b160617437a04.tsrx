@@ -1,0 +1,1 @@
+export const i = f(a ? b : c, d?.e, ...g);

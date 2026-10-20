@@ -1,0 +1,1 @@
+declare module A.B.C { const x: number; }

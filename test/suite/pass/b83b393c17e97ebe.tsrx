@@ -1,0 +1,1 @@
+export default <style>@import './a.css';</style>;

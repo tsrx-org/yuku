@@ -1,0 +1,1 @@
+export const d = async <T,>(x?: T): Promise<T | undefined> => x;

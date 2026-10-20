@@ -1,0 +1,1 @@
+const node = <Box fn={<T extends () => void,>(x: T) => x} />;

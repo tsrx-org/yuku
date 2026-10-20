@@ -1,0 +1,1 @@
+interface I { new <T>(): I }

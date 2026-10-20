@@ -1,0 +1,1 @@
+function App() @{ <><style data-x="1" ref={r}>.a {}</style><div /></> }

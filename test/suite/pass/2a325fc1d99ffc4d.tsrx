@@ -1,0 +1,1 @@
+let x: typeof import("m", { with: { type: "json" } }).X<Y>;

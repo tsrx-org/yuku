@@ -1,0 +1,1 @@
+class A { m?<T>(x: T): T { return x; } }

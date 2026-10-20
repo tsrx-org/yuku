@@ -1,0 +1,1 @@
+const o = { async m</* c */ T>(b: T) {} };

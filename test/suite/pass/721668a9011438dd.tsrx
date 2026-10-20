@@ -1,0 +1,1 @@
+import __tsrx_server_import$0_default from './server-config.json' with { type: 'json' };

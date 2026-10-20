@@ -1,0 +1,1 @@
+const el = <div attr=<b>@if (x) { <i /> }</b> />;

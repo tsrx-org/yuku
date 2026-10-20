@@ -1,0 +1,1 @@
+type X = Foo<A /* c */, B>;

@@ -1,0 +1,1 @@
+const x = @try { <a/> } @catch (e) { <b/> };

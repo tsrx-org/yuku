@@ -1,0 +1,1 @@
+class Test { render() @{ <div /> } }

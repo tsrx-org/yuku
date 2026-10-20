@@ -1,0 +1,1 @@
+function App() { return <>@if (a) {<b />} done</>; }

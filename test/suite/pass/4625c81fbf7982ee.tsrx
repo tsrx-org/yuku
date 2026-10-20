@@ -1,0 +1,1 @@
+export type satisfies = 1;

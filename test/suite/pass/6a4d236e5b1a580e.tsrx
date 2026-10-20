@@ -1,0 +1,1 @@
+export function B(p) { return <div><span>{p.x}/{p.y}</span></div>; }

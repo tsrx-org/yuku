@@ -1,0 +1,1 @@
+const X = @dec class {};

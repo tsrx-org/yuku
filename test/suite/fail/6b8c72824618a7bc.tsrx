@@ -1,0 +1,1 @@
+return props.show ? <text ref={props.nodeRef} {...props.rest} /> : null;

@@ -1,0 +1,1 @@
+const { 'o k': OK } = server;

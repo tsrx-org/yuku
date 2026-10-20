@@ -1,0 +1,1 @@
+const module = import.source('./module.wasm',);

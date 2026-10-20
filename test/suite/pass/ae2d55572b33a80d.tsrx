@@ -1,0 +1,1 @@
+type T = \u0069ntrinsic.X;

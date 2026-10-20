@@ -1,0 +1,1 @@
+type List = Array<<T>() => T>;

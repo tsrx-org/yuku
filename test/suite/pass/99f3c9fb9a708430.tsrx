@@ -1,0 +1,1 @@
+const wrapper = <tsrx><div /></tsrx>;

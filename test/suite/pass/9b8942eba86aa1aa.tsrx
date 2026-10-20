@@ -1,0 +1,1 @@
+function Test<T extends { id: string }>(item: T): string @{}

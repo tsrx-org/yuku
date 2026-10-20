@@ -1,0 +1,1 @@
+export const data = import('./data.json', { with: { type: 'json' } });

@@ -1,0 +1,1 @@
+function App() @{ <><style>@import url('./a.css');</style><div /></> }

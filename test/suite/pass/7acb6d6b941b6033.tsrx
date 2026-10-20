@@ -1,0 +1,1 @@
+const o = { async m<const T>(x: T) { return x; } };

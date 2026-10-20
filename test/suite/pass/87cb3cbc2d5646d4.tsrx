@@ -1,0 +1,1 @@
+function App() @{ const t = <style>.a {}</style>; <div class={t.a} /> }

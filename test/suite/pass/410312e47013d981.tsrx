@@ -1,0 +1,1 @@
+@dec export abstract class A {}

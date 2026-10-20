@@ -1,0 +1,1 @@
+function App(p) { return @{ <g><rect x={String(p.a).replace(/x/g, String(2 / p.b))} /></g> }; }

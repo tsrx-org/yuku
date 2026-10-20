@@ -1,0 +1,1 @@
+export const f = async(a) => 1;

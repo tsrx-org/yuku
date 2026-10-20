@@ -1,0 +1,1 @@
+const run = <const T extends readonly unknown[]>(x: T) => x;

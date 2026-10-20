@@ -1,0 +1,1 @@
+const fruits = [<Item key="apple">Apple</Item>, <Item key="banana">Banana</Item>];

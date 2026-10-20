@@ -1,0 +1,1 @@
+type M = { [/* c */ K in keyof X]: X[K] };

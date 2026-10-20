@@ -1,0 +1,1 @@
+function App() @{ <Foo cb={(x) => x}>(b) => c</Foo> }

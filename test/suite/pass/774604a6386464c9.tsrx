@@ -1,0 +1,1 @@
+type C = { new <T>(x: T): T };

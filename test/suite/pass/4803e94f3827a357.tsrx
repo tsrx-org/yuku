@@ -1,0 +1,1 @@
+<style data-tsrx-apply={theme.$class} />

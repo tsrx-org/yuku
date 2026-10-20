@@ -1,0 +1,1 @@
+consume(function () @{ <div /> });

@@ -1,0 +1,1 @@
+function App() @{ @try { <div /> } @catch (e) { var e = 1; <span>{e}</span> } }

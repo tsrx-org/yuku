@@ -1,0 +1,1 @@
+function MyApp() { return /* comment */ <div />; }

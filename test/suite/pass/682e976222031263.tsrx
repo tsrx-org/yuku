@@ -1,0 +1,1 @@
+function Test<T, U>(first: T, second: U): [T, U] @{}

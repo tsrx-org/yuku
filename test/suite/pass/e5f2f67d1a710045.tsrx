@@ -1,0 +1,1 @@
+type as<T> = T;

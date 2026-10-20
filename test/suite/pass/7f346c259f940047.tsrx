@@ -1,0 +1,1 @@
+export declare abstract /* c */ class A {}

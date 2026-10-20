@@ -1,0 +1,1 @@
+interface I extends J { <T>(x: T): T }

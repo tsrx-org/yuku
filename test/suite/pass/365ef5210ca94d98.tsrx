@@ -1,0 +1,1 @@
+x = <T extends U>(a: T) => a;

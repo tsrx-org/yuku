@@ -1,0 +1,1 @@
+try {} catch (e) { try {} catch (e) { var e; } }

@@ -1,0 +1,1 @@
+function App() { return <span>a < b</span>; }

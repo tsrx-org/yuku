@@ -1,0 +1,1 @@
+type M = { [K in keyof X]: X[K] };

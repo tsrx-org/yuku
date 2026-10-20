@@ -1,0 +1,1 @@
+import "x" /* c */ assert { type: "json" };

@@ -1,0 +1,1 @@
+const themes = { dark: <style>.a {}</style> };

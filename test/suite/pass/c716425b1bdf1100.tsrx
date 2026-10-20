@@ -1,0 +1,1 @@
+const v = <div>@if /* c */ (x) { <b /> }</div>;

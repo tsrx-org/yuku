@@ -1,0 +1,1 @@
+function App(p) { return @{ <g>{p.a / 2}</g> }; }

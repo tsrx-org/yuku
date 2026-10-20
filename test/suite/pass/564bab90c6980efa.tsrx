@@ -1,0 +1,1 @@
+const j = <div>{(x: number) => x}</div>;

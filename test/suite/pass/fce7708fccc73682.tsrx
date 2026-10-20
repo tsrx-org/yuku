@@ -1,0 +1,1 @@
+class A<in /* c */ out T> {}

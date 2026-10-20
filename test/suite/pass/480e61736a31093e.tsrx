@@ -1,0 +1,1 @@
+interface I { a: string; <T>(): void }

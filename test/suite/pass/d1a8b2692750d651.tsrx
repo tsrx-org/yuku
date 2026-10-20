@@ -1,0 +1,1 @@
+const x = @switch (v) { @case 'a': { <a/> } };

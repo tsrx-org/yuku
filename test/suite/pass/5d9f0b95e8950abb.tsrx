@@ -1,0 +1,1 @@
+function helper() { return <style>.a {}</style>; }

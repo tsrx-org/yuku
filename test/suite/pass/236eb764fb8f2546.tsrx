@@ -1,0 +1,1 @@
+function App() @{ <ElementA prop={<h1>a = b</h1>} /> }

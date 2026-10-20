@@ -1,0 +1,4 @@
+function App() @{
+	<a />
+	<b />
+}

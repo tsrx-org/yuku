@@ -1,0 +1,1 @@
+return <svg>{props.show ? <text ref={props.nodeRef} {...props.rest} {...props.more} /> : null}</svg>;

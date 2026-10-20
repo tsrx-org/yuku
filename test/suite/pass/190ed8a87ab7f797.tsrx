@@ -1,0 +1,1 @@
+function App() { return <div>@if (a) {<b />} done</div>; }

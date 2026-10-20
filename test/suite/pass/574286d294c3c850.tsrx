@@ -1,0 +1,1 @@
+const a = <div onClick={() => a}>(b) => c</div>;

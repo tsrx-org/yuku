@@ -1,0 +1,1 @@
+type T<out U> = () => U;

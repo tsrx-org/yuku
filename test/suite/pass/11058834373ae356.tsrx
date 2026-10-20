@@ -1,0 +1,1 @@
+function App(p) { return @{ <g>@if (p.a / 2 > 1) { <rect /> }</g> }; }

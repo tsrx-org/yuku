@@ -1,0 +1,2 @@
+<div />
+instanceof X;

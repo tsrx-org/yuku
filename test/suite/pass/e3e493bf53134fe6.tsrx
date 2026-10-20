@@ -1,0 +1,1 @@
+<svg>@if (props.show) { <text ref={props.nodeRef} {...props.rest} /> }</svg>

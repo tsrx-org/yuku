@@ -1,0 +1,1 @@
+function Test() { const view = <div />; return view; }

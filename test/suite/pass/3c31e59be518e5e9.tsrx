@@ -1,0 +1,1 @@
+export const j = [a ? b : c, ...d];

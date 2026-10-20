@@ -1,0 +1,1 @@
+function Test<T>(items: T[]): T | undefined @{}

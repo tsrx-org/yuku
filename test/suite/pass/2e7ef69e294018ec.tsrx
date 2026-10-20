@@ -1,0 +1,2 @@
+class G {}
+<div />

@@ -1,0 +1,1 @@
+function App() { return @if (c) { <a/> }; }

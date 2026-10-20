@@ -1,0 +1,46 @@
+{
+  "name": "yuku-tsrx",
+  "version": "0.1.0",
+  "description": "A fast TSRX parser, analyzer, and code generator, built on Yuku",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yuku-toolchain/yuku-tsrx.git"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
+  "imports": {
+    "#module": {
+      "workerd": "./dist/module/workerd.js",
+      "default": "./dist/module/inline.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "zig build && tsdown",
+    "test": "bun run build && bun test",
+    "typecheck": "tsc",
+    "bench": "bun run build && node bench/index.ts",
+    "sync": "bun test/sync.ts",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@tsrx/core": "0.5.5",
+    "@types/bun": "1.4.3",
+    "tinybench": "6.2.2",
+    "tsdown": "0.23.1",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=14.18.0"
+  },
+  "dependencies": {
+    "yuku": "^0.20.0"
+  }
+}

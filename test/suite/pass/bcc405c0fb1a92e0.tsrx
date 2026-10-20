@@ -1,0 +1,1 @@
+const run = <T extends { fn(): void; key: "a" | 'b' }>(x: T) => x;

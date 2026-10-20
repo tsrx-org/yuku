@@ -1,0 +1,1 @@
+@for (const x of xs) { <b>{x}</b> } @empty { <i>none</i> }

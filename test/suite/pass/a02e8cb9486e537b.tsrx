@@ -1,0 +1,1 @@
+declare namespace Q { interface I {} export { I }; }

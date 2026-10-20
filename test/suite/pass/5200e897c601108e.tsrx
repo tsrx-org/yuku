@@ -1,0 +1,1 @@
+const run = <T extends (x: number) => void = () => void>(task: T) => task;

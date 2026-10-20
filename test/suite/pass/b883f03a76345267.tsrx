@@ -1,0 +1,1 @@
+const v = @try /* c */ { <b /> } @catch { <i /> };

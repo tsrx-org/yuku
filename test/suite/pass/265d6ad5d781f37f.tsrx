@@ -1,0 +1,1 @@
+type T = { a: 1; /** @deprecated */ b: 2; };

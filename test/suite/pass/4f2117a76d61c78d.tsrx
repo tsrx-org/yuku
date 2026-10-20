@@ -1,0 +1,1 @@
+const result = f < <T,>(x: T) => T > (g);

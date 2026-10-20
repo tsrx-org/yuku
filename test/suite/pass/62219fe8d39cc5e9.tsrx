@@ -1,0 +1,1 @@
+export default @dec declare class A {}

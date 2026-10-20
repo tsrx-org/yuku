@@ -1,0 +1,1 @@
+@if (ok) { <b>a</b> } @else { <i>b</i> }

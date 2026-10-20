@@ -1,0 +1,2 @@
+declare // c
+namespace A {}

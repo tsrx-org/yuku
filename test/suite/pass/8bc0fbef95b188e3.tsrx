@@ -1,0 +1,1 @@
+const x = @for (const i of items) { <li>{i}</li> };

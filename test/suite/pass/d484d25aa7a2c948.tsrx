@@ -1,0 +1,1 @@
+export declare /* c */ class A {}

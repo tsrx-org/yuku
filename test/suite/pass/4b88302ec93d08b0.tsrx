@@ -1,0 +1,1 @@
+import a from './a' assert { 'a': 'x', 'b': 'y' };

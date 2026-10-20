@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="52" viewBox="0 0 640 52">
+  <style>
+    text { font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; fill: #848d97; dominant-baseline: central; font-variant-numeric: tabular-nums }
+    .ratio { font-size: 12px; fill: #fff }
+  </style>
+  <text x="86" y="11" text-anchor="end">yuku-tsrx</text>
+  <rect x="96" y="0" width="52" height="22" rx="4" fill="#FF6B35"/>
+  <text x="156" y="11">6.2 µs</text>
+  <text x="86" y="41" text-anchor="end">@tsrx/core</text>
+  <rect x="96" y="30" width="464" height="22" rx="4" fill="#3A86FF"/>
+  <text x="568" y="41">55.6 µs</text>
+  <text class="ratio" x="552" y="41" text-anchor="end">8.92×</text>
+</svg>

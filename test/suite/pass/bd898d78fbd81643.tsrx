@@ -1,0 +1,1 @@
+function C(css) { return <section><style>{css}</style><div /></section>; }

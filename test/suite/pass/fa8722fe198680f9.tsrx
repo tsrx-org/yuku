@@ -1,0 +1,1 @@
+declare global { module B { const x: number; } }

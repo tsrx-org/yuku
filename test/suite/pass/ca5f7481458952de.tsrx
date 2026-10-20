@@ -1,0 +1,1 @@
+export const e = f((x: number) => x, async (y?) => y);

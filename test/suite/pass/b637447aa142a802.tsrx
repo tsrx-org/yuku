@@ -1,0 +1,1 @@
+let x: import("m", { assert: { type: "json" } });

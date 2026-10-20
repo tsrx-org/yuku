@@ -1,0 +1,17 @@
+.{
+    .name = .yuku_tsrx,
+    .version = "0.1.0",
+    .dependencies = .{
+        .yuku = .{
+            .url = "git+https://github.com/yuku-toolchain/yuku.git#28efeee798235fc00e18ac1e95bff1d0d34a9563",
+            .hash = "yuku-0.20.0-m6ranvDrEQCKONAHPAcPFkoFqgTaflCZr-EMvhYzaLty",
+        },
+    },
+    .fingerprint = 0xc799211be0d98b71,
+    .minimum_zig_version = "0.17.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

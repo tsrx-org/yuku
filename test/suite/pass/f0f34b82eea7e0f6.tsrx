@@ -1,0 +1,1 @@
+function App() @{ <html><head><style>@import './a.css';</style></head></html> }

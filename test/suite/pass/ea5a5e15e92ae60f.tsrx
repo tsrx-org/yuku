@@ -1,0 +1,1 @@
+function* g() { f(yield @dec class {}); }

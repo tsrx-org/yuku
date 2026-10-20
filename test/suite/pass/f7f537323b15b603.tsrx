@@ -1,0 +1,1 @@
+function App() @{ <div>{<span>   x</span>}</div> }

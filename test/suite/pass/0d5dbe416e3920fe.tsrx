@@ -1,0 +1,1 @@
+export function A(p) { return <div>{p.c && (<a>x/y</a>)}</div>; }

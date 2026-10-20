@@ -1,0 +1,1 @@
+function App() { return <div>a @{x} b @{y} c</div>; }

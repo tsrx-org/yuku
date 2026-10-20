@@ -1,0 +1,1 @@
+let a, b; [a as number, b!] = [1, 2];

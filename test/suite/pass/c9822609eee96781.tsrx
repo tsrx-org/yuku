@@ -1,0 +1,1 @@
+export function* nodes() { yield @try { <div /> } @catch { <i /> }; }

@@ -1,0 +1,1 @@
+@dec declare class A {}

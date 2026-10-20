@@ -1,0 +1,1 @@
+let i = @{ const a = 1; `t${a}` };

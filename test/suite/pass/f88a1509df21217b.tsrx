@@ -1,0 +1,1 @@
+function App() { @{ const a = 5; <div>{a}</div> }; }

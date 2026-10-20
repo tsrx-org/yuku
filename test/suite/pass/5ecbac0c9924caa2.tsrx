@@ -1,0 +1,1 @@
+export default @for (const x of y) { <div /> };

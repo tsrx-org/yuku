@@ -1,0 +1,1 @@
+for ((o.a as number) of x);

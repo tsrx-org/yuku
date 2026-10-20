@@ -1,0 +1,1 @@
+import module, { other as renamed } from './module.wasm';

@@ -1,0 +1,1 @@
+function App(p) { return @{ <div>5/2 #tag {p.a}/{p.b}</div> }; }

@@ -1,0 +1,1 @@
+const App = (): JSX.Element => @{ <div/> };

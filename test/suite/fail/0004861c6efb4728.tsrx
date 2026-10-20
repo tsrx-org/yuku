@@ -1,0 +1,1 @@
+export function App() @{ <div><style></div> }

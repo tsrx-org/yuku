@@ -1,0 +1,1 @@
+const a = <div><b />/* note */text</div>;

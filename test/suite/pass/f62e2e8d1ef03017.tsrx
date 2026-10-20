@@ -1,0 +1,1 @@
+class type<T> extends Base<T> implements I {}

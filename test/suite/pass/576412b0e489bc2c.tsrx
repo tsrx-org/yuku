@@ -1,0 +1,1 @@
+function App() @{ <head><script src={url} /></head> }

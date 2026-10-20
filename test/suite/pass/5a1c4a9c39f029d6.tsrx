@@ -1,0 +1,1 @@
+module server { const x = 1; }

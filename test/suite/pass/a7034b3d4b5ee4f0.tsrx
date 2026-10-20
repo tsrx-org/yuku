@@ -1,0 +1,1 @@
+type Money = __tsrx_server_import$0.Money;

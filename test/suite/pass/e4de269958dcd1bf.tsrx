@@ -1,0 +1,1 @@
+export const g = (a ? (b) : c);

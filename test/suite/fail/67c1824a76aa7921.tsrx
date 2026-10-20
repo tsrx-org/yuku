@@ -1,0 +1,1 @@
+ const release = () => () => value; return release;

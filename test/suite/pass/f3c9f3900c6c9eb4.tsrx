@@ -1,0 +1,2 @@
+@dec(a,)
+class A {}

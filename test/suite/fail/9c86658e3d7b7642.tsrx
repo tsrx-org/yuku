@@ -1,0 +1,1 @@
+interface I { m(...a?: number[]): void }

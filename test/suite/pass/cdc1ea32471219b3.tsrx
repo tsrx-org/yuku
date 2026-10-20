@@ -1,0 +1,1 @@
+<svg>{props.rows.map((row: number) => <text key={row} ref={props.nodeRef} {...props.rest} />)}</svg>

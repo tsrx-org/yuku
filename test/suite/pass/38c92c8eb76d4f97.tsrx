@@ -1,0 +1,1 @@
+const o = { m(b) {}, async n(b) {}, get g() { return 1; } };

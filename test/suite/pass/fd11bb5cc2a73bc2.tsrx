@@ -1,0 +1,1 @@
+const h = <T extends object>(x: T) => x;

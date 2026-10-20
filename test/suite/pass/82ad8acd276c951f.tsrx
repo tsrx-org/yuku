@@ -1,0 +1,1 @@
+function App() @{ <head><script>if (a < b) { arr.map(x => x < 2); }</script></head> }

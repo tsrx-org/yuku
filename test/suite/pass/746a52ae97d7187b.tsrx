@@ -1,0 +1,1 @@
+const x = <div>{... /* c */ a}</div>;

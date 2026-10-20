@@ -1,0 +1,1 @@
+const t = <style>.\$class { color: red; }</style>;

@@ -1,0 +1,1 @@
+function App() @{ <head><script type="text/typescript">const n: number = 1;</script></head> }

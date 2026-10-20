@@ -1,0 +1,1 @@
+interface I { \u0067et(): number }

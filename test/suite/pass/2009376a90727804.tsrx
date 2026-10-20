@@ -1,0 +1,1 @@
+const g = (a: number[] = []) => a;

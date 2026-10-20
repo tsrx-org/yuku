@@ -1,0 +1,1 @@
+const { 'c d': T } = __tsrx_server_import$1;

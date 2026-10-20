@@ -1,0 +1,1 @@
+function App() @{ <head><script>const x = 1; foo();</script></head> }

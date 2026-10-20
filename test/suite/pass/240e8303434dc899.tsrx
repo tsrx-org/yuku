@@ -1,0 +1,1 @@
+const { 'a b': db } = __tsrx_server_import$0;

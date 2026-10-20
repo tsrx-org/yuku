@@ -1,0 +1,1 @@
+export const a = (x?: number, y: string = "") => x;

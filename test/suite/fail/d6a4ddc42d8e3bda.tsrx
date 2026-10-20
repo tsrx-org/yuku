@@ -1,0 +1,1 @@
+return <text ref={props.nodeRef} {...props.rest} />;

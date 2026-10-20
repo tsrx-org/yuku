@@ -1,0 +1,1 @@
+let list: Array<<T>(x: T) => T> = [];

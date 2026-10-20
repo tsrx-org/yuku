@@ -1,0 +1,1 @@
+const f = async (...a: number[]) => a;

@@ -1,0 +1,1 @@
+const H = items.map((i) => @if (i.ok) { <li>{i.name}</li> });

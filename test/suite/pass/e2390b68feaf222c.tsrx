@@ -1,0 +1,1 @@
+class A { public x = 1; }

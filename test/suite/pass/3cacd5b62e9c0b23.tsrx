@@ -1,0 +1,1 @@
+function App() { return @{ const foo = 123; @if (foo) { <div>{foo}</div> } }; }

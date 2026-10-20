@@ -1,0 +1,1 @@
+const a = <div {...{ r: () => <i>@switch (x) { @case 1: { <b /> } }</i> }} />;

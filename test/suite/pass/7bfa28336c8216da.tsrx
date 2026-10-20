@@ -1,0 +1,1 @@
+const id = function <T>(x: T) { return x; };

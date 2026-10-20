@@ -1,0 +1,1 @@
+type Receipt = server.Receipt;

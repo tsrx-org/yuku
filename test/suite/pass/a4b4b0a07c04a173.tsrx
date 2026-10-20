@@ -1,0 +1,1 @@
+import def, { a } /* before */ from /* after */ 'mod';

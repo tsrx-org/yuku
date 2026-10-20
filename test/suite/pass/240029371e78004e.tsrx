@@ -1,0 +1,1 @@
+const e = <b /> as any;

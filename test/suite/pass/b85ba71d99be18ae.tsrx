@@ -1,0 +1,1 @@
+import './a' with { 'a': 'x', b: 'y', 'c': 'z' };

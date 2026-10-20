@@ -1,0 +1,1 @@
+try {} catch (e) { for (var e of []) {} }

@@ -1,0 +1,1 @@
+export abstract declare class A {}

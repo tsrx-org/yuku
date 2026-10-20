@@ -1,0 +1,1 @@
+function App() @{ <><style>@IMPORT './a.css' print;</style><div /></> }

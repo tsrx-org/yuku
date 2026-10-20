@@ -1,0 +1,1 @@
+namespace A { module B.C { const x = 1; } }

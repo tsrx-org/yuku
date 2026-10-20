@@ -1,0 +1,1 @@
+if (a < b) { arr.map(x => x < 2); }

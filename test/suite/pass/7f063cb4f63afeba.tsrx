@@ -1,0 +1,1 @@
+function App(p) { return <div>{p.c && <a>x/y</a>}</div>; }

@@ -1,0 +1,1 @@
+function App() { return <div>@{ const foo = 123; <>{foo}</> }</div>; }

@@ -1,0 +1,1 @@
+class A { constructor(@dec ...rest: number[]) {} }

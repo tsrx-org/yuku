@@ -1,0 +1,1 @@
+function Test<T>(value: T): T @{}

@@ -1,0 +1,1 @@
+function App() @{ <div>{<span>a < b</span>}</div> }

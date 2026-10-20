@@ -1,0 +1,1 @@
+const o = { m<T, const U extends readonly unknown[]>(x: T, y: U) {} };

@@ -1,0 +1,1 @@
+export const g = ({ [String(1) as string]: v }) => v;

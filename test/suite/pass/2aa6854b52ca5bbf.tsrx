@@ -1,0 +1,1 @@
+function App() @{ <><style media="print">.a {}</style><div /></> }

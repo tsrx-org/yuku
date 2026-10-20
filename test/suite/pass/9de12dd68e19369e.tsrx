@@ -1,0 +1,1 @@
+const t = <style>@import 'pkg/theme.css'; .a {}</style>;

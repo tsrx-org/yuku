@@ -1,0 +1,1 @@
+const a = <div>@if (x) { <b /> } else { <i /> }</div>;

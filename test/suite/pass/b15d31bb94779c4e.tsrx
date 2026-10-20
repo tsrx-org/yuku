@@ -1,0 +1,1 @@
+{ $class: string; x: string; }

@@ -1,0 +1,1 @@
+const config = __tsrx_server_import$0_default;

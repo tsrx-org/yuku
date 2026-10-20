@@ -1,0 +1,1 @@
+const node = <Box fn={<T,>(x: T, re = /[)]/) => x}>(b) => c</Box>;

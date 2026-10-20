@@ -1,0 +1,1 @@
+const f = (readonly, override = 1, public$: number) => readonly;

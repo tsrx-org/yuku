@@ -1,0 +1,1 @@
+class A { constructor(override x: T) {} }

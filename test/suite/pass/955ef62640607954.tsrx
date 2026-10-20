@@ -1,0 +1,1 @@
+total / count > 1 && log();

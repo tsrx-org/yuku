@@ -1,0 +1,1 @@
+function App() { return @try { <a/> } @catch (e) { <b/> }; }

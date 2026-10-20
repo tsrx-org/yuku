@@ -1,0 +1,1 @@
+export const b = async (x?: number, ...y: string[]) => x;

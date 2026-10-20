@@ -1,0 +1,2 @@
+const b = a <// c
+  d;

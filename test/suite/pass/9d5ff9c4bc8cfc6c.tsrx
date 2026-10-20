@@ -1,0 +1,1 @@
+const feature = import.defer('./feature.js',);

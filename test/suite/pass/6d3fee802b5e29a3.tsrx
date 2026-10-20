@@ -1,0 +1,1 @@
+type Config = __tsrx_server_import$0.default;

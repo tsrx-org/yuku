@@ -1,0 +1,1 @@
+/** Model docs. */export interface Model { value: string; }

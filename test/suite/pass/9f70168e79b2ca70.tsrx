@@ -1,0 +1,1 @@
+function App() @{ <><style>.\$class { color: red; }</style><div /></> }

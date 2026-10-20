@@ -1,0 +1,1 @@
+export function read(value: string): string { return value; }

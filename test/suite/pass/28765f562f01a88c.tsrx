@@ -1,0 +1,1 @@
+function f<const /* c */ T extends string>() {}

@@ -1,0 +1,1 @@
+const { $class: cls } = theme;

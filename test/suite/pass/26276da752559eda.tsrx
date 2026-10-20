@@ -1,0 +1,1 @@
+type G = new ([a]?: number[]) => object;

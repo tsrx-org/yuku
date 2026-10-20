@@ -1,0 +1,1 @@
+export import native = require('./native');

@@ -1,0 +1,1 @@
+const a = /** @type {X} */ (foo /* c */) /* d */;

@@ -1,0 +1,1 @@
+const el = <div attr=<b>a /* c */ b</b> />;

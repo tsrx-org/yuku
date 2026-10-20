@@ -1,0 +1,1 @@
+function App(p) { return @{ <g id={p.id}><rect x={p.left - p.dotSize / 2} /></g> }; }

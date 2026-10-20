@@ -1,0 +1,1 @@
+function f(readonly, override?: number) {}

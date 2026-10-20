@@ -1,0 +1,1 @@
+const cls = theme.card;

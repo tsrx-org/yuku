@@ -1,0 +1,1 @@
+const r = function <T>(x: T) { return x; }<string>(1);

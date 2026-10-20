@@ -1,0 +1,1 @@
+import defer * as feature from './feature.js';

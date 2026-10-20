@@ -1,0 +1,1 @@
+declare function f({ a }?: { a: number }): void;

@@ -1,0 +1,1 @@
+const fn = <T extends object>(x: T, y = 1. / 2, z = .5 / 3) => x;

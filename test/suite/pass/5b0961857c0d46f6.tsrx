@@ -1,0 +1,1 @@
+SpreadRefProps<{ disabled: boolean; }>

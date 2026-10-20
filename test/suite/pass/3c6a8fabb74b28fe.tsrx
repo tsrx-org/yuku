@@ -1,0 +1,1 @@
+export { NativeModel as Model } from './native';

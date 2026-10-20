@@ -1,0 +1,1 @@
+const c = />a/.test(s) && 1;

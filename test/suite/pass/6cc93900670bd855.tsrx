@@ -1,0 +1,1 @@
+const a = class {} <b> c;

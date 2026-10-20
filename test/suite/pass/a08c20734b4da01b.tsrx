@@ -1,0 +1,1 @@
+export function* nodes() { const node = yield @{ <div /> }; }

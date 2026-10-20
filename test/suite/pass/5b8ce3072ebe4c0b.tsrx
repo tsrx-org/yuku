@@ -1,0 +1,1 @@
+function App() @{ <Box fn={<T extends () => void,>(x: T) => x}>{1}</Box> }

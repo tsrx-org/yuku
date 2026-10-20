@@ -1,0 +1,1 @@
+namespace N { a; /** @type {Foo} */ (x).y(); }

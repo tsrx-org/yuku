@@ -1,0 +1,1 @@
+const A = class<T> { x?: T }<string>;

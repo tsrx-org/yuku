@@ -1,0 +1,1 @@
+function App() { return <div>@{ const a = 1; const b = 2; <span>{a}{b}</span> }</div>; }

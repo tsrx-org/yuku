@@ -1,0 +1,1 @@
+function f(...x /* c */ : T) {}

@@ -1,0 +1,1 @@
+type F = ({ a }?: { a: number }) => void;

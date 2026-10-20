@@ -1,0 +1,1 @@
+const run = <T,>(x: T): (y: T) => T => (y) => y;

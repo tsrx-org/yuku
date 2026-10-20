@@ -1,0 +1,1 @@
+export function C(p) { return <span>{p.x}/{p.y}</span>; }

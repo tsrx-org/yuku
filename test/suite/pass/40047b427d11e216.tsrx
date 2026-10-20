@@ -1,0 +1,1 @@
+const fn = <T extends object>(x: T, y = typeof /[)]/, z = !/[)]/.test("")) => x;

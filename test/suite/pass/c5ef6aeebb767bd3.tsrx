@@ -1,0 +1,1 @@
+type Q = (readonly string[]) | (readonly [a: number]);

@@ -1,0 +1,1 @@
+class A { constructor(protected x: number) {} }

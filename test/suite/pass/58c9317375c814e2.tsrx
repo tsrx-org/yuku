@@ -1,0 +1,1 @@
+condition ? tagName() : Tag

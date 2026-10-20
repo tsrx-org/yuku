@@ -1,0 +1,1 @@
+function App() { return <><style>.a {}</style><div /></>; }

@@ -1,0 +1,1 @@
+export function G(p) { return <div>{p.c ? (<a>x</a>) : p.a / p.b}</div>; }

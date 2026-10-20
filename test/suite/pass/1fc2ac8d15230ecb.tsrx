@@ -1,0 +1,1 @@
+function App() @{ const view = <><style apply={theme} /><div /></>; const theme = <style>div{}</style>; <main>{view}</main> }

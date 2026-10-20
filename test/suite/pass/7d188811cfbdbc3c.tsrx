@@ -1,0 +1,1 @@
+const fn = <T extends object>(x: T, y = (s) => { for (const c of /[)]/.exec(s) ?? []) c; }) => x;

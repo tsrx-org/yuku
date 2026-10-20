@@ -1,0 +1,1 @@
+return <svg>{<text ref={props.nodeRef} {...props.rest} />}</svg>;

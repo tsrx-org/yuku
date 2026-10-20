@@ -1,0 +1,1 @@
+function App() { return @{ const xs = [1, 2]; @for (const x of xs) <li>{x}</li> }; }

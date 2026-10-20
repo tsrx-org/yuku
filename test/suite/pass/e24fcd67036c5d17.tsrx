@@ -1,0 +1,1 @@
+export const t = <style>.a {}</style>;

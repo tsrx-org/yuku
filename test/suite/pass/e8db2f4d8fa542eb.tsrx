@@ -1,0 +1,1 @@
+function App() { return @{ <>hello<span>{a}</span></> }; }

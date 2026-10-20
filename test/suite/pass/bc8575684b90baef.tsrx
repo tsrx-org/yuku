@@ -1,0 +1,1 @@
+const cls = (theme as { $class: string }).$class;

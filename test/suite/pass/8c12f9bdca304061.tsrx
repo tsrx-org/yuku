@@ -1,0 +1,1 @@
+const fn = <T extends object>(x: T, y = a.in / 2, z = b.typeof / 3, w = c?.d / 4) => x;

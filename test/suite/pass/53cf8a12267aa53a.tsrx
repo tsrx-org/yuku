@@ -1,0 +1,1 @@
+class A { m<const T>(x: T) { return x; } }

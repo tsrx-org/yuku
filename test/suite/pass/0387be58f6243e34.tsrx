@@ -1,0 +1,1 @@
+let x: import("m", { with: { class: "x", \u0074ype: "json" } });

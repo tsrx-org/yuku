@@ -1,0 +1,1 @@
+function f() { a; /** @type {Foo} */ (x).y(); }

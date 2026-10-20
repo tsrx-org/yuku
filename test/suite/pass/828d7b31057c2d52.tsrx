@@ -1,0 +1,1 @@
+declare namespace A { namespace B { module C { const x: number; } } }

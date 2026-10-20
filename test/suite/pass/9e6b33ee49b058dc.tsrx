@@ -1,0 +1,1 @@
+export function* nodes() { yield @switch (x) { @case 1: { <div /> } }; }

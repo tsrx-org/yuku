@@ -1,0 +1,1 @@
+const obj = { Render(): JSX.Element @{ <div/> } };

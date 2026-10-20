@@ -1,0 +1,1 @@
+const a = <p>/* note */{name}</p>;

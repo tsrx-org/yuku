@@ -1,0 +1,1 @@
+function App() @{ const a = 1; /* output */ <div /> }

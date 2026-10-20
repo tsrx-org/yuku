@@ -1,0 +1,1 @@
+const b = a < /re/.test(c);

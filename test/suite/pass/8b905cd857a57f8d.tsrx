@@ -1,0 +1,1 @@
+interface I { a: 1; /** @deprecated */ b: 2; }

@@ -1,0 +1,1 @@
+@if (ok) { <span>a</span> } @else { <span>b</span> }

@@ -1,0 +1,1 @@
+function App() { @switch (v) { @case 'a': { <a/> } }; }

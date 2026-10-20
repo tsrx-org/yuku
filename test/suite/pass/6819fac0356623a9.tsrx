@@ -1,0 +1,1 @@
+function App() { return @for (const i of xs) { <li>{i}</li> }; }

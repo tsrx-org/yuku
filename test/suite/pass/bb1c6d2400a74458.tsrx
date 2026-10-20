@@ -1,0 +1,1 @@
+abstract class A { abstract m?<T>(x: T): T; }

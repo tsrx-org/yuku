@@ -1,0 +1,1 @@
+const g = async <T,>(x: T): Promise<T> => x;

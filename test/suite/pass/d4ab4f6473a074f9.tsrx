@@ -1,0 +1,1 @@
+export interface Model { /** Field docs. */readonly value?: string; }

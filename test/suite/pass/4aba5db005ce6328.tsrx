@@ -1,0 +1,1 @@
+function App(t) @{ <><style apply={t} /><div /></> }

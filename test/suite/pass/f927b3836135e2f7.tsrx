@@ -1,0 +1,1 @@
+const v = @for /* c */ (const x of xs) { <b /> };

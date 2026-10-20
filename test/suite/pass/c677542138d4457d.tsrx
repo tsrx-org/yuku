@@ -1,0 +1,1 @@
+function Test() { const view = @if (ready) { <div /> }; return view; }

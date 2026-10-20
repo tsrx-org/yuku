@@ -1,0 +1,1 @@
+export function B(p) { return <div>{p.c && <span>{p.x}/{p.y}</span>}</div>; }

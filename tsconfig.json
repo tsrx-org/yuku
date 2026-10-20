@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": ["esnext", "dom"],
+    "module": "preserve",
+    "moduleDetection": "force",
+    "types": ["bun"],
+    "noEmit": true,
+    "declaration": true,
+    "isolatedDeclarations": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "test", "bench"]
+}

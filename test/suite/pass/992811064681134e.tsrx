@@ -1,0 +1,1 @@
+function App() { <div>a\nb</div> }

@@ -1,0 +1,1 @@
+export const lazy = import.defer('./lazy.js', { with: { type: 'json' } });

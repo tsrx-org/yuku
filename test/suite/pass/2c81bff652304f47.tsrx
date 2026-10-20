@@ -1,0 +1,1 @@
+function C() { (<style>.a { color: red; }</style>); return null; }

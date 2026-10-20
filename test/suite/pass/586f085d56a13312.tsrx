@@ -1,0 +1,1 @@
+export import \u0074ype a = require("m");

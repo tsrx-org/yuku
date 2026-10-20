@@ -1,0 +1,1 @@
+function App() @{ <head><script>const y = 2;</script></head> }

@@ -1,0 +1,1 @@
+async function f(x) { for await (a satisfies unknown of x); }

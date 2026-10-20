@@ -1,0 +1,1 @@
+function App() @{ <><style>@media print { p { color: red; } }</style><p /></> }

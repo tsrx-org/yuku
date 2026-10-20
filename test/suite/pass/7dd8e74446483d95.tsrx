@@ -1,0 +1,1 @@
+export function* nodes() { yield @if (ok) { <div /> }; }

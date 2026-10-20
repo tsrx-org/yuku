@@ -1,0 +1,1 @@
+type A<in out /* a */ T> = T;

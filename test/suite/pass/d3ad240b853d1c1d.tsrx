@@ -1,0 +1,1 @@
+export * from "x" assert { type: "json" };

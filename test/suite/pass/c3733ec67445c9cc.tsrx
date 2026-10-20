@@ -1,0 +1,1 @@
+type Q = (readonly: number) => void;

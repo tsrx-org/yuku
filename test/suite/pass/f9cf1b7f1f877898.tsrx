@@ -1,0 +1,1 @@
+export const base = <style>.b { color: blue; }</style>;

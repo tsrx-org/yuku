@@ -1,0 +1,1 @@
+const feature = import('./feature.json', { with: { type: 'json' } });

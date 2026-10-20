@@ -1,0 +1,1 @@
+type I = X extends Array<infer U> ? U : never;

@@ -1,0 +1,1 @@
+@switch (k) { @case 1: { <span>a</span> } @default: { <span>b</span> } }

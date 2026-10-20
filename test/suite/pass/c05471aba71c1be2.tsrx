@@ -1,0 +1,1 @@
+export default @if (a) { <div /> };

@@ -1,0 +1,1 @@
+import a from './a' with { 'typ\u0065': 'a', type: 'b' };

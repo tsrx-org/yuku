@@ -1,0 +1,1 @@
+function App() { return <>@for (const x of xs) {<b />} done</>; }

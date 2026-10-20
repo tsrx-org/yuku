@@ -1,0 +1,1 @@
+const v = new class<T> {}<string>();

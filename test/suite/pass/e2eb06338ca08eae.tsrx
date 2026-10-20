@@ -1,0 +1,1 @@
+@try { <span>a</span> } @catch (e) { <span>b</span> }

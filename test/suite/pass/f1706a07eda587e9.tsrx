@@ -1,0 +1,1 @@
+const h = function () {} </* c */ T>(1);

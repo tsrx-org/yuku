@@ -1,0 +1,1 @@
+async function f(x) { for await (o.a as number of x); }

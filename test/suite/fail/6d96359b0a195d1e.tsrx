@@ -1,0 +1,1 @@
+const a = <div>@try { <b /> }</div>;

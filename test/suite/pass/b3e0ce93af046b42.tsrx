@@ -1,0 +1,1 @@
+type F = new <T>(x: T) => T;

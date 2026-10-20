@@ -1,0 +1,1 @@
+const run = <T, U extends Map<string, Array<T>>>(x: T, y: U) => x;

@@ -1,0 +1,1 @@
+class A { \u0073tatic() {} }

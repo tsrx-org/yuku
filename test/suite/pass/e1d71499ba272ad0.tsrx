@@ -1,0 +1,1 @@
+const feature = import.defer('./feature.json', { with: { type: 'json' } },);

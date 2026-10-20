@@ -1,0 +1,1 @@
+const f = (a: number, ...rest: number[]) => a;

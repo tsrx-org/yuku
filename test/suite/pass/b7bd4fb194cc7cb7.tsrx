@@ -1,0 +1,1 @@
+function App() { return <div><3<span>x</span></div>; }

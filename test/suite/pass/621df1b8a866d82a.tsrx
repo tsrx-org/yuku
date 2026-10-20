@@ -1,0 +1,1 @@
+function App() @{ <div>{<h1>a = b</h1>}</div> }

@@ -1,0 +1,1 @@
+function App() { return <div>{cond ? <span>p @{q}</span> : null}</div>; }

@@ -1,0 +1,1 @@
+const result = f<<T extends () => void>() => T>(g);

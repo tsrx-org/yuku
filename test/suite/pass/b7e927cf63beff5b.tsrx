@@ -1,0 +1,1 @@
+export const c = <T,>(x?: T) => x;

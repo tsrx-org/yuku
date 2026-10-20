@@ -1,0 +1,1 @@
+function App() { <textarea>   a</textarea> }

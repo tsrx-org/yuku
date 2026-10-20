@@ -1,0 +1,1 @@
+function C() { return <><style href="a.css" precedence="default" /><div /></>; }

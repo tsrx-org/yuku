@@ -1,0 +1,1 @@
+function App() @{ <><style>@font-face { src: url('./a.woff2'); }</style><p /></> }

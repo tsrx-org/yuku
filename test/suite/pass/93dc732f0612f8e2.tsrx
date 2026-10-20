@@ -1,0 +1,1 @@
+declare namespace Q { namespace R {} export { R }; }

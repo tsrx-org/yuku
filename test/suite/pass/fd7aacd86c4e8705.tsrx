@@ -1,0 +1,1 @@
+function App(props) @{ <><style apply={props.theme} /><div /></> }

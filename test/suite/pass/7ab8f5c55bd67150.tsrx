@@ -1,0 +1,4 @@
+function MyApp() {
+				return
+				<div />;
+			}

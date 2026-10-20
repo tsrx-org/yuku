@@ -1,0 +1,1 @@
+@a export default @b class {}

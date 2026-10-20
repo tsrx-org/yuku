@@ -1,0 +1,1 @@
+const fn = <T extends object>(x: T, y = c ? /[)]/ : /\)/) => x;

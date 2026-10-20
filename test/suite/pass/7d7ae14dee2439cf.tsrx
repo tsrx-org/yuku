@@ -1,0 +1,1 @@
+function App() { return <style>{'@import "./a.css";'}</style>; }

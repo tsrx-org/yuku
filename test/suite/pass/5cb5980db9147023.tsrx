@@ -1,0 +1,1 @@
+function App() @{ <><style xml:lang="en">.a {}</style><div /></> }

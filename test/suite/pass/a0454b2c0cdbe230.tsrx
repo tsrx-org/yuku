@@ -1,0 +1,1 @@
+import source, { other } from './source.js';

@@ -1,0 +1,1 @@
+interface A { f?<T>(x: T): T; }

@@ -1,0 +1,1 @@
+const render = <b>{x}</b>

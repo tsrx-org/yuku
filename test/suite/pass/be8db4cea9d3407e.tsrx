@@ -1,0 +1,1 @@
+class C { #x = 1; m() { return @{ <g>{this.#x}</g> }; } }

@@ -1,0 +1,1 @@
+function App() @{ <div><style>.a {}</style><span /></div> }

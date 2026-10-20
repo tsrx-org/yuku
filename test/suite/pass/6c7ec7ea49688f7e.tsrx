@@ -1,0 +1,1 @@
+const theme = <style>div {} .card {}</style>;

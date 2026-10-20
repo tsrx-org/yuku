@@ -1,0 +1,1 @@
+const t = <style>@import './a.css'; @import './b.css';</style>;

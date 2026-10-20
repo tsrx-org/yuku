@@ -1,0 +1,1 @@
+export const h = async(a)(b)((c) => 1);

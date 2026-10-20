@@ -1,0 +1,2 @@
+@dec export default
+abstract class A {}

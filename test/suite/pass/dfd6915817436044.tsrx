@@ -1,0 +1,1 @@
+function f<const T extends string>() {}

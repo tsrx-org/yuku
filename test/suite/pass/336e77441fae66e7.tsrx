@@ -1,0 +1,1 @@
+const x = <ul>{...items}{...items}</ul>;

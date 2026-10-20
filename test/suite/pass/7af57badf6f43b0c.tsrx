@@ -1,0 +1,1 @@
+const id = <T extends object = {}>(x: T): T => x;

@@ -1,0 +1,1 @@
+const o = { m<const T>(x: T) { return x; } };

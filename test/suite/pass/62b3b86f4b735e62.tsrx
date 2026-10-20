@@ -1,0 +1,1 @@
+const k = async<T>(x);
