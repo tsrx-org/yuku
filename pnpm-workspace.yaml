@@ -1,4 +1,0 @@
-catalogs: {}
-
-packages:
-  - "npm/*"
