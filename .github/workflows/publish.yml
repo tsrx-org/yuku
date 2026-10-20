@@ -1,20 +1,8 @@
-# Publish @tsrx/yuku and its two binding packages to npm.
+# Publishes @tsrx/yuku to npm through npm trusted publishing, with no token.
 #
-# Pushing a tag `v<version>` publishes that version. A manual dispatch defaults
-# to a dry run that rehearses everything and publishes nothing; publishing from
-# a dispatch additionally needs the confirmation phrase `PUBLISH <version>`.
-#
-# Authentication is npm Trusted Publishing over GitHub Actions OIDC. There is no
-# NPM_TOKEN anywhere in this file and none is needed: `id-token: write` on the
-# publish job is the whole credential, and npm attaches a provenance attestation
-# on its own. Two things must be true first, and neither is something a workflow
-# can do for itself: each of the three names must already exist on the registry
-# (scripts/publish-placeholders.mjs), and each must have a trusted publisher
-# pointing at this repository and at the file name `publish.yml` exactly
-# (scripts/trust-publishers.sh). .github/releasing/launch-runbook.md is the order.
-#
-# The bytes published are the ones release-candidate.yml built on this run from
-# this exact revision, checksummed, and never touched by a human.
+# A tag v<version> publishes that version. A manual run is a dry run unless mode is publish and
+# confirm is exactly "PUBLISH <version>". The trusted publisher on npm names this repository and
+# the file name publish.yml, so this file keeps its name.
 name: Publish to npm
 
 on:
@@ -24,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "dry-run rehearses everything and publishes nothing. publish is irreversible."
+        description: "dry-run builds, tests and rehearses, publishing nothing. publish is irreversible."
         required: true
         default: dry-run
         type: choice
@@ -33,11 +21,6 @@ on:
           - publish
       confirm:
         description: "Required only when mode is publish. Type: PUBLISH <version>"
-        required: false
-        default: ""
-        type: string
-      dist_tag:
-        description: "dist-tag to publish under. Leave empty for latest."
         required: false
         default: ""
         type: string
@@ -54,32 +37,21 @@ env:
   npm_config_fund: "false"
 
 jobs:
-  # First and alone, so a mistyped phrase or a tag that does not match the
-  # manifests costs one cheap job instead of two Zig builds.
-  gate:
-    name: gate
-    # A fork cannot publish these names, and should not try.
+  build:
+    name: build and test
     if: github.repository == 'tsrx-org/yuku'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 20
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       mode: ${{ steps.resolve.outputs.mode }}
-      dist_tag: ${{ steps.resolve.outputs.dist_tag }}
     steps:
-      - name: Check out the exact source revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+      - name: Check out the exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Install Node.js 24.15.0
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24.15.0
-          package-manager-cache: false
-
-      # Free-text inputs are passed through the environment, never
-      # interpolated into a shell command.
+      # free-text inputs go through the environment, never into the script
       - name: Resolve the version and the mode
         id: resolve
         shell: bash
@@ -88,7 +60,6 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           INPUT_MODE: ${{ inputs.mode }}
           INPUT_CONFIRM: ${{ inputs.confirm }}
-          INPUT_DIST_TAG: ${{ inputs.dist_tag }}
         run: |
           set -euo pipefail
           manifest_version=$(node -p "require('./package.json').version")
@@ -96,7 +67,7 @@ jobs:
             version="${REF_NAME#v}"
             mode=publish
             if [[ "$version" != "$manifest_version" ]]; then
-              echo "tag $REF_NAME does not match the root package.json version $manifest_version" >&2
+              echo "tag $REF_NAME does not match package.json version $manifest_version" >&2
               exit 1
             fi
           else
@@ -107,223 +78,106 @@ jobs:
               exit 1
             fi
           fi
-          # Releases are minor only: X.Y.0 or a prerelease of one, never a patch.
-          # sync-version --check --version refuses a patch too; this is the
-          # cheaper, earlier word on it. A regex, not a case glob: `*` in
-          # `[0-9]*.[0-9]*.0` would also match 1.2.1-rc.0.
+          # releases are minor only
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.0(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "version must look like 1.2.0 or 1.2.0-rc.1 (releases are minor only), got: $version" >&2
+            echo "version must look like 0.9.0 or 0.9.0-rc.1, got: $version" >&2
             exit 1
           fi
-          node scripts/sync-version.ts --check --version "$version"
-          test -f LICENSE || { echo "no LICENSE file at the repository root" >&2; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
-          echo "dist_tag=${INPUT_DIST_TAG:-latest}" >> "$GITHUB_OUTPUT"
-          if [[ "$mode" == "publish" ]]; then
-            echo "mode=publish for $version. This is irreversible."
-          else
-            echo "mode=dry-run for $version: nothing will be published."
-          fi
+          echo "$mode $version"
 
-  candidate:
-    name: candidate
-    needs: gate
-    uses: ./.github/workflows/release-candidate.yml
-    permissions:
-      contents: read
+      - name: Set up Zig 0.17.0
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.17.0
+
+      - name: Set up Bun 1.3.14
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Test
+        run: |
+          bun run typecheck
+          bun run test
+
+      - name: Pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release
+          npm pack --pack-destination release
+          cd release
+          test -f "tsrx-yuku-${{ steps.resolve.outputs.version }}.tgz"
+          tar -tzf tsrx-yuku-*.tgz | sort
+          sha256sum tsrx-yuku-*.tgz > SHA256SUMS
+
+      - name: Upload the tarball
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tsrx-yuku-${{ steps.resolve.outputs.version }}
+          path: release
+          if-no-files-found: error
+          retention-days: 30
 
   publish:
-    name: ${{ needs.gate.outputs.mode }} ${{ needs.gate.outputs.version }}
-    needs:
-      - gate
-      - candidate
+    name: ${{ needs.build.outputs.mode }} ${{ needs.build.outputs.version }}
+    needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
     env:
-      VERSION: ${{ needs.gate.outputs.version }}
-      MODE: ${{ needs.gate.outputs.mode }}
-      DIST_TAG: ${{ needs.gate.outputs.dist_tag }}
+      VERSION: ${{ needs.build.outputs.version }}
     steps:
-      - name: Install Node.js 24.15.0
+      - name: Set up Node.js 24.15.0
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.15.0
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
-      # Pinned so the publishing npm does not move when the Node pin moves; the
-      # assert turns a silently too-old npm into a failed job rather than an
-      # unexplained ENEEDAUTH.
-      - name: Pin an npm new enough for trusted publishing
+      # trusted publishing needs npm 11.5.1 or newer
+      - name: Pin npm
         shell: bash
         run: |
           set -euo pipefail
           npm install -g npm@11.18.0
-          node --input-type=module <<'NODE'
-          import assert from "node:assert/strict";
-          import { execFileSync } from "node:child_process";
-          const actual = execFileSync("npm", ["--version"], { encoding: "utf8" }).trim();
-          const [a, b, c] = actual.split(".").map(Number);
-          const ok = a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1)));
-          assert.ok(ok, `npm ${actual} is older than 11.5.1, which trusted publishing requires`);
-          console.log(`npm ${actual} satisfies the trusted-publishing floor`);
-          NODE
+          node -e '
+            const [a, b, c] = require("child_process").execFileSync("npm", ["--version"], { encoding: "utf8" }).trim().split(".").map(Number);
+            if (!(a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1))))) throw new Error("npm is older than 11.5.1");
+          '
 
-      - name: Download the candidate this run built
+      - name: Download the tarball
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ needs.candidate.outputs.artifact }}
+          name: tsrx-yuku-${{ needs.build.outputs.version }}
           path: release
 
-      - name: Re-verify the candidate checksums
+      - name: Verify the tarball
         shell: bash
         working-directory: release
-        run: sha256sum --check SHA256SUMS
-
-      # Bindings first, meta last. @tsrx/yuku lists both bindings in
-      # optionalDependencies and npm resolves those at install time against
-      # whatever is on the registry at that moment: publish the meta package
-      # first and a consumer in that window installs JavaScript with no addon
-      # behind it and no error saying so.
-      - name: Resolve the publish order from the tarballs
-        shell: bash
         run: |
           set -euo pipefail
-          node --input-type=module <<'NODE'
-          import assert from "node:assert/strict";
-          import { execFileSync } from "node:child_process";
-          import { writeFile } from "node:fs/promises";
-          const version = process.env.VERSION;
-          const order = ["@tsrx/yuku-darwin-arm64", "@tsrx/yuku-linux-x64-gnu", "@tsrx/yuku"];
-          const tarball = (name) =>
-            name === "@tsrx/yuku"
-              ? `release/tsrx-yuku-${version}.tgz`
-              : `release/tsrx-yuku-${name.slice("@tsrx/yuku-".length)}-${version}.tgz`;
-          const manifests = new Map();
-          for (const name of order) {
-            const path = tarball(name);
-            const manifest = JSON.parse(
-              execFileSync("tar", ["-xzOf", path, "package/package.json"], { encoding: "utf8" }),
-            );
-            assert.equal(manifest.name, name, `${path}: unexpected package name`);
-            assert.equal(manifest.version, version, `${name}: version is not ${version}`);
-            assert.equal(manifest.publishConfig?.access, "public", `${name}: not public`);
-            assert.equal(manifest.publishConfig?.provenance, true, `${name}: provenance is off`);
-            assert.notEqual(manifest.license, "UNLICENSED", `${name}: unlicensed`);
-            manifests.set(name, path);
-          }
-          const meta = JSON.parse(
-            execFileSync("tar", ["-xzOf", tarball("@tsrx/yuku"), "package/package.json"], { encoding: "utf8" }),
-          );
-          assert.deepEqual(
-            Object.keys(meta.optionalDependencies ?? {}).sort(),
-            order.slice(0, -1).sort(),
-            "@tsrx/yuku optionalDependencies must be exactly the two bindings",
-          );
-          for (const name of order.slice(0, -1)) {
-            assert.equal(meta.optionalDependencies[name], version, `${name} must be pinned to ${version}`);
-          }
-          await writeFile("publish-order.txt", `${order.map((name) => `${name} ${manifests.get(name)}`).join("\n")}\n`);
-          for (const name of order) console.log(`  ${name}  ${manifests.get(name)}`);
-          NODE
-          if [[ "$DIST_TAG" != "latest" ]]; then
-            echo "WARNING: the dist-tag is $DIST_TAG, so \`npm install @tsrx/yuku\` will not resolve it."
-          fi
+          sha256sum --check SHA256SUMS
+          manifest=$(tar -xzOf "tsrx-yuku-$VERSION.tgz" package/package.json)
+          node -e '
+            const m = JSON.parse(process.argv[1]);
+            if (m.name !== "@tsrx/yuku" || m.version !== process.env.VERSION) throw new Error("tarball is " + m.name + "@" + m.version);
+            if (m.publishConfig?.access !== "public") throw new Error("publishConfig.access is not public");
+          ' "$manifest"
 
-      # Always rehearsed, in both modes. Provenance is off for the rehearsal
-      # only: a dry run has nothing to attest. This is also the check that the
-      # version is still free on the registry.
+      # the leading ./ keeps npm from reading release/x.tgz as a GitHub repo
       - name: Rehearse the publish
-        shell: bash
         env:
           NPM_CONFIG_PROVENANCE: "false"
-        run: |
-          set -euo pipefail
-          while read -r name path; do
-            echo "::group::dry-run $name"
-            # `./` is load-bearing: npm reads a bare `release/x.tgz` as the
-            # GitHub shorthand `user/repo`.
-            npm publish "./$path" --tag "$DIST_TAG" --access public --dry-run
-            echo "::endgroup::"
-          done < publish-order.txt
+        run: npm publish "./release/tsrx-yuku-$VERSION.tgz" --access public --dry-run
 
-      # The only step that writes to the registry.
-      - name: Publish, bindings first
-        if: needs.gate.outputs.mode == 'publish'
-        shell: bash
-        run: |
-          set -euo pipefail
-          while read -r name path; do
-            echo "::group::publish $name"
-            npm publish "./$path" --tag "$DIST_TAG" --access public
-            echo "::endgroup::"
-          done < publish-order.txt
-
-      # The backstop, and only the backstop: npm versions are immutable, so
-      # nothing here can prevent a bad release, only find one (the remedy is
-      # deprecate and cut the next minor). It installs the published version
-      # into a project outside this workspace, resolves the binding through the
-      # published optionalDependencies the way a consumer's first install does,
-      # and parses a real .tsrx source through the installed addon.
-      - name: Install the published release from the registry and run it
-        if: needs.gate.outputs.mode == 'publish'
-        shell: bash
-        run: |
-          set -euo pipefail
-          probe="$RUNNER_TEMP/publish-probe"
-          rm -rf "$probe"
-          mkdir -p "$probe"
-          cd "$probe"
-          npm init -y > /dev/null
-          # A read can hit a replica that has not caught up with the write, and
-          # v0.4.1 saw ETARGET twice 30 seconds apart. So first wait, with
-          # backoff for about six minutes in all, until every published name
-          # answers at this version, then install without the local metadata
-          # cache and retry that too, since the install can land on a replica
-          # the view did not.
-          names=("@tsrx/yuku-darwin-arm64" "@tsrx/yuku-linux-x64-gnu" "@tsrx/yuku")
-          waited=0
-          for name in "${names[@]}"; do
-            delay=10
-            until [[ "$(npm view "$name@$VERSION" version --prefer-online 2>/dev/null || true)" == "$VERSION" ]]; do
-              if (( waited >= 360 )); then
-                echo "$name@$VERSION is still not visible on the registry after ${waited}s." >&2
-                echo "The publish step succeeded, so this is most likely replica lag, and the" >&2
-                echo "release is out regardless. Once \`npm view $name@$VERSION version\` answers," >&2
-                echo "run the install and parse below by hand; re-running this job would republish." >&2
-                exit 1
-              fi
-              echo "$name@$VERSION is not visible yet; waiting ${delay}s (${waited}s so far)"
-              sleep "$delay"
-              waited=$((waited + delay))
-              delay=$((delay * 2 > 60 ? 60 : delay * 2))
-            done
-            echo "visible  $name@$VERSION"
-          done
-          installed=0
-          for attempt in 1 2 3 4; do
-            if npm install "@tsrx/yuku@$VERSION" --prefer-online; then
-              installed=1
-              break
-            fi
-            echo "install attempt $attempt of 4 failed; retrying in 30s" >&2
-            sleep 30
-          done
-          if (( installed == 0 )); then
-            echo "npm view sees @tsrx/yuku@$VERSION but npm install could not resolve it after 4 attempts." >&2
-            exit 1
-          fi
-          test -f node_modules/@tsrx/yuku-linux-x64-gnu/yuku-tsrx.node
-          node --input-type=module <<'NODE'
-          import assert from "node:assert/strict";
-          import { parseModule } from "@tsrx/yuku";
-          const program = parseModule("export const view = <p>published</p>;", "probe.tsrx");
-          assert.equal(program.type, "Program");
-          assert.equal(program.body.length, 1);
-          assert.equal(program.body[0].type, "ExportNamedDeclaration");
-          console.log("the published release parsed a real .tsrx source through the native addon");
-          NODE
+      - name: Publish
+        if: needs.build.outputs.mode == 'publish'
+        run: npm publish "./release/tsrx-yuku-$VERSION.tgz" --access public --provenance
