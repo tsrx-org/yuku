@@ -1,6 +1,6 @@
 // Opens the built site in Chrome and checks every page loads clean and the editor runs @tsrx/yuku. Run: node verify.mjs
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
@@ -28,6 +28,7 @@ const origin = await new Promise((resolve, reject) => {
 
 const browser = await chromium.launch({ executablePath: chrome })
 const failures = []
+const unversioned = new Set()
 const routes = ['/', config.playground, ...new Set(config.sidebar.flatMap((group) => group.items.map((item) => item.link)))]
 
 try {
@@ -39,6 +40,10 @@ try {
         if (message.type() === 'error') failures.push(`${page.url()}: ${message.text()}`)
       })
       page.on('requestfailed', (request) => failures.push(`${request.url()}: ${request.failure()?.errorText}`))
+      page.on('request', (request) => {
+        const url = new URL(request.url())
+        if (url.origin === origin && url.pathname.startsWith('/assets/') && !url.searchParams.has('v')) unversioned.add(url.pathname)
+      })
       for (const route of routes) {
         const response = await page.goto(origin + route)
         if (response?.status() !== 200) failures.push(`${route}: HTTP ${response?.status()}`)
@@ -63,6 +68,18 @@ try {
   }
   if (!(await page.textContent('#pg-semantic')).includes('item')) failures.push('home editor: no binding for item')
 
+  // the playground's #code= hash names no element, so the swap must still start at the top
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`${origin}/guide/parse`)
+  await page.waitForFunction(() => document.documentElement.dataset.afterFirstLoad === 'true')
+  await page.evaluate(() => document.querySelector('.try-button').scrollIntoView())
+  await page.evaluate(() => document.querySelector('.try-button').click())
+  await page.waitForURL(/\/playground#code=/)
+  await page.waitForFunction(() => document.getElementById('demo-editor') !== null)
+  const scrolled = await page.evaluate(() => window.scrollY)
+  if (scrolled !== 0) failures.push(`Try in playground: the playground opened scrolled to ${scrolled}px`)
+  await page.setViewportSize({ width: 1440, height: 900 })
+
   await page.goto(`${origin}${config.playground}`)
   await page.waitForFunction(() => /^parsed in/.test(document.getElementById('demo-status')?.textContent ?? ''), null, { timeout: 15000 })
   await page.click('#pg-scenario-two-nodes')
@@ -74,6 +91,16 @@ try {
 } finally {
   await browser.close()
   server.kill()
+}
+
+// an asset fetched without ?v= can't be cached as immutable, or a release pairs new files with stale ones
+const vercel = JSON.parse(readFileSync(path.join(docsDir, 'vercel.json'), 'utf8'))
+for (const rule of vercel.headers ?? []) {
+  const immutable = rule.headers.some((header) => /immutable/.test(header.value))
+  const pattern = new RegExp(`^${rule.source.replace('(.*)', '.*')}$`)
+  for (const asset of unversioned) {
+    if (immutable && pattern.test(asset)) failures.push(`vercel.json caches ${asset} as immutable, but it is fetched unversioned`)
+  }
 }
 
 if (failures.length > 0) {
