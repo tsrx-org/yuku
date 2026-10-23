@@ -15,6 +15,15 @@ export type { GenerateOptions, GenerateResult, SourceMap, SourceMapOptions } fro
 export type * from "./ast";
 export { BindingFlags } from "yuku/analyzer";
 export { generate } from "./codegen";
+export { scanModuleRecord } from "./module-record";
+export type {
+  DynamicImport,
+  ExportEntry,
+  ModuleRecordScan,
+  ScanOptions,
+  StaticExport,
+  StaticImport,
+} from "./module-record";
 
 type TSRXOptions<T> = Omit<T, "lang" | "wasm">;
 

@@ -44,6 +44,7 @@
     "test": "bun run build && bun test",
     "typecheck": "tsc",
     "bench": "bun run build && node bench/index.ts",
+    "bench:module-record": "bun run build && node bench/module-record.ts",
     "sync": "bun test/sync.ts",
     "prepublishOnly": "bun run build"
   },
