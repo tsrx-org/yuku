@@ -40,6 +40,10 @@ jobs:
       - name: Build
         run: bun run build
 
+      # zig build writes the module record decoder from src/module_record/layout.zig
+      - name: Check the generated decoder is committed
+        run: git diff --exit-code src/module-record/layout.ts
+
       - name: Typecheck
         run: bun run typecheck
 

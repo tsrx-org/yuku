@@ -16,7 +16,7 @@ npm install @tsrx/yuku
 
 **Correct.** Every TSRX source of the TSRX repository and of `@tsrx/core`'s tests parses, or fails, as `@tsrx/core` parses it, except where it accepts what TypeScript rejects.
 
-**Small.** One WebAssembly module, 746 kB and about 221 kB gzipped, with no native addons and no dependency but Yuku.
+**Small.** One WebAssembly module, 773 kB and about 229 kB gzipped, with no native addons and no dependency but Yuku.
 
 **Anywhere.** Node.js 16.4 or newer, Bun, Deno, Workers, and browsers, on every platform.
 
@@ -43,6 +43,16 @@ generate(program).code;
 `parse` builds an ESTree program with TSRX's own nodes, as [`@tsrx/core`](https://www.npmjs.com/package/@tsrx/core) names them, and never throws: errors are in `diagnostics`, with the `TSRXnnnn` code `@tsrx/core` reports. It takes Yuku's options, `path`, `sourceType`, `semanticErrors`, `attachComments`, and `tokens`, and `preserveParens`, which is `false` as in `@tsrx/core`.
 
 `analyze` gives Yuku's semantic model, and `Analyzer` analyzes a project of files with their imports and exports. `generate` prints TSRX back.
+
+`scanModuleRecord` reads what a module imports and exports, and whether it parses, without building the tree in JavaScript: one parse in WebAssembly, and a record of a few hundred bytes back. A bundler that reads only imports, exports, and dynamic `import()`s calls it instead of `parse`.
+
+```ts
+import { scanModuleRecord } from "@tsrx/yuku";
+
+const { failed, staticImports, staticExports, dynamicImports } = scanModuleRecord(code, { path: "chunk.js" });
+```
+
+`failed` is true exactly when `parse` reports an error for the same source and options. Offsets are UTF-16, as in the tree, and each export entry is the specification's ExportEntry: `export { a }` of `import { a } from "./m.js"` has `importedFrom: "./m.js"` and no `local`.
 
 It runs in Node.js 16.4 or newer, Bun, Deno, Workers, and browsers.
 
